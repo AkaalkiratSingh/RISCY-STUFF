@@ -27,6 +27,14 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             r.flags.overflow = ((a ^ b) & (a ^ res) & SIGN_BIT) != 0;
             break;
         }
+        case Opcode::CMP: {
+            // CMP is a subtraction that discards the result.
+            // Only the flags matter for branching.
+            res = a - b;
+            r.flags.carry = a >= b; // no borrow
+            r.flags.overflow = ((a ^ b) & (a ^ res) & SIGN_BIT) != 0;
+            break;
+        }
         case Opcode::AND:
             res = a & b;
             break;
@@ -71,14 +79,23 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             break;
         }
         default:
-            // TODO: Add MUL, DIV for Oct 14
             res = 0;
             break;
     }
 
+    // Set the result value
     r.value = static_cast<int32_t>(res);
+
+    // --- Set the Standard Flags ---
     r.flags.zero = (res == 0);
     r.flags.negative = (res & SIGN_BIT) != 0;
+
+    // --- Set the New Comparison Flags ---
+    r.flags.equal = r.flags.zero;
+    
+    // For signed numbers, A > B if (A - B) > 0. 
+    // This means Z=0 AND N=V (Negative equals Overflow).
+    r.flags.greaterThan = (!r.flags.zero) && (r.flags.negative == r.flags.overflow);
 
     return r;
 }
