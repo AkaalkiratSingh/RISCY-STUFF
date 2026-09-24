@@ -1,4 +1,3 @@
-// RISC201 shared ISA contract.
 #pragma once
 
 #include <cstdint>
@@ -21,6 +20,8 @@ struct Flags {
     bool negative = false;
     bool carry    = false;
     bool overflow = false;
+    bool equal    = false;       // Added for CMP
+    bool greaterThan = false;    // Added for CMP
 };
 
 enum class InstrFormat : uint8_t {
@@ -46,6 +47,9 @@ enum class Opcode : uint8_t {
     RET  = 0x0D,
     PUSH = 0x0E,
     POP  = 0x0F,
+    NOT  = 0x10, // Added for PRD completion
+    SAR  = 0x11, // Added for PRD completion
+    CMP  = 0x12, // Added for Compare instruction
     HALT = 0xFF,
 };
 
