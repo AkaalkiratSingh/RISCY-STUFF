@@ -1,2 +1,0 @@
-/usr/bin/ar qc libcontrol_unit.a CMakeFiles/control_unit.dir/src/control_unit.cpp.o
-/usr/bin/ranlib libcontrol_unit.a

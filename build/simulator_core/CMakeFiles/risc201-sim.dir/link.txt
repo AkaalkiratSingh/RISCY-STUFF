@@ -1,1 +1,0 @@
-/usr/bin/c++ -g "CMakeFiles/risc201-sim.dir/src/main.cpp.o" -o risc201-sim  libsimulator_core_lib.a ../alu/libalu.a ../control_unit/libcontrol_unit.a ../memory_safety/libmemory_safety.a 

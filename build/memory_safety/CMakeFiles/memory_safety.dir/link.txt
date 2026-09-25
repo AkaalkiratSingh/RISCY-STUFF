@@ -1,2 +1,0 @@
-/usr/bin/ar qc libmemory_safety.a CMakeFiles/memory_safety.dir/src/stack_guard.cpp.o CMakeFiles/memory_safety.dir/src/visualizer.cpp.o
-/usr/bin/ranlib libmemory_safety.a

@@ -1,1 +1,0 @@
-/usr/bin/c++ -g "CMakeFiles/risc201-disasm.dir/src/main_disasm.cpp.o" -o risc201-disasm  libassembler_lib.a 

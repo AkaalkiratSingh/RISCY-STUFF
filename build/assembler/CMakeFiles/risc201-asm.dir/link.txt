@@ -1,1 +1,0 @@
-/usr/bin/c++ -g "CMakeFiles/risc201-asm.dir/src/main_asm.cpp.o" -o risc201-asm  libassembler_lib.a 
