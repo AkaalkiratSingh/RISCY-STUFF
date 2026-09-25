@@ -1,0 +1,80 @@
+[
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/alu",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/alu/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/alu.dir/src/alu.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/alu/src/alu.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/alu/src/alu.cpp",
+  "output": "alu/CMakeFiles/alu.dir/src/alu.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/control_unit",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/control_unit/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/control_unit.dir/src/control_unit.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/control_unit/src/control_unit.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/control_unit/src/control_unit.cpp",
+  "output": "control_unit/CMakeFiles/control_unit.dir/src/control_unit.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/assembler",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/assembler/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/assembler_lib.dir/src/assembler.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/assembler/src/assembler.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/assembler/src/assembler.cpp",
+  "output": "assembler/CMakeFiles/assembler_lib.dir/src/assembler.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/assembler",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/assembler/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/assembler_lib.dir/src/disassembler.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/assembler/src/disassembler.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/assembler/src/disassembler.cpp",
+  "output": "assembler/CMakeFiles/assembler_lib.dir/src/disassembler.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/assembler",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/assembler/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/assembler_lib.dir/src/preprocessor.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/assembler/src/preprocessor.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/assembler/src/preprocessor.cpp",
+  "output": "assembler/CMakeFiles/assembler_lib.dir/src/preprocessor.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/assembler",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/assembler/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/risc201-asm.dir/src/main_asm.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/assembler/src/main_asm.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/assembler/src/main_asm.cpp",
+  "output": "assembler/CMakeFiles/risc201-asm.dir/src/main_asm.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/assembler",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/assembler/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/risc201-disasm.dir/src/main_disasm.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/assembler/src/main_disasm.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/assembler/src/main_disasm.cpp",
+  "output": "assembler/CMakeFiles/risc201-disasm.dir/src/main_disasm.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/memory_safety",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/memory_safety/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/memory_safety.dir/src/stack_guard.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/memory_safety/src/stack_guard.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/memory_safety/src/stack_guard.cpp",
+  "output": "memory_safety/CMakeFiles/memory_safety.dir/src/stack_guard.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/memory_safety",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/memory_safety/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/memory_safety.dir/src/visualizer.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/memory_safety/src/visualizer.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/memory_safety/src/visualizer.cpp",
+  "output": "memory_safety/CMakeFiles/memory_safety.dir/src/visualizer.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/simulator_core",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/simulator_core/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -I/home/mochamaniac/Development/RISCY_STUFF/alu/include -I/home/mochamaniac/Development/RISCY_STUFF/control_unit/include -I/home/mochamaniac/Development/RISCY_STUFF/memory_safety/include -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/simulator_core_lib.dir/src/cpu.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/cpu.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/cpu.cpp",
+  "output": "simulator_core/CMakeFiles/simulator_core_lib.dir/src/cpu.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/simulator_core",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/simulator_core/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -I/home/mochamaniac/Development/RISCY_STUFF/alu/include -I/home/mochamaniac/Development/RISCY_STUFF/control_unit/include -I/home/mochamaniac/Development/RISCY_STUFF/memory_safety/include -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/simulator_core_lib.dir/src/debugger.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/debugger.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/debugger.cpp",
+  "output": "simulator_core/CMakeFiles/simulator_core_lib.dir/src/debugger.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/simulator_core",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/simulator_core/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -I/home/mochamaniac/Development/RISCY_STUFF/alu/include -I/home/mochamaniac/Development/RISCY_STUFF/control_unit/include -I/home/mochamaniac/Development/RISCY_STUFF/memory_safety/include -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/simulator_core_lib.dir/src/cli.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/cli.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/cli.cpp",
+  "output": "simulator_core/CMakeFiles/simulator_core_lib.dir/src/cli.cpp.o"
+},
+{
+  "directory": "/home/mochamaniac/Development/RISCY_STUFF/build/simulator_core",
+  "command": "/usr/bin/c++  -I/home/mochamaniac/Development/RISCY_STUFF/simulator_core/include -I/home/mochamaniac/Development/RISCY_STUFF/isa_spec -I/home/mochamaniac/Development/RISCY_STUFF/alu/include -I/home/mochamaniac/Development/RISCY_STUFF/control_unit/include -I/home/mochamaniac/Development/RISCY_STUFF/memory_safety/include -g -std=gnu++17 -Wall -Wextra -o CMakeFiles/risc201-sim.dir/src/main.cpp.o -c /home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/main.cpp",
+  "file": "/home/mochamaniac/Development/RISCY_STUFF/simulator_core/src/main.cpp",
+  "output": "simulator_core/CMakeFiles/risc201-sim.dir/src/main.cpp.o"
+}
+]

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libalu.a CMakeFiles/alu.dir/src/alu.cpp.o
+/usr/bin/ranlib libalu.a

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libassembler_lib.a CMakeFiles/assembler_lib.dir/src/assembler.cpp.o CMakeFiles/assembler_lib.dir/src/disassembler.cpp.o CMakeFiles/assembler_lib.dir/src/preprocessor.cpp.o
+/usr/bin/ranlib libassembler_lib.a

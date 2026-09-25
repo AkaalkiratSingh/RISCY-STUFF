@@ -1,0 +1,2 @@
+/usr/bin/ar qc libsimulator_core_lib.a CMakeFiles/simulator_core_lib.dir/src/cpu.cpp.o CMakeFiles/simulator_core_lib.dir/src/debugger.cpp.o CMakeFiles/simulator_core_lib.dir/src/cli.cpp.o
+/usr/bin/ranlib libsimulator_core_lib.a
