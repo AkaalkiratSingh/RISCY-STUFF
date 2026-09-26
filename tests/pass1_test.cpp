@@ -44,11 +44,40 @@ void testWrongOperandCount() {
     std::cout << "testWrongOperandCount passed\n";
 }
 
+void printErrorsDemo() {
+    risc201::Assembler assembler;
+    std::vector<std::string> src = {
+        "foo: NOP",
+        "foo: NOP",
+        "ADDD R1, R2, R3",
+        "ADD R1, R2",
+        "     BEQ R1, R2, end",
+        "end: HALT",
+    };
+
+    bool ok = assembler.assemblePass1(src);
+
+    std::cout << "\n--- printErrorsDemo ---\n";
+    std::cout << "assemblePass1 returned: " << (ok ? "true (no errors)" : "false (errors found)") << "\n";
+    std::cout << "Error count: " << assembler.errors().size() << "\n\n";
+
+    for (const auto& err : assembler.errors()) {
+        std::cout << "line " << err.line_number << ": " << err.message << "\n";
+    }
+
+    std::cout << "\nSymbol table:\n";
+    for (const auto& [name, addr] : assembler.symbolTable()) {
+        std::cout << "  " << name << " -> 0x" << std::hex << addr << std::dec << "\n";
+    }
+    std::cout << "-----------------------\n\n";
+}
+
 int main() {
     testCleanProgram();
     testDuplicateLabel();
     testUnknownMnemonic();
     testWrongOperandCount();
+    printErrorsDemo();
     std::cout << "All Pass 1 tests passed.\n";
     return 0;
 }
