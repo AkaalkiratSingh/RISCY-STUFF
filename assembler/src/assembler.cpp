@@ -2,10 +2,16 @@
 
 #include <sstream>
 #include <cctype>
+#include <algorithm>
 
 namespace risc201 {
 
     namespace {
+
+        constexpr int32_t kImm18Min = -(1 << 17);
+        constexpr int32_t kImm18Max = (1 << 17) - 1;
+        constexpr int32_t kOffset27Min = -(1 << 26);
+        constexpr int32_t kOffset27Max = (1 << 26) - 1;
 
         std::string stripCommentandTrim(const std::string raw) {
             std::string s = raw;
@@ -55,8 +61,114 @@ namespace risc201 {
                 size_t end = tok.find_last_not_of(" \t");
                 if (start != std::string::npos) operands_out.push_back(tok.substr(start, end - start + 1));
             }
+
+            return;
         }
 
+        bool parseRegister(const std::string& token, Register& reg_out) {
+            if (token.size() < 2) return false;
+            char first = static_cast<char>(std::toupper(token[0]));
+            if (first != 'R') return false;
+
+            std::string digits = token.substr(1);
+            if (digits.empty()) return false;
+            for (auto digit: digits) {
+                if (!isdigit(digit)) return false;
+            }
+
+            int value;
+            try {
+                value = std::stoi(digits);
+            }
+            catch (...) {
+                return false;
+            }
+            if (value < 0 || value > 15) return false;
+
+            reg_out = static_cast<Register>(value);
+
+            return true;
+        }
+
+        bool parseImmediate(const std::string& token, int32_t& value_out) {
+            if (token.empty()) return false;
+
+            bool negative = false;
+            std::string s = token;
+            if (s[0] == '-') {
+                negative = true;
+                s = s.substr(1);
+            }
+            if (s.empty()) return false;
+
+            int base = 10;
+            if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+                base = 16;
+                s = s.substr(2);
+            }
+
+            try {
+                size_t pos;
+                long parsed = std::stol(s, &pos, base);
+                if (pos != s.size()) return false;
+                if (negative) value_out = static_cast<int32_t>(-parsed);
+                else value_out = static_cast<int32_t>(parsed);
+                return true;
+            }
+            catch (...) {
+                return false;
+            }
+        }
+
+        bool parseMemOperand(const std::string& token, int32_t& imm_out, Register& reg_out) {
+            auto open = token.find('[');
+            auto close = token.find(']');
+            if (open == std::string::npos || close == std::string::npos || close < open) return false;
+            if (close != token.size() - 1) return false;
+
+            std::string imm_part = token.substr(0, open);
+            std::string reg_part = token.substr(open + 1, close - open - 1);
+
+            if (!parseImmediate(imm_part, imm_out)) return false;
+            if (!parseRegister(reg_part, reg_out)) return false;
+
+            return true;
+        }
+
+        bool inRange(int32_t value, int32_t lo, int32_t hi) {
+            return (value >= lo && value <= hi);
+        }
+
+        int32_t truncateToBits(int32_t value, int bits) {
+            uint32_t mask;
+            if (bits >= 32) mask = 0xFFFFFFFFu;
+            else mask = (1u << bits) - 1u;
+            uint32_t truncated = static_cast<uint32_t>(value) & mask;
+
+            uint32_t sign_bit = 1u << (bits - 1);
+            if (truncated & sign_bit) {
+                truncated |= ~mask;
+            }
+            return static_cast<int32_t>(truncated);
+        }
+
+        bool assignNextRegister(Instruction& out, size_t reg_slot_idx, Register r) {
+            switch (reg_slot_idx) {
+                case 0: out.rd = r; return true;
+                case 1: out.rs1 = r; return true;
+                case 2: out.rs2 = r; return true;
+                default: return false;
+            }
+        }
+
+    }
+
+    void Assembler::addError(int line_num, std::string msg) {
+        errors_.push_back(AssemblyError{line_num, std::move(msg)});
+    }
+
+    void Assembler::addWarning(int line_num, std::string msg) {
+        warnings_.push_back(AssemblyError{line_num, std::move(msg)});
     }
 
     bool Assembler::parseLine(const std::string& raw, int line_num, ParsedLine& out) {
@@ -88,15 +200,134 @@ namespace risc201 {
             return true;
        }
 
-       if (out.operands.size() != valid->second.operand_count) addError(line_num, "'" + out.op + "' expects " + std::to_string(valid->second.operand_count) + " operand(s), got " + std::to_string(out.operands.size()));
+       if (out.operands.size() != valid->second.operand_kinds.size()) addError(line_num, "'" + out.op + "' expects " + std::to_string(valid->second.operand_kinds.size()) + " operand(s), got " + std::to_string(out.operands.size()));
 
        out.emits_word = true;
 
        return true;
     }
 
-    void Assembler::addError(int line_num, std::string msg) {
-        errors_.push_back(AssemblyError{line_num, std::move(msg)});
+    bool Assembler::resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out) {
+        out.opcode = info.op;
+        out.format = info.format;
+        out.I = false;
+        out.rd = Register::R0;
+        out.rs1 = Register::R0;
+        out.rs2 = Register::R0;
+        out.imm = 0;
+
+        size_t reg_slot_idx = 0;
+        bool have_imm_or_label = false;
+
+        for (size_t i = 0; i < info.operand_kinds.size(); ++i) {
+            const std::string& token = pl.operands[i];
+            OperandKind kind = info.operand_kinds[i];
+
+            switch (kind) {
+                case OperandKind::REG: {
+                    Register r;
+                    if (!parseRegister(token, r)) {
+                        addError(pl.line_number, "invalid register '" + token + "'");
+                        return false;
+                    }
+                    if (!assignNextRegister(out, reg_slot_idx, r)) {
+                        addError(pl.line_number, "internal error: too many register operands for '" + pl.op + "'");
+                        return false;
+                    }
+                    ++reg_slot_idx;
+
+                    break;
+                }
+
+                case OperandKind::IMM: {
+                    int32_t v;
+                    if (!parseImmediate(token, v)) {
+                        addError(pl.line_number, "invalid immediate '" + token + "'");
+                        return false;
+                    }
+                    out.imm = v;
+                    out.I = true;
+                    have_imm_or_label = true;
+
+                    break;
+                }
+
+                case OperandKind::REG_OR_IMM: {
+                    Register r;
+                    int32_t v;
+                    if (parseRegister(token, r)) {
+                        if (!assignNextRegister(out, reg_slot_idx, r)) {
+                            addError(pl.line_number, "internal error: too many register operands for '" + pl.op + "'");
+                            return false;
+                        }
+                        ++reg_slot_idx;
+                        out.I = false;
+                    }
+                    else if (parseImmediate(token, v)) {
+                        out.imm = v;
+                        out.I = true;
+                        have_imm_or_label = true;
+                    }
+                    else {
+                        addError(pl.line_number, "'" + token + "' is not a valid register or immediate");
+                        return false;
+                    }
+
+                    break;
+                }
+
+                case OperandKind::MEM: {
+                    int32_t mem_imm;
+                    Register base_reg;
+                    if (!parseMemOperand(token, mem_imm, base_reg)) {
+                        addError(pl.line_number, "malformed memory operand '" + token + "' (expected imm[reg])");
+                        return false;
+                    }
+                    out.rs1 = base_reg;
+                    out.imm = mem_imm;
+                    out.I = true;
+                    have_imm_or_label = true;
+                    break;
+                }
+
+                case OperandKind::LABEL: {
+                    auto symbol = symbol_table_.find(token);
+                    if (symbol == symbol_table_.end()) {
+                        addError(pl.line_number, "undefined label '" + token + "'");
+                        return false;
+                    }
+                    int32_t target = static_cast<int32_t>(symbol->second);
+                    int32_t current_pc = static_cast<int32_t>(pl.address);
+                    out.imm = target - (current_pc + 4);
+                    have_imm_or_label = true;
+                    break;
+                }
+            }
+        }
+
+        if (have_imm_or_label) {
+            int no_of_bits;
+            int32_t lo;
+            int32_t hi;
+            if (info.format == InstrFormat::J_TYPE) {
+                no_of_bits = 27;
+                lo = kOffset27Min;
+                hi = kOffset27Max;
+            }
+            else {
+                no_of_bits = 18;
+                lo = kImm18Min;
+                hi = kImm18Max;
+            }
+
+            if (!inRange(out.imm, lo, hi)) {
+                int32_t truncated = truncateToBits(out.imm, no_of_bits);
+                addWarning(pl.line_number, "value " + std::to_string(out.imm) + " out of range for " + std::to_string(no_of_bits) + "-bit field, truncated to " + std::to_string(truncated));
+                out.imm = truncated;
+            }
+        }
+
+        return true;
     }
 
     bool Assembler::assemblePass1(const std::vector<std::string>& source_lines) {
@@ -118,8 +349,26 @@ namespace risc201 {
     }
 
     std::vector<Instruction> Assembler::assemblePass2() {
-        // TODO(Divyansh): resolve addresses, emit binary/hex.
-        return {};
+        warnings_.clear();
+        std::vector<Instruction> program;
+
+        for (const auto& pl : parsed_lines_) {
+            if (!pl.emits_word) continue;
+
+            auto valid = opTable().find(pl.op);
+            if (valid == opTable().end()) {
+                addError(pl.line_number, "internal error: '" + pl.op + "' not found in op table during Pass 2");
+                continue;
+            }
+
+            Instruction instr;
+            if (resolveInstruction(pl, valid->second, instr)) {
+                program.push_back(instr);
+            }
+        }
+
+        if (errors_.empty()) return program;
+        else return std::vector<Instruction>{};
     }
 
 } // namespace risc201

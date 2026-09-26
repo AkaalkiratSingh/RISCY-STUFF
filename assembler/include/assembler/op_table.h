@@ -3,35 +3,44 @@
 #include "isa201.h"
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace risc201 {
+
+    enum class OperandKind : uint8_t {
+    REG,
+    IMM,
+    REG_OR_IMM,
+    MEM, //imm[rs1] type
+    LABEL,
+};
 
     struct OpInfo {
         Opcode op;
         InstrFormat format;
-        size_t operand_count;
+        std::vector<OperandKind> operand_kinds;
     };
 
     inline const std::unordered_map<std::string, OpInfo>& opTable() {
         static const std::unordered_map<std::string, OpInfo> table = {
-            {"NOP",   {Opcode::NOP,   InstrFormat::R_TYPE, 0}},
-            {"ADD",   {Opcode::ADD,   InstrFormat::R_TYPE, 3}},
-            {"SUB",   {Opcode::SUB,   InstrFormat::R_TYPE, 3}},
-            {"AND",   {Opcode::AND,   InstrFormat::R_TYPE, 3}},
-            {"OR",    {Opcode::OR,    InstrFormat::R_TYPE, 3}},
-            {"XOR",   {Opcode::XOR,   InstrFormat::R_TYPE, 3}},
-            {"SHL",   {Opcode::SHL,   InstrFormat::R_TYPE, 3}},
-            {"SHR",   {Opcode::SHR,   InstrFormat::R_TYPE, 3}},
-            {"LOAD",  {Opcode::LOAD,  InstrFormat::I_TYPE, 2}},
-            {"STORE", {Opcode::STORE, InstrFormat::I_TYPE, 2}},
-            {"JMP",   {Opcode::JMP,   InstrFormat::J_TYPE, 1}},
-            {"BEQ",   {Opcode::BEQ,   InstrFormat::I_TYPE, 3}},
-            {"CALL",  {Opcode::CALL,  InstrFormat::J_TYPE, 1}},
-            {"RET",   {Opcode::RET,   InstrFormat::R_TYPE, 0}},
-            {"PUSH",  {Opcode::PUSH,  InstrFormat::R_TYPE, 1}},
-            {"POP",   {Opcode::POP,   InstrFormat::R_TYPE, 1}},
-            {"HALT",  {Opcode::HALT,  InstrFormat::R_TYPE, 0}},
-        };
+            {"NOP",   {Opcode::NOP,   InstrFormat::RI_TYPE, {}}},
+            {"ADD",   {Opcode::ADD,   InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM}}},
+            {"SUB",   {Opcode::SUB,   InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM}}},
+            {"AND",   {Opcode::AND,   InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM}}},
+            {"OR",    {Opcode::OR,    InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM}}},
+            {"XOR",   {Opcode::XOR,   InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM}}},
+            {"SHL",   {Opcode::SHL,   InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM}}},
+            {"SHR",   {Opcode::SHR,   InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM}}},
+            {"LOAD",  {Opcode::LOAD,  InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::MEM}}},
+            {"STORE", {Opcode::STORE, InstrFormat::RI_TYPE, {OperandKind::REG, OperandKind::MEM}}},
+            {"JMP",   {Opcode::JMP,   InstrFormat::J_TYPE,  {OperandKind::LABEL}}},
+            {"BEQ",   {Opcode::BEQ,   InstrFormat::J_TYPE,  {OperandKind::LABEL}}},
+            {"CALL",  {Opcode::CALL,  InstrFormat::J_TYPE,  {OperandKind::LABEL}}},
+            {"RET",   {Opcode::RET,   InstrFormat::RI_TYPE, {}}},
+            {"PUSH",  {Opcode::PUSH,  InstrFormat::RI_TYPE, {OperandKind::REG}}},
+            {"POP",   {Opcode::POP,   InstrFormat::RI_TYPE, {OperandKind::REG}}},
+            {"HALT",  {Opcode::HALT,  InstrFormat::RI_TYPE, {}}},
+            };
 
         return table;
     }

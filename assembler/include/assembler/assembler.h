@@ -33,17 +33,19 @@ namespace risc201 {
             return symbol_table_;
         }
         const std::vector<AssemblyError>& errors() const { return errors_; }
+        const std::vector<AssemblyError>& warnings() const { return warnings_; }
 
     private:
         uint32_t location_counter_ = 0;
         std::unordered_map<std::string, uint32_t> symbol_table_;
         std::vector<ParsedLine> parsed_lines_;
         std::vector<AssemblyError> errors_;
+        std::vector<AssemblyError> warnings_; 
 
         bool parseLine(const std::string& raw, int line_num, ParsedLine& out);
         void addError(int line_num, std::string msg);
-        // TODO(Divyansh, Sept 30 milestone): EBNF grammar-backed parser, line
-        // tracking for error messages, label resolution.
+        void addWarning(int line_num, std::string msg);
+        bool resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out);
     };
 
 }
