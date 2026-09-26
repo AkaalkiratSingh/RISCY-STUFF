@@ -6,6 +6,10 @@ add_executable(cpu_integration_test cpu_integration_test.cpp)
 target_link_libraries(cpu_integration_test PRIVATE simulator_core_lib assembler_lib)
 add_test(NAME CpuIntegrationTest COMMAND cpu_integration_test)
 
+add_executable(decode_test decode_test.cpp)
+target_link_libraries(decode_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME DecodeTest COMMAND decode_test)
+
 add_executable(pass1_test pass1_test.cpp)
 target_link_libraries(pass1_test PRIVATE assembler_lib)
 add_test(NAME Pass1Test COMMAND pass1_test)

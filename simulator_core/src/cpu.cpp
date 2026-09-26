@@ -1,5 +1,7 @@
 #include "simulator_core/cpu.h"
 
+#include "simulator_core/decoder.h"
+
 #include <algorithm>
 #include <cstddef>
 
@@ -96,6 +98,15 @@ namespace risc201 {
         prev_dest_ = -1;
     }
 
+    void Cpu::loadWords(const std::vector<uint32_t>& words) {
+        std::vector<Instruction> program;
+        program.reserve(words.size());
+        for (uint32_t word : words) {
+            program.push_back(decodeInstruction(word));
+        }
+        loadProgram(program);
+    }
+
     void Cpu::raiseException(ExceptionCode code) {
         state_.pending_exception = code;
         state_.halted = true;
@@ -114,7 +125,7 @@ namespace risc201 {
     }
 
     uint32_t Cpu::branchTarget(uint32_t instr_pc, const Instruction& instr) const {
-        const u_int64_t byte_target = 4 * static_cast<int64_t>(instr_pc) + static_cast<int64_t>(instr.imm) + 4;
+        const u_int64_t byte_target = 4 * static_cast<u_int64_t>(instr_pc) + static_cast<u_int64_t>(instr.imm) + 4;
         return static_cast<uint32_t>(byte_target / 4);
     }
 

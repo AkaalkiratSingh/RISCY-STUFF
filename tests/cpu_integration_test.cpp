@@ -192,13 +192,41 @@ int main() {
     section("Cpu: unsupported opcode halts via the CU illegal sink");
     {
         const Cpu cpu = runProgram({
-            "BEQ done",
+            "CALL done",
             "done:",
             "HALT",
         });
         CHECK(cpu.state().halted);
         CHECK(!cpu.state().pending_exception.has_value());
         CHECK_EQ(cpu.state().pc, 0u);
+    }
+
+    section("Cpu: BEQ branches on the zero flag");
+    {
+        // SUB R1,R1,R1 sets Z; the BEQ over the ADD must be taken (R2 stays 0).
+        const Cpu taken = runProgram({
+            "LOAD R1, 0[R0]",
+            "SUB R1, R1, R1",
+            "BEQ skip",
+            "ADD R2, R0, 99",
+            "skip:",
+            "HALT",
+        }, {{0, 5}});
+        CHECK(taken.state().halted);
+        CHECK(!taken.state().pending_exception.has_value());
+        CHECK_EQ(reg(taken, Register::R2), 0);
+    }
+    {
+        // Z stays clear (LOAD does not touch FLAGS), so the branch is not taken.
+        const Cpu notTaken = runProgram({
+            "LOAD R1, 0[R0]",
+            "BEQ skip",
+            "ADD R2, R0, 99",
+            "skip:",
+            "HALT",
+        }, {{0, 5}});
+        CHECK(notTaken.state().halted);
+        CHECK_EQ(reg(notTaken, Register::R2), 99);
     }
 
     section("4-stage: immediate operand form ADD Rd, Rs, imm");
