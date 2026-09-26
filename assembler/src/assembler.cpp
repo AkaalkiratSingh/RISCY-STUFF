@@ -49,6 +49,8 @@ namespace risc201 {
             size_t sp = line.find_first_of(" \t");
             if (sp == std::string::npos) op_out = line;
             else op_out = line.substr(0, sp);
+            
+            for (auto& c : op_out) c = static_cast<char>(std::toupper(c));
 
             if (sp == std::string::npos) return;
 
