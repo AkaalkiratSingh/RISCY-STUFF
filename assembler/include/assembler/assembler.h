@@ -35,6 +35,10 @@ namespace risc201 {
         const std::vector<AssemblyError>& errors() const { return errors_; }
         const std::vector<AssemblyError>& warnings() const { return warnings_; }
 
+        uint32_t encodeInstruction(const Instruction& instr);
+        bool writeBinaryFile(const std::string& path, const std::vector<uint32_t>& words);
+        bool writeHexFile(const std::string& path, const std::vector<uint32_t>& words);
+
     private:
         uint32_t location_counter_ = 0;
         std::unordered_map<std::string, uint32_t> symbol_table_;
@@ -42,9 +46,9 @@ namespace risc201 {
         std::vector<AssemblyError> errors_;
         std::vector<AssemblyError> warnings_; 
 
-        bool parseLine(const std::string& raw, int line_num, ParsedLine& out);
         void addError(int line_num, std::string msg);
         void addWarning(int line_num, std::string msg);
+        bool parseLine(const std::string& raw, int line_num, ParsedLine& out);
         bool resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out);
     };
 

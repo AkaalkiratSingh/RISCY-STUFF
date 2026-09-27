@@ -6,7 +6,7 @@ void testCleanProgram() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = {
         "start: ADD R1, R2, R3",
-        "       BEQ R1, R2, end",
+        "       BEQ end",
         "       JMP start",
         "end:   HALT",
     };

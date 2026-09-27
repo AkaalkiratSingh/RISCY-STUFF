@@ -2,7 +2,8 @@
 
 #include <sstream>
 #include <cctype>
-#include <algorithm>
+#include <fstream>
+#include <iomanip>
 
 namespace risc201 {
 
@@ -210,6 +211,10 @@ namespace risc201 {
     }
 
     bool Assembler::resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out) {
+        if (pl.operands.size() != info.operand_kinds.size()) {
+            return false;
+        }
+
         out.opcode = info.op;
         out.format = info.format;
         out.I = false;
@@ -220,6 +225,7 @@ namespace risc201 {
 
         size_t reg_slot_idx = 0;
         bool have_imm_or_label = false;
+        std::string imm_token;
 
         for (size_t i = 0; i < info.operand_kinds.size(); ++i) {
             const std::string& token = pl.operands[i];
@@ -250,6 +256,7 @@ namespace risc201 {
                     out.imm = v;
                     out.I = true;
                     have_imm_or_label = true;
+                    imm_token = token;
 
                     break;
                 }
@@ -269,6 +276,7 @@ namespace risc201 {
                         out.imm = v;
                         out.I = true;
                         have_imm_or_label = true;
+                        imm_token = token;
                     }
                     else {
                         addError(pl.line_number, "'" + token + "' is not a valid register or immediate");
@@ -289,6 +297,8 @@ namespace risc201 {
                     out.imm = mem_imm;
                     out.I = true;
                     have_imm_or_label = true;
+                    imm_token = token;
+
                     break;
                 }
 
@@ -302,6 +312,8 @@ namespace risc201 {
                     int32_t current_pc = static_cast<int32_t>(pl.address);
                     out.imm = target - (current_pc + 4);
                     have_imm_or_label = true;
+                    imm_token = token + " (resolved offset " + std::to_string(out.imm) + ")";;
+
                     break;
                 }
             }
@@ -324,7 +336,7 @@ namespace risc201 {
 
             if (!inRange(out.imm, lo, hi)) {
                 int32_t truncated = truncateToBits(out.imm, no_of_bits);
-                addWarning(pl.line_number, "value " + std::to_string(out.imm) + " out of range for " + std::to_string(no_of_bits) + "-bit field, truncated to " + std::to_string(truncated));
+                addWarning(pl.line_number, "value " + imm_token + " out of range for " + std::to_string(no_of_bits) + "-bit field, truncated to " + std::to_string(truncated));
                 out.imm = truncated;
             }
         }
@@ -371,6 +383,70 @@ namespace risc201 {
 
         if (errors_.empty()) return program;
         else return std::vector<Instruction>{};
+    }
+
+    uint32_t Assembler::encodeInstruction(const Instruction& instr) {
+        uint32_t word = 0;
+
+        uint32_t opcode_bits = static_cast<uint32_t>(instr.opcode) & 0x1F;
+        word |= opcode_bits << 27;
+
+        if (instr.format == InstrFormat::J_TYPE) {
+            uint32_t offset_bits = static_cast<uint32_t>(instr.imm) & 0x7FFFFFF;
+            word |= offset_bits;
+        } else {
+            uint32_t i_bit;
+            if (instr.I) i_bit = 1;
+            else i_bit = 0;
+            word |= i_bit << 26;
+
+            uint32_t rd_bits = static_cast<uint32_t>(instr.rd) & 0xF;
+            word |= rd_bits << 22;
+
+            uint32_t rs1_bits = static_cast<uint32_t>(instr.rs1) & 0xF;
+            word |= rs1_bits << 18;
+
+            if (instr.I) {
+                uint32_t imm_bits = static_cast<uint32_t>(instr.imm) & 0x3FFFF;
+                word |= imm_bits;
+            }
+            else {
+                uint32_t rs2_bits = static_cast<uint32_t>(instr.rs2) & 0xF;
+                word |= rs2_bits << 14;
+            }
+        }
+
+        return word;
+    }
+
+    bool Assembler::writeBinaryFile(const std::string& path, const std::vector<uint32_t>& words) {
+        std::ofstream out(path, std::ios::binary);
+        if (!out) return false;
+
+        for (uint32_t word : words) {
+            unsigned char bytes[4] = {
+                static_cast<unsigned char>((word >> 24) & 0xFF),
+                static_cast<unsigned char>((word >> 16) & 0xFF),
+                static_cast<unsigned char>((word >> 8) & 0xFF),
+                static_cast<unsigned char>(word & 0xFF),
+            };
+            out.write(reinterpret_cast<const char*>(bytes), 4);
+            if (!out) return false;
+        }
+
+        return true;
+    }
+
+    bool Assembler::writeHexFile(const std::string& path, const std::vector<uint32_t>& words) {
+        std::ofstream out(path);
+        if (!out) return false;
+
+        for (uint32_t word : words) {
+            out << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << word << "\n";
+            if (!out) return false;
+        }
+        
+        return true;
     }
 
 } // namespace risc201
