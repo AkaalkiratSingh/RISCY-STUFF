@@ -24,8 +24,7 @@ struct Flags {
 };
 
 enum class InstrFormat : uint8_t {
-    R_TYPE, // reg-reg-reg
-    I_TYPE, // reg-reg-immediate
+    RI_TYPE, // reg-reg-reg/immediate
     J_TYPE, // opcode + 26-bit address/offset
 };
 
@@ -55,6 +54,7 @@ enum class Opcode : uint8_t {
 struct Instruction {
     Opcode      opcode;
     InstrFormat format;
+    bool I;
     Register    rd;
     Register    rs1;
     Register    rs2;   // R-type only
