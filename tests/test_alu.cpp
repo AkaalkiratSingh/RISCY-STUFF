@@ -1,4 +1,4 @@
-#include "alu.h"
+#include "alu/alu.h"
 #include <cassert>
 #include <iostream>
 
