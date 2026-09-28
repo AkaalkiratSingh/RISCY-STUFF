@@ -32,7 +32,7 @@ int main() {
     check(alu.execute(Opcode::AND, 0xF0F0F0F0, 0x0FF00FF0), 
           static_cast<int32_t>(0x00F000F0), false, false, false, false);
     check(alu.execute(Opcode::XOR, -1, -1), 0, true, false, false, false);
-    check(alu.execute(Opcode::NOT, 0), -1, false, true, false, false);
+    check(alu.execute(Opcode::NOT, 0, 0), -1, false, true, false, false);
 
     // Shifts
     check(alu.execute(Opcode::SHL, static_cast<int32_t>(0x80000000), 1), 
