@@ -61,11 +61,6 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp idleRow() {           // one-cycle bubble
-            return MicroOp{};
-        }
-
-
         // fetch -> execute -> writeback. 
         std::vector<MicroOp> aluRoutine(Opcode fn) {
             return { fetchRow(), aluRow(fn), writebackRow() };
@@ -111,7 +106,8 @@ namespace risc201 {
         // instruction, so there is no fetch row — pc_write replaces pc_inc.
         appendRoutine(Opcode::JMP, { jumpRow() });
         appendRoutine(Opcode::HALT, { haltRow() });
-        appendRoutine(Opcode::NOP, { idleRow() });
+        // NOP still fetches the next word — only the datapath does nothing.
+        appendRoutine(Opcode::NOP, { fetchRow() });
 
         // TODO: rows for BEQ, CALL, RET, PUSH, POP. BEQ
     }
@@ -120,7 +116,7 @@ namespace risc201 {
     int ControlUnit::appendRaw(std::vector<MicroOp> routine) {
         const int base = cm_.size();
 
-        for (int i = 0; i < routine.size(); ++i) {
+        for (size_t i = 0; i < routine.size(); ++i) {
             routine[i].next = (i + 1 < routine.size())
                 ? base + i + 1
                 : kMicroEnd;
