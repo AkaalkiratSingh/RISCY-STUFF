@@ -192,7 +192,8 @@ namespace risc201 {
         // instruction, so there is no fetch row — pc_write replaces pc_inc.
         appendRoutine(Opcode::JMP, { jumpRow() });
         appendRoutine(Opcode::HALT, { haltRow() });
-        appendRoutine(Opcode::NOP, { idleRow() });
+        // NOP still fetches the next word — only the datapath does nothing.
+        appendRoutine(Opcode::NOP, { fetchRow() });
 
         // BEQ: conditional micro-branch on Z.
         //   Z set   -> taken row     (PC <- target)
