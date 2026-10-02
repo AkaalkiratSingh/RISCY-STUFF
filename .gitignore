@@ -1,1 +1,4 @@
 .commandcode
+
+# Build artifacts
+build/
