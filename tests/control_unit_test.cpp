@@ -98,7 +98,7 @@ int main() {
     CHECK(cu.encoding() == MicrocodeEncoding::Horizontal);
     CHECK(!cu.controlMemory().empty());
 
-    section("ControlUnit: micro-sequences (Sept 30 subset)");
+    section("ControlUnit: micro-sequences");
     checkTrace("ADD   fetch/exe/wb", runRoutine(cu, Opcode::ADD),
                {"f........", "..A......", "......R.."});
     checkTrace("SUB   same routine shape", runRoutine(cu, Opcode::SUB),

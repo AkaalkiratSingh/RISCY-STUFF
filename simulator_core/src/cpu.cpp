@@ -10,13 +10,16 @@ namespace risc201 {
     Cpu::Cpu(PipelineVariant variant, uint32_t memory_words) :
         variant_(variant),
         memory_(memory_words, 0),
-        control_unit_(MicrocodeEncoding::Horizontal) {
+        control_unit_(MicrocodeEncoding::Horizontal),
+        stack_guard_(memory_words, 0) {
+        state_.sp = memory_words;
     }
 
     
     void Cpu::loadWords(const std::vector<uint32_t>& words) {
         code_ = words;
         state_ = CpuState{};
+        state_.sp = static_cast<uint32_t>(memory_.size());
         cycles_ = 0;
         retired_ = 0;
     }
