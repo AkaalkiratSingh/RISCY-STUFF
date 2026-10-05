@@ -16,8 +16,8 @@ namespace risc201 {
 
         std::string stripCommentandTrim(const std::string raw) {
             std::string s = raw;
-            auto semicolon = s.find(';');
-            if (semicolon != std::string::npos) s = s.substr(0, semicolon);
+            auto comment_start = s.find_first_of(";#");
+            if (comment_start != std::string::npos) s = s.substr(0, comment_start);
 
             size_t start = s.find_first_not_of(" \t\r\n");
             if (start == std::string::npos) return "";

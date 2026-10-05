@@ -45,7 +45,7 @@ enum class Opcode : uint8_t {
     RET  = 0x0D,
     PUSH = 0x0E,
     POP  = 0x0F,
-    HALT = 0xFF,
+    HALT = 0x1F,
 };
 
 // 32-bit fixed-width instruction word. Encoding/decoding helpers belong in

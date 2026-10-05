@@ -9,3 +9,7 @@ add_test(NAME Pass2Test COMMAND pass2_test)
 add_executable(encoder_test encoder_test.cpp)
 target_link_libraries(encoder_test PRIVATE assembler_lib)
 add_test(NAME EncoderTest COMMAND encoder_test)
+
+add_executable(disassembler_test disassembler_test.cpp)
+target_link_libraries(disassembler_test PRIVATE assembler_lib)
+add_test(NAME DisassemblerTest COMMAND disassembler_test)

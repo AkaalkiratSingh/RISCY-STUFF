@@ -1,4 +1,3 @@
-// tests/pass2_test.cpp
 #include "assembler/assembler.h"
 #include <cassert>
 #include <iostream>
