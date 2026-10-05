@@ -6,7 +6,7 @@
 #include "isa201.h"
 #include "alu/alu.h"
 #include "control_unit/control_unit.h"
-
+#include "memory_safety/stack_guard.h"
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -63,6 +63,7 @@ private:
     std::vector<int32_t> memory_;
     Alu alu_;
     ControlUnit control_unit_;
+    StackGuard stack_guard_;
 
     // 4-stage timing model. Every instruction occupies IF/ID/EX/WB; without
     // forwarding a RAW on the immediately preceding instruction costs one
