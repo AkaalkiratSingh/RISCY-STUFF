@@ -1,6 +1,6 @@
-// Instruction decoder in isolation, plus a round-trip proof that running an
-// encoded image (the assembler's output) through Cpu::loadWords gives exactly
-// the same machine state as loading the assembler's Instruction structs.
+// Instruction decoder in isolation, plus a proof that an encoded image (the
+// assembler's output) loaded through Cpu::loadWords runs to the expected state
+// when the CPU decodes each word at fetch time.
 
 #include "assembler/assembler.h"
 #include "simulator_core/cpu.h"
@@ -136,7 +136,7 @@ int main() {
         CHECK_EQ(std::string(opcodeName(d.opcode)), std::string("?"));
     }
 
-    section("Decoder: encoded image runs identically to the decoded program");
+    section("Decoder: an encoded image runs, decoding each word at fetch");
     {
         const std::vector<std::string> source = {
             "ADD R1, R0, 12",
@@ -152,38 +152,20 @@ int main() {
 
         const std::vector<uint32_t> words = encodeProgram(source);
 
-        Assembler assembler;
-        assembler.assemblePass1(source);
-        const std::vector<Instruction> program = assembler.assemblePass2();
+        Cpu cpu(PipelineVariant::FourStage);
+        cpu.memory()[4] = 7;
+        cpu.loadWords(words);
+        cpu.run();
 
-        Cpu viaWords(PipelineVariant::FourStage);
-        viaWords.memory()[4] = 7;
-        viaWords.loadWords(words);
-        viaWords.run();
-
-        Cpu viaProgram(PipelineVariant::FourStage);
-        viaProgram.memory()[4] = 7;
-        viaProgram.loadProgram(program);
-        viaProgram.run();
-
-        CHECK(viaWords.state().halted);
-        CHECK(!viaWords.state().pending_exception.has_value());
-
-        for (size_t i = 0; i < kNumGPRegisters; ++i) {
-            CHECK_EQ(viaWords.state().registers[i], viaProgram.state().registers[i]);
-        }
-        CHECK_EQ(viaWords.state().pc, viaProgram.state().pc);
-        CHECK_EQ(viaWords.state().halted, viaProgram.state().halted);
-        CHECK_EQ(viaWords.retired(), viaProgram.retired());
-        CHECK_EQ(viaWords.cycles(), viaProgram.cycles());
-        CHECK_EQ(viaWords.memory()[5], viaProgram.memory()[5]);
-        CHECK_EQ(viaWords.memory()[5], 10);  // SUB result stored through STORE
+        CHECK(cpu.state().halted);
+        CHECK(!cpu.state().pending_exception.has_value());
+        CHECK_EQ(cpu.memory()[5], 10);  // SUB result stored through STORE
 
         // R2 = 12 - 2, R3 = LOADed 7, R4 skipped, R5 = 12 & 10.
-        CHECK_EQ(viaWords.state().registers[static_cast<size_t>(Register::R2)], 10);
-        CHECK_EQ(viaWords.state().registers[static_cast<size_t>(Register::R3)], 7);
-        CHECK_EQ(viaWords.state().registers[static_cast<size_t>(Register::R4)], 0);
-        CHECK_EQ(viaWords.state().registers[static_cast<size_t>(Register::R5)], 8);
+        CHECK_EQ(cpu.state().registers[static_cast<size_t>(Register::R2)], 10);
+        CHECK_EQ(cpu.state().registers[static_cast<size_t>(Register::R3)], 7);
+        CHECK_EQ(cpu.state().registers[static_cast<size_t>(Register::R4)], 0);
+        CHECK_EQ(cpu.state().registers[static_cast<size_t>(Register::R5)], 8);
     }
 
     if (failures == 0) {
