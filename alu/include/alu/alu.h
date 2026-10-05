@@ -11,10 +11,16 @@ namespace risc201 {
             Flags   flags;
         };
 
-        // TODO: add, sub, mul, div (Booth's / restoring division), AND/OR/XOR/NOT, shift/rotate. Each op should set Z/N/C/V per PRD §2.
         Result execute(Opcode op, int32_t lhs, int32_t rhs);
+
+    private:
+        // 4-bit Carry-Lookahead Adder block.
+        static uint32_t cla4(uint32_t a, uint32_t b,
+                             bool carry_in, bool& carry_out);
+
+        // 32-bit Carry-Lookahead Adder (8 chained 4-bit CLA blocks).
+        static uint32_t carryLookaheadAdder(uint32_t a, uint32_t b,
+                                            bool carry_in, bool& carry_out);
     };
 
-}
-
-
+} 
