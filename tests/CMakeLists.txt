@@ -19,3 +19,7 @@ target_link_libraries(encoder_test PRIVATE assembler_lib)
 add_test(NAME EncoderTest COMMAND encoder_test)
 
 add_test(NAME AluTest COMMAND test_alu)
+
+add_executable(memory_safety_test memory_safety_test.cpp)
+target_link_libraries(memory_safety_test PRIVATE simulator_core_lib)
+add_test(NAME MemorySafetyTest COMMAND memory_safety_test)
