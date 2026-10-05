@@ -98,7 +98,7 @@ int main() {
     CHECK(cu.encoding() == MicrocodeEncoding::Horizontal);
     CHECK(!cu.controlMemory().empty());
 
-    section("ControlUnit: micro-sequences (Sept 30 subset)");
+    section("ControlUnit: micro-sequences");
     checkTrace("ADD   fetch/exe/wb", runRoutine(cu, Opcode::ADD),
                {"f........", "..A......", "......R.."});
     checkTrace("SUB   same routine shape", runRoutine(cu, Opcode::SUB),
@@ -116,19 +116,40 @@ int main() {
     checkTrace("NOP   fetch only (advances PC)", runRoutine(cu, Opcode::NOP),
                {"f........"});
 
-    section("ControlUnit: unsupported opcodes hit the illegal sink");
-    const int sink = cu.routineEntry(Opcode::BEQ);
-    for (Opcode op : {Opcode::BEQ, Opcode::CALL, Opcode::RET,
-                      Opcode::PUSH, Opcode::POP}) {
-        CHECK_EQ(cu.routineEntry(op), sink);
-    }
-    checkTrace("BEQ -> halt (Milan adds the real row Oct 14)",
-               runRoutine(cu, Opcode::BEQ), {"........H"});
+    section("ControlUnit: branch and stack routines");
+    CHECK(cu.routineEntry(Opcode::BEQ) != cu.routineEntry(Opcode::HALT));
+    CHECK(cu.routineEntry(Opcode::PUSH) != cu.routineEntry(Opcode::HALT));
+    CHECK(cu.routineEntry(Opcode::POP) != cu.routineEntry(Opcode::HALT));
+
+    checkTrace("BEQ -> condition test, not-taken fetch",
+               runRoutine(cu, Opcode::BEQ),
+               {".........", "f........"});
+
+    checkTrace("PUSH -> fetch, stack write",
+               runRoutine(cu, Opcode::PUSH),
+               {"f........", ".....w..."});
+
+    checkTrace("POP -> fetch, stack read/writeback",
+               runRoutine(cu, Opcode::POP),
+               {"f........", "....rRM.."});
+
+    const auto push_entry = cu.routineEntry(Opcode::PUSH);
+    const auto pop_entry = cu.routineEntry(Opcode::POP);
+
+    CHECK(cu.controlMemory()[static_cast<size_t>(push_entry + 1)].ctl.sp_dec);
+    CHECK(cu.controlMemory()[static_cast<size_t>(push_entry + 1)].ctl.mem_write);
+
+    CHECK(cu.controlMemory()[static_cast<size_t>(pop_entry + 1)].ctl.sp_inc);
+    CHECK(cu.controlMemory()[static_cast<size_t>(pop_entry + 1)].ctl.mem_read);
+    CHECK(cu.controlMemory()[static_cast<size_t>(pop_entry + 1)].ctl.reg_write);
+    CHECK(cu.controlMemory()[static_cast<size_t>(pop_entry + 1)].ctl.mem_to_reg);
 
     section("ControlUnit: Control Memory is well formed");
     const auto& cm = cu.controlMemory();
+
     // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP
-    CHECK_EQ(cm.size(), static_cast<size_t>(32));
+    // + BEQ(3) + PUSH(2) + POP(2)
+    CHECK_EQ(cm.size(), static_cast<size_t>(39));
     for (const auto& row : cm) {
         if (row.next != kMicroEnd) {
             CHECK(row.next >= 0);
@@ -137,8 +158,9 @@ int main() {
     }
     std::set<int> entries;
     for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
-                      Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::LOAD,
-                      Opcode::STORE, Opcode::JMP, Opcode::HALT, Opcode::NOP}) {
+                  Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::LOAD,
+                  Opcode::STORE, Opcode::JMP, Opcode::BEQ, Opcode::PUSH,
+                  Opcode::POP, Opcode::HALT, Opcode::NOP}) {
         const int e = cu.routineEntry(op);
         CHECK(e >= 0);
         CHECK(static_cast<size_t>(e) < cm.size());
