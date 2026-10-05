@@ -84,12 +84,15 @@ namespace risc201 {
     Cpu::Cpu(PipelineVariant variant, uint32_t memory_words) :
         variant_(variant),
         memory_(memory_words, 0),
-        control_unit_(MicrocodeEncoding::Horizontal) {
+        control_unit_(MicrocodeEncoding::Horizontal),
+        stack_guard_(memory_words, 0) {
+        state_.sp = memory_words;
     }
 
     void Cpu::loadProgram(const std::vector<Instruction>& program) {
         program_ = program;
         state_ = CpuState{};
+        state_.sp = static_cast<uint32_t>(memory_.size());
         cycles_ = 0;
         retired_ = 0;
         next_fetch_cycle_ = 1;
@@ -150,6 +153,33 @@ namespace risc201 {
                 if (isFlagSettingOp(instr.opcode)) {
                     state_.flags = r.flags;
                 }
+            }
+
+            // --- Stack pointer control — PUSH / POP ---
+            if (ctl.sp_dec) {
+                // Check the new SP before changing the actual CPU state.
+                const auto exception = stack_guard_.checkPush(state_.sp);
+                if (exception.has_value()) {
+                    raiseException(*exception);
+                    return;
+                }
+
+                // PUSH uses the new SP as the destination address.
+                --state_.sp;
+                alu_result = static_cast<int32_t>(state_.sp);
+            }
+
+            if (ctl.sp_inc) {
+                // Check that there is a word available to pop.
+                const auto exception = stack_guard_.checkPop(state_.sp);
+                if (exception.has_value()) {
+                    raiseException(*exception);
+                    return;
+                }
+
+                // POP reads from the current SP, then advances SP.
+                alu_result = static_cast<int32_t>(state_.sp);
+                ++state_.sp;
             }
 
             // --- EX: end (MEM folded into EX) — load/store data access ---

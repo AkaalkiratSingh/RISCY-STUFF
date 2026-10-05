@@ -188,18 +188,71 @@ int main() {
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
               ExceptionCode::INVALID_MEMORY_ACCESS);
     }
-
-    section("Cpu: unsupported opcode halts via the CU illegal sink");
+    
+    section("Cpu: PUSH and POP preserve stack values");
     {
         const Cpu cpu = runProgram({
-            "BEQ done",
-            "done:",
+            "LOAD R1, 0[R0]",
+            "PUSH R1",
+            "POP R2",
             "HALT",
-        });
+        }, {{0, 42}});
+
         CHECK(cpu.state().halted);
         CHECK(!cpu.state().pending_exception.has_value());
-        CHECK_EQ(cpu.state().pc, 0u);
+        CHECK_EQ(reg(cpu, Register::R1), 42);
+        CHECK_EQ(reg(cpu, Register::R2), 42);
+        CHECK_EQ(cpu.state().sp, static_cast<uint32_t>(cpu.memory().size()));
     }
+
+    section("Cpu: stack overflow raises STACK_OVERFLOW");
+    {
+        Cpu cpu(PipelineVariant::FourStage, 1);
+
+        cpu.loadProgram(assemble({
+            "PUSH R1",
+            "PUSH R1",
+            "HALT",
+        }));
+
+        cpu.run();
+
+        CHECK(cpu.state().halted);
+        CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
+              ExceptionCode::STACK_OVERFLOW);
+        CHECK_EQ(cpu.state().sp, 0u);
+    }
+
+    section("Cpu: stack underflow raises STACK_UNDERFLOW");
+    {
+        Cpu cpu(PipelineVariant::FourStage, 1);
+
+        cpu.loadProgram(assemble({
+            "POP R1",
+            "HALT",
+        }));
+
+        cpu.run();
+
+        CHECK(cpu.state().halted);
+        CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
+              ExceptionCode::STACK_UNDERFLOW);
+        CHECK_EQ(cpu.state().sp, 1u);
+    }
+    
+    section("Cpu: BEQ falls through when zero flag is clear");
+    {
+        const Cpu cpu = runProgram({
+        "BEQ done",
+        "LOAD R1, 0[R0]",
+        "done:",
+        "HALT",
+        }, {{0, 7}});
+
+        CHECK(cpu.state().halted);
+        CHECK(!cpu.state().pending_exception.has_value());
+        CHECK_EQ(reg(cpu, Register::R1), 7);
+    } 
 
     section("4-stage: immediate operand form ADD Rd, Rs, imm");
     {
