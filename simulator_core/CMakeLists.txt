@@ -1,5 +1,6 @@
 add_library(simulator_core_lib STATIC
     src/cpu.cpp
+    src/decoder.cpp
     src/debugger.cpp
     src/cli.cpp
 )
