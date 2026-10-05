@@ -207,14 +207,13 @@ int main() {
 
     section("Cpu: stack overflow raises STACK_OVERFLOW");
     {
-        Cpu cpu(PipelineVariant::FourStage);
+        Cpu cpu(PipelineVariant::FourStage, 1);
 
         cpu.loadProgram(assemble({
             "PUSH R1",
+            "PUSH R1",
             "HALT",
         }));
-
-        cpu.state().sp = 0;
 
         cpu.run();
 
@@ -226,22 +225,19 @@ int main() {
 
     section("Cpu: stack underflow raises STACK_UNDERFLOW");
     {
-        Cpu cpu(PipelineVariant::FourStage);
+        Cpu cpu(PipelineVariant::FourStage, 1);
 
         cpu.loadProgram(assemble({
             "POP R1",
             "HALT",
         }));
 
-        cpu.state().sp = static_cast<uint32_t>(cpu.memory().size());
-
         cpu.run();
 
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
               ExceptionCode::STACK_UNDERFLOW);
-        CHECK_EQ(cpu.state().sp,
-                 static_cast<uint32_t>(cpu.memory().size()));
+        CHECK_EQ(cpu.state().sp, 1u);
     }
     
     section("Cpu: BEQ falls through when zero flag is clear");
