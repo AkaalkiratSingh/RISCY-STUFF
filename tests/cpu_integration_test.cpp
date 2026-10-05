@@ -189,16 +189,18 @@ int main() {
               ExceptionCode::INVALID_MEMORY_ACCESS);
     }
 
-    section("Cpu: unsupported opcode halts via the CU illegal sink");
+    section("Cpu: BEQ falls through when zero flag is clear");
     {
-        const Cpu cpu = runProgram({
-            "BEQ done",
-            "done:",
-            "HALT",
-        });
-        CHECK(cpu.state().halted);
-        CHECK(!cpu.state().pending_exception.has_value());
-        CHECK_EQ(cpu.state().pc, 0u);
+    const Cpu cpu = runProgram({
+        "BEQ done",
+        "LOAD R1, 0[R0]",
+        "done:",
+        "HALT",
+    }, {{0, 7}});
+
+    CHECK(cpu.state().halted);
+    CHECK(!cpu.state().pending_exception.has_value());
+    CHECK_EQ(reg(cpu, Register::R1), 7);
     }
 
     section("4-stage: immediate operand form ADD Rd, Rs, imm");
