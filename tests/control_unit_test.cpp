@@ -115,6 +115,10 @@ int main() {
                {"........H"});
     checkTrace("NOP   fetch only (advances PC)", runRoutine(cu, Opcode::NOP),
                {"f........"});
+    checkTrace("PUSH  fetch/write", runRoutine(cu, Opcode::PUSH),
+               {"f........", ".....w..."});
+    checkTrace("POP   fetch/read/wb", runRoutine(cu, Opcode::POP),
+               {"f........", "....r.RM."});
 
     section("ControlUnit: BEQ branches on the zero flag");
     checkTrace("BEQ  Z=0 -> not taken (sequential fetch)",
@@ -126,8 +130,7 @@ int main() {
 
     section("ControlUnit: unsupported opcodes hit the illegal sink");
     const int sink = cu.routineEntry(Opcode::CALL);
-    for (Opcode op : {Opcode::CALL, Opcode::RET,
-                      Opcode::PUSH, Opcode::POP}) {
+    for (Opcode op : {Opcode::CALL, Opcode::RET}) {
         CHECK_EQ(cu.routineEntry(op), sink);
     }
     checkTrace("CALL -> halt (no routine yet)",
@@ -135,8 +138,8 @@ int main() {
 
     section("ControlUnit: Control Memory is well formed");
     const auto& cm = cu.controlMemory();
-    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3)
-    CHECK_EQ(cm.size(), static_cast<size_t>(35));
+    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3) + PUSH(2) + POP(2)
+    CHECK_EQ(cm.size(), static_cast<size_t>(39));
     for (const auto& row : cm) {
         if (row.next != kMicroEnd) {
             CHECK(row.next >= 0);
@@ -147,7 +150,7 @@ int main() {
     for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
                       Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::LOAD,
                       Opcode::STORE, Opcode::JMP, Opcode::HALT, Opcode::NOP,
-                      Opcode::BEQ}) {
+                      Opcode::BEQ, Opcode::PUSH, Opcode::POP}) {
         const int e = cu.routineEntry(op);
         CHECK(e >= 0);
         CHECK(static_cast<size_t>(e) < cm.size());

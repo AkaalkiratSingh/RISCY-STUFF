@@ -55,6 +55,7 @@ namespace risc201 {
         std::vector<int32_t> memory_;
         Alu alu_;
         ControlUnit control_unit_;
+        StackGuard stack_guard_;
 
 
         uint64_t cycles_ = 0;
