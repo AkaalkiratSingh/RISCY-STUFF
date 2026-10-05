@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
         for (const auto& instr : program) {
             words.push_back(assembler.encodeInstruction(instr));
         }
-        cpu.loadProgram(program);
+        cpu.loadWords(words);
     } else {
         const bool ok = (kind == InputKind::Hex)
             ? readHexWords(input_path, words)
