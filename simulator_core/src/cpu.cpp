@@ -155,6 +155,33 @@ namespace risc201 {
                 }
             }
 
+            // --- Stack pointer control — PUSH / POP ---
+            if (ctl.sp_dec) {
+                // Check the new SP before changing the actual CPU state.
+                const auto exception = stack_guard_.checkPush(state_.sp);
+                if (exception.has_value()) {
+                    raiseException(*exception);
+                    return;
+                }
+
+                // PUSH uses the new SP as the destination address.
+                --state_.sp;
+                alu_result = static_cast<int32_t>(state_.sp);
+            }
+
+            if (ctl.sp_inc) {
+                // Check that there is a word available to pop.
+                const auto exception = stack_guard_.checkPop(state_.sp);
+                if (exception.has_value()) {
+                    raiseException(*exception);
+                    return;
+                }
+
+                // POP reads from the current SP, then advances SP.
+                alu_result = static_cast<int32_t>(state_.sp);
+                ++state_.sp;
+            }
+
             // --- EX: end (MEM folded into EX) — load/store data access ---
             if (ctl.mem_read) {
                 if (!readMemory(alu_result, mem_data)) {
