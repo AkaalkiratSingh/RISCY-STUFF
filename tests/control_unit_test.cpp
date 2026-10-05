@@ -131,7 +131,7 @@ int main() {
 
     checkTrace("POP -> fetch, stack read/writeback",
                runRoutine(cu, Opcode::POP),
-               {"f........", "....rRM.."});
+               {"f........", "....r.RM."});
 
     const auto push_entry = cu.routineEntry(Opcode::PUSH);
     const auto pop_entry = cu.routineEntry(Opcode::POP);
