@@ -6,28 +6,6 @@
 
 namespace risc201 {
 
-    namespace {
-        // TRUE if the Instruction modifies FLAGS
-        // LOAD/STORE don't modify the flags 
-        bool isFlagSettingOp(Opcode op) {
-            switch (op) {
-            case Opcode::ADD:
-            case Opcode::SUB:
-            case Opcode::AND:
-            case Opcode::OR:
-            case Opcode::XOR:
-            case Opcode::SHL:
-            case Opcode::SHR:
-            case Opcode::SAR:
-            case Opcode::NOT:
-            case Opcode::CMP:
-                return true;
-            default:
-                return false;
-            }
-        }
-    } 
-
     // Constructor
     Cpu::Cpu(PipelineVariant variant, uint32_t memory_words) :
         variant_(variant),
@@ -61,7 +39,7 @@ namespace risc201 {
     }
 
     uint32_t Cpu::branchTarget(uint32_t instr_pc, const Instruction& instr) const {
-        const u_int64_t byte_target = 4 * static_cast<u_int64_t>(instr_pc) + static_cast<u_int64_t>(instr.imm) + 4;
+        const uint64_t byte_target = 4 * static_cast<uint64_t>(instr_pc) + static_cast<uint64_t>(instr.imm) + 4;
         return static_cast<uint32_t>(byte_target / 4);
     }
 
@@ -76,6 +54,7 @@ namespace risc201 {
         for (int guard = 0; guard < 64 && !control_unit_.routineDone(); ++guard) {
             const ControlWord ctl = control_unit_.step(instr.opcode, state_.flags);
 
+            // --- IF: fetch row (PC advance) ---
             if (ctl.pc_inc) {
                 state_.pc = instr_pc + 1;
             }
@@ -84,14 +63,14 @@ namespace risc201 {
             if (ctl.alu_enable) {
                 const int32_t lhs = state_.registers[static_cast<size_t>(instr.rs1)];
 
-                const int32_t rhs = instr.I
+                const int32_t rhs = (ctl.alu_src_imm || instr.I)
                     ? instr.imm
                     : state_.registers[static_cast<size_t>(instr.rs2)];
                 
                 const Alu::Result r = alu_.execute(ctl.alu_op, lhs, rhs);
                 alu_result = r.value;
 
-                if (isFlagSettingOp(instr.opcode)) 
+                if (ctl.flag_update)
                     state_.flags = r.flags;
                 
             }
@@ -142,9 +121,9 @@ namespace risc201 {
         const uint32_t word = code_[static_cast<size_t>(state_.pc)];
         // === IF: end ===
 
-        // === ID / OF (decode + operand fetch): begin ===
+        // === ID (decode): begin ===
         const Instruction instr = decodeInstruction(word); // decode the fetched word
-        // === ID / OF: end ===
+        // === ID: end ===
 
         // === EX + WB: begin ... end (see executeInstruction) ===
         executeInstruction(instr);
