@@ -7,6 +7,7 @@
 #include "assembler/assembler.h"
 #include "simulator_core/cpu.h"
 #include "simulator_core/decoder.h"
+#include "utils/utils.h"
 
 #include <cstddef>
 #include <cstdint>

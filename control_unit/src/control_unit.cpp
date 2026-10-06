@@ -1,4 +1,5 @@
 #include "control_unit/control_unit.h"
+#include "utils/utils.h"
 
 #include <iomanip>
 #include <map>
@@ -156,33 +157,6 @@ namespace risc201 {
             return "?";
         }
 
-        const char* opName(Opcode op) {
-            switch (op) {
-                case Opcode::NOP:   return "NOP";
-                case Opcode::ADD:   return "ADD";
-                case Opcode::SUB:   return "SUB";
-                case Opcode::AND:   return "AND";
-                case Opcode::OR:    return "OR";
-                case Opcode::XOR:   return "XOR";
-                case Opcode::SHL:   return "SHL";
-                case Opcode::SHR:   return "SHR";
-                case Opcode::LOAD:  return "LOAD";
-                case Opcode::STORE: return "STORE";
-                case Opcode::JMP:   return "JMP";
-                case Opcode::BEQ:   return "BEQ";
-                case Opcode::CALL:  return "CALL";
-                case Opcode::RET:   return "RET";
-                case Opcode::PUSH:  return "PUSH";
-                case Opcode::POP:   return "POP";
-                case Opcode::NOT:   return "NOT";
-                case Opcode::SAR:   return "SAR";
-                case Opcode::CMP:   return "CMP";
-                case Opcode::MOV:   return "MOV";
-                case Opcode::HALT:  return "HALT";
-            }
-            return "?";
-        }
-
         std::string signalList(const ControlWord& w) {
             std::string s;
             auto add = [&s](bool on, const char* name) {
@@ -193,7 +167,7 @@ namespace risc201 {
             add(w.alu_enable, "alu_enable");
             if (w.alu_enable) {
                 s += ' ';
-                s += std::string("alu_op=") + opName(w.alu_op);
+                s += std::string("alu_op=") + opcodeName(w.alu_op);
             }
             add(w.alu_src_imm,  "alu_src_imm");
             add(w.flag_update,  "flag_update");
@@ -418,7 +392,7 @@ namespace risc201 {
         std::map<int, std::string> labels;
         if (!cm_.empty()) labels[illegal_entry_] = "ILLEGAL";
         for (const auto& [opc, addr] : entries_) {
-            labels[addr] = opName(static_cast<Opcode>(opc));
+            labels[addr] = opcodeName(static_cast<Opcode>(opc));
         }
 
         std::ostringstream os;

@@ -119,6 +119,12 @@ int main() {
                {"f........", ".....w..."});
     checkTrace("POP   fetch/read/wb", runRoutine(cu, Opcode::POP),
                {"f........", "....r.RM."});
+    checkTrace("MOV   fetch/exe/wb", runRoutine(cu, Opcode::MOV),
+               {"f........", "..A......", "......R.."});
+    checkTrace("CALL  fetch/sp/write/jump", runRoutine(cu, Opcode::CALL),
+               {"f........", ".........", ".....w...", ".J......."});
+    checkTrace("RET   pop/pc/sp", runRoutine(cu, Opcode::RET),
+               {"....r....", ".J.......", "........."});
 
     section("ControlUnit: BEQ branches on the zero flag");
     checkTrace("BEQ  Z=0 -> not taken (sequential fetch)",
@@ -129,17 +135,17 @@ int main() {
                runRoutine(cu, Opcode::BEQ, zSet), {".........", ".J......."});
 
     section("ControlUnit: unsupported opcodes hit the illegal sink");
-    const int sink = cu.routineEntry(Opcode::CALL);
-    for (Opcode op : {Opcode::CALL, Opcode::RET}) {
+    const int sink = cu.routineEntry(Opcode::MUL);
+    for (Opcode op : {Opcode::NOT, Opcode::SAR, Opcode::CMP, Opcode::MUL}) {
         CHECK_EQ(cu.routineEntry(op), sink);
     }
-    checkTrace("CALL -> halt (no routine yet)",
-               runRoutine(cu, Opcode::CALL), {"........H"});
+    checkTrace("MUL -> halt (no routine yet)",
+               runRoutine(cu, Opcode::MUL), {"........H"});
 
     section("ControlUnit: Control Memory is well formed");
     const auto& cm = cu.controlMemory();
-    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3) + PUSH(2) + POP(2)
-    CHECK_EQ(cm.size(), static_cast<size_t>(39));
+    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3) + MOV(3) + CALL(4) + RET(3) + PUSH(2) + POP(2)
+    CHECK_EQ(cm.size(), static_cast<size_t>(49));
     for (const auto& row : cm) {
         if (row.next != kMicroEnd) {
             CHECK(row.next >= 0);
@@ -150,7 +156,8 @@ int main() {
     for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
                       Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::LOAD,
                       Opcode::STORE, Opcode::JMP, Opcode::HALT, Opcode::NOP,
-                      Opcode::BEQ, Opcode::PUSH, Opcode::POP}) {
+                      Opcode::BEQ, Opcode::MOV, Opcode::CALL, Opcode::RET,
+                      Opcode::PUSH, Opcode::POP}) {
         const int e = cu.routineEntry(op);
         CHECK(e >= 0);
         CHECK(static_cast<size_t>(e) < cm.size());
