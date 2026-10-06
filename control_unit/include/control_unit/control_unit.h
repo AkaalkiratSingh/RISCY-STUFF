@@ -36,6 +36,13 @@ namespace risc201 {
         bool   flag_update = false;  // latch Z/N/C/V from the ALU result
         bool          halt = false;
 
+        // --- stack synchronisation signals (CALL / RET) ---
+        bool  mem_addr_sp = false;   // memory address bus = SP (instead of the ALU result)
+        bool  mem_data_pc = false;   // memory write data = PC / return address (instead of a register)
+        bool   pc_src_mem = false;   // with pc_write: PC <- loaded memory word (instead of decoded target)
+        bool  stack_check = false;   // stack guard validates the SP-addressed access THIS cycle,
+                                     // before the access commits (write row = overflow, read row = underflow)
+
         Opcode  alu_op = Opcode::NOP;
     };
 
@@ -73,7 +80,7 @@ namespace risc201 {
 
         const std::vector<MicroOp>& controlMemory() const { return cm_; }
 
-        // Pack one row into the 35-bit horizontal microword (see docs/control_unit_design.md §3).
+        // Pack one row into the 40-bit horizontal microword (see docs/control_unit_design.md §3).
         static uint64_t packHorizontal(const MicroOp& row);
 
         // Human-readable listing of the whole control memory (for docs / CLI microPC view).
