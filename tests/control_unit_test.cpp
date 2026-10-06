@@ -75,8 +75,8 @@ void checkTrace(const char* label,
 // The bound turns a broken `next` chain into a failed assertion rather than a
 // hang — every routine here is far shorter than 32 micro-cycles.
 std::vector<std::string> runRoutine(risc201::ControlUnit& cu,
-                                    risc201::Opcode op) {
-    const risc201::Flags flags{};
+                                    risc201::Opcode op,
+                                    risc201::Flags flags = {}) {
     std::vector<std::string> trace;
     cu.reset();
     for (int i = 0; i < 32; ++i) {
@@ -98,7 +98,7 @@ int main() {
     CHECK(cu.encoding() == MicrocodeEncoding::Horizontal);
     CHECK(!cu.controlMemory().empty());
 
-    section("ControlUnit: micro-sequences (Sept 30 subset)");
+    section("ControlUnit: micro-sequences");
     checkTrace("ADD   fetch/exe/wb", runRoutine(cu, Opcode::ADD),
                {"f........", "..A......", "......R.."});
     checkTrace("SUB   same routine shape", runRoutine(cu, Opcode::SUB),
@@ -115,20 +115,31 @@ int main() {
                {"........H"});
     checkTrace("NOP   fetch only (advances PC)", runRoutine(cu, Opcode::NOP),
                {"f........"});
+    checkTrace("PUSH  fetch/write", runRoutine(cu, Opcode::PUSH),
+               {"f........", ".....w..."});
+    checkTrace("POP   fetch/read/wb", runRoutine(cu, Opcode::POP),
+               {"f........", "....r.RM."});
+
+    section("ControlUnit: BEQ branches on the zero flag");
+    checkTrace("BEQ  Z=0 -> not taken (sequential fetch)",
+               runRoutine(cu, Opcode::BEQ, Flags{}), {".........", "f........"});
+    Flags zSet{};
+    zSet.zero = true;
+    checkTrace("BEQ  Z=1 -> taken (PC <- target)",
+               runRoutine(cu, Opcode::BEQ, zSet), {".........", ".J......."});
 
     section("ControlUnit: unsupported opcodes hit the illegal sink");
-    const int sink = cu.routineEntry(Opcode::BEQ);
-    for (Opcode op : {Opcode::BEQ, Opcode::CALL, Opcode::RET,
-                      Opcode::PUSH, Opcode::POP}) {
+    const int sink = cu.routineEntry(Opcode::CALL);
+    for (Opcode op : {Opcode::CALL, Opcode::RET}) {
         CHECK_EQ(cu.routineEntry(op), sink);
     }
-    checkTrace("BEQ -> halt (Milan adds the real row Oct 14)",
-               runRoutine(cu, Opcode::BEQ), {"........H"});
+    checkTrace("CALL -> halt (no routine yet)",
+               runRoutine(cu, Opcode::CALL), {"........H"});
 
     section("ControlUnit: Control Memory is well formed");
     const auto& cm = cu.controlMemory();
-    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP
-    CHECK_EQ(cm.size(), static_cast<size_t>(32));
+    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3) + PUSH(2) + POP(2)
+    CHECK_EQ(cm.size(), static_cast<size_t>(39));
     for (const auto& row : cm) {
         if (row.next != kMicroEnd) {
             CHECK(row.next >= 0);
@@ -138,7 +149,8 @@ int main() {
     std::set<int> entries;
     for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
                       Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::LOAD,
-                      Opcode::STORE, Opcode::JMP, Opcode::HALT, Opcode::NOP}) {
+                      Opcode::STORE, Opcode::JMP, Opcode::HALT, Opcode::NOP,
+                      Opcode::BEQ, Opcode::PUSH, Opcode::POP}) {
         const int e = cu.routineEntry(op);
         CHECK(e >= 0);
         CHECK(static_cast<size_t>(e) < cm.size());
