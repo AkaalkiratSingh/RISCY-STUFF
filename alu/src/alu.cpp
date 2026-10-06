@@ -49,6 +49,52 @@ uint32_t Alu::carryLookaheadAdder(uint32_t a, uint32_t b,
     return sum;
 }
 
+// Radix-4 Booth's Multiplication
+// Operates on 3 bits at a time (y_{i+1}, y_i, y_{i-1}) to encode the multiplier.
+int64_t Alu::multiply(int32_t a, int32_t b) {
+    int64_t product = 0;
+    int64_t mcand = static_cast<int64_t>(a);
+    uint32_t multiplier = static_cast<uint32_t>(b);
+    int q_prev = 0; // y_{i-1}, initialized to 0
+
+    // 32-bit multiplier processed 2 bits at a time = 16 iterations
+    for (int i = 0; i < 16; ++i) {
+        // Extract the 3 bits: y_{i+1}, y_i, y_{i-1}
+        int y_i        = multiplier & 1;
+        int y_i_plus_1 = (multiplier >> 1) & 1;
+        int y_i_minus_1 = q_prev;
+
+        // Form the 3-bit Booth code
+        int code = (y_i_plus_1 << 2) | (y_i << 1) | y_i_minus_1;
+
+        // Shift the multiplicand left by 2*i
+        int64_t shifted_mcand = mcand << (2 * i);
+
+        // Booth Encoding Table:
+        switch (code) {
+            case 1: case 2: // 001, 010 -> +1
+                product += shifted_mcand; 
+                break;
+            case 3:         // 011 -> +2
+                product += (shifted_mcand << 1); 
+                break;
+            case 4:         // 100 -> -2
+                product -= (shifted_mcand << 1); 
+                break;
+            case 5: case 6: // 101, 110 -> -1
+                product -= shifted_mcand; 
+                break;
+            default:        // 000, 111 -> 0
+                break;
+        }
+
+        // Update q_prev and shift multiplier right by 2 for the next iteration
+        q_prev = y_i_plus_1;
+        multiplier >>= 2;
+    }
+    return product;
+}
+
 Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
     Result r{};
 
@@ -77,6 +123,13 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             res = carryLookaheadAdder(a, ~b, true, carry_out);
             r.flags.carry    = carry_out;
             r.flags.overflow = ((a ^ b) & (a ^ res) & SIGN_BIT) != 0;
+            break;
+        }
+
+        case Opcode::MUL: {
+            int64_t prod = multiply(lhs, rhs);
+            r.value64 = prod;
+            r.value = static_cast<int32_t>(prod); // Truncated 32-bit result
             break;
         }
 
@@ -124,9 +177,14 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             break;
     }
 
-    r.value = static_cast<int32_t>(res);
-    r.flags.zero     = (res == 0);
-    r.flags.negative = (res & SIGN_BIT) != 0;
+    // Note: For MUL, r.value was already set inside the case.
+    // For all other ops, we set it here from res.
+    if (op != Opcode::MUL) {
+        r.value = static_cast<int32_t>(res);
+    }
+
+    r.flags.zero     = (r.value == 0);
+    r.flags.negative = (r.value & SIGN_BIT) != 0;
     r.flags.equal       = r.flags.zero;
     r.flags.greaterThan = (!r.flags.zero) && (r.flags.negative == r.flags.overflow);
 
