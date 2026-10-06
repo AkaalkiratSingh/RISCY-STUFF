@@ -115,10 +115,10 @@ int main() {
                {"........H"});
     checkTrace("NOP   fetch only (advances PC)", runRoutine(cu, Opcode::NOP),
                {"f........"});
-    checkTrace("PUSH  fetch/write", runRoutine(cu, Opcode::PUSH),
-               {"f........", ".....w..."});
-    checkTrace("POP   fetch/read/wb", runRoutine(cu, Opcode::POP),
-               {"f........", "....r.RM."});
+    checkTrace("PUSH  fetch/dec/write", runRoutine(cu, Opcode::PUSH),
+               {"f........", ".........", ".....w..."});
+    checkTrace("POP   fetch/read/wb/inc", runRoutine(cu, Opcode::POP),
+               {"f........", "....r....", "......RM.", "........."});
     checkTrace("MOV   fetch/exe/wb", runRoutine(cu, Opcode::MOV),
                {"f........", "..A......", "......R.."});
     checkTrace("CALL  fetch/sp/write/jump", runRoutine(cu, Opcode::CALL),
@@ -144,8 +144,8 @@ int main() {
 
     section("ControlUnit: Control Memory is well formed");
     const auto& cm = cu.controlMemory();
-    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3) + MOV(3) + CALL(4) + RET(3) + PUSH(2) + POP(2)
-    CHECK_EQ(cm.size(), static_cast<size_t>(49));
+    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3) + MOV(3) + CALL(4) + RET(3) + PUSH(3) + POP(4)
+    CHECK_EQ(cm.size(), static_cast<size_t>(52));
     for (const auto& row : cm) {
         if (row.next != kMicroEnd) {
             CHECK(row.next >= 0);

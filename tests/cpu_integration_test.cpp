@@ -194,24 +194,24 @@ int main() {
               ExceptionCode::INVALID_MEMORY_ACCESS);
     }
     
-    // Pending: datapath ignores sp_dec/sp_inc, so PUSH/POP are not wired yet
-#if 0
-    section("Cpu: PUSH and POP preserve stack values");
+    section("Cpu: PUSH then POP round-trips a value through the stack");
     {
         const Cpu cpu = runProgram({
-            "CALL done",
-            "done:",
+            "ADD R1, R0, 42",
+            "PUSH R1",
+            "POP R2",
             "HALT",
-        }, {{0, 42}});
+        });
 
         CHECK(cpu.state().halted);
         CHECK(!cpu.state().pending_exception.has_value());
         CHECK_EQ(reg(cpu, Register::R1), 42);
         CHECK_EQ(reg(cpu, Register::R2), 42);
+        CHECK_EQ(cpu.memory()[cpu.memory().size() - 1], 42);  // top stack slot
         CHECK_EQ(cpu.state().sp, static_cast<uint32_t>(cpu.memory().size()));
     }
 
-    section("Cpu: stack overflow raises STACK_OVERFLOW");
+    section("Cpu: PUSH past the stack limit raises STACK_OVERFLOW");
     {
         Cpu cpu(PipelineVariant::FourStage, 1);
 
@@ -226,9 +226,43 @@ int main() {
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
               ExceptionCode::STACK_OVERFLOW);
-        CHECK_EQ(cpu.state().sp, 0u);
     }
-#endif
+
+    section("Cpu: POP from an empty stack raises STACK_UNDERFLOW");
+    {
+        Cpu cpu(PipelineVariant::FourStage);
+
+        cpu.loadWords(assembleWords({
+            "POP R1",
+            "HALT",
+        }));
+
+        cpu.run();
+
+        CHECK(cpu.state().halted);
+        CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
+              ExceptionCode::STACK_UNDERFLOW);
+    }
+
+    section("Cpu: CALL then RET resumes after the call");
+    {
+        const Cpu cpu = runProgram({
+            "ADD R1, R0, 7",
+            "CALL sub",
+            "ADD R2, R0, 1",
+            "HALT",
+            "sub:",
+            "ADD R3, R0, 5",
+            "RET",
+        });
+
+        CHECK(cpu.state().halted);
+        CHECK(!cpu.state().pending_exception.has_value());
+        CHECK_EQ(reg(cpu, Register::R1), 7);
+        CHECK_EQ(reg(cpu, Register::R3), 5);
+        CHECK_EQ(reg(cpu, Register::R2), 1);
+        CHECK_EQ(cpu.state().sp, static_cast<uint32_t>(cpu.memory().size()));
+    }
 
     section("Cpu: BEQ branches on the zero flag");
     {

@@ -78,23 +78,47 @@ namespace risc201 {
                 
             }
 
+            // full-descending stack pointer moves
+            if (ctl.sp_dec) --state_.sp;
+            if (ctl.sp_inc) ++state_.sp;
+
+            // --- EX: continue (MEM folded into EX) — data access ---
+            const int64_t mem_addr = ctl.mem_addr_sp
+                ? static_cast<int64_t>(state_.sp)
+                : alu_result;
+
+            if (ctl.stack_check) {
+                // push rows decrement SP first, so validate the pre-decrement value
+                const auto fault = ctl.mem_write
+                    ? stack_guard_.checkPush(state_.sp + 1)
+                    : stack_guard_.checkPop(state_.sp);
+                if (fault) {
+                    raiseException(*fault);
+                    return;
+                }
+            }
+
             if (ctl.mem_read) {
-                if (!readMemory(alu_result, mem_data)) {
+                if (!readMemory(mem_addr, mem_data)) {
                     raiseException(ExceptionCode::INVALID_MEMORY_ACCESS);
                     return;
                 }
             }
 
             if (ctl.mem_write) {
-                const int32_t value = state_.registers[static_cast<size_t>(instr.rd)];
-                if (!writeMemory(alu_result, value)) {
+                const int32_t value = ctl.mem_data_pc
+                    ? static_cast<int32_t>(state_.pc)
+                    : state_.registers[static_cast<size_t>(instr.rd)];
+                if (!writeMemory(mem_addr, value)) {
                     raiseException(ExceptionCode::INVALID_MEMORY_ACCESS);
                     return;
                 }
             }
 
             if (ctl.pc_write) {
-                state_.pc = branchTarget(instr_pc, instr);
+                state_.pc = ctl.pc_src_mem
+                    ? static_cast<uint32_t>(mem_data)
+                    : branchTarget(instr_pc, instr);
             }
 
             if (ctl.halt) {
