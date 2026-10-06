@@ -48,7 +48,8 @@ enum class Opcode : uint8_t {
     POP  = 0x0F,
     NOT  = 0x10, 
     SAR  = 0x11, 
-    CMP  = 0x12, 
+    CMP  = 0x12,
+    MUL  = 0x13, 
     HALT = 0x1F,
 };
 

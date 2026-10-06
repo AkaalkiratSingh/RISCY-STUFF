@@ -7,11 +7,15 @@ namespace risc201 {
     class Alu {
     public:
         struct Result {
-            int32_t value = 0;
+            int32_t value  = 0;
+            int64_t value64 = 0;   
             Flags   flags;
         };
 
         Result execute(Opcode op, int32_t lhs, int32_t rhs);
+
+        // <--- ADD THIS: Radix-4 Booth's multiplication
+        int64_t multiply(int32_t lhs, int32_t rhs);
 
     private:
         // 4-bit Carry-Lookahead Adder block.
@@ -23,4 +27,4 @@ namespace risc201 {
                                             bool carry_in, bool& carry_out);
     };
 
-} 
+} // namespace risc201

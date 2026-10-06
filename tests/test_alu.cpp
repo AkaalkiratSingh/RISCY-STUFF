@@ -69,6 +69,35 @@ int main() {
     Alu::Result cmp5 = alu.execute(Opcode::CMP, -5, -1);
     assert(cmp5.flags.greaterThan == false);
 
+    // --- Radix-4 Booth's Multiplication Tests ---
+    
+    // Basic positive
+    Alu::Result mul1 = alu.execute(Opcode::MUL, 5, 3);
+    assert(mul1.value == 15);
+    assert(mul1.value64 == 15);
+
+    // Positive * Negative
+    Alu::Result mul2 = alu.execute(Opcode::MUL, -5, 3);
+    assert(mul2.value == -15);
+    assert(mul2.value64 == -15);
+
+    // Negative * Negative
+    Alu::Result mul3 = alu.execute(Opcode::MUL, -5, -3);
+    assert(mul3.value == 15);
+    assert(mul3.value64 == 15);
+
+    // Large numbers (Testing the 64-bit result)
+    // 0x7FFFFFFF * 2 = 0xFFFFFFFE
+    Alu::Result mul4 = alu.execute(Opcode::MUL, 0x7FFFFFFF, 2);
+    assert(mul4.value64 == 0xFFFFFFFE); 
+    assert(mul4.value == -2); // Truncated 32-bit result
+
+    // INT_MIN * -1 (Classic overflow edge case)
+    // -2147483648 * -1 = 2147483648 (0x80000000)
+    Alu::Result mul5 = alu.execute(Opcode::MUL, static_cast<int32_t>(0x80000000), -1);
+    assert(mul5.value64 == 2147483648);
+    assert(mul5.value == static_cast<int32_t>(0x80000000)); // Truncated
+
     std::cout << "All ALU tests passed!\n";
     return 0;
 }
