@@ -48,6 +48,22 @@ namespace risc201 {
             return m;
         }
 
+        MicroOp pushRow() {
+            MicroOp m;
+            m.ctl.sp_dec = true;
+            m.ctl.mem_write = true;
+            return m;
+        }
+
+        MicroOp popRow() {
+            MicroOp m;
+            m.ctl.mem_read = true;
+            m.ctl.sp_inc = true;
+            m.ctl.reg_write = true;
+            m.ctl.mem_to_reg = true;
+            return m;
+        }
+
         MicroOp writebackRow() {      // WB, source = ALU result
             MicroOp m;
             m.ctl.reg_write = true;
@@ -271,8 +287,11 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { stackPopReadRow(), pcFromMemRow(), spIncRow() });
 
-        // TODO (Oct 14): PUSH / POP reuse these same rows (mem_addr_sp + stack_check +
-        // sp_dec / sp_inc) with a register as the data source/destination.
+        // PUSH: decrease SP, then write the selected register to the stack.
+        appendRoutine(Opcode::PUSH, { fetchRow(), pushRow() });
+
+        // POP: read the stack word, increase SP, then write it to the selected register.
+        appendRoutine(Opcode::POP, { fetchRow(), popRow() });
     }
 
     // Appends `routine` contiguously at the end of CM and returns its base address, rewriting each row's `next` to chain through the block.

@@ -49,7 +49,8 @@ enum class Opcode : uint8_t {
     NOT  = 0x10, 
     SAR  = 0x11, 
     CMP  = 0x12, 
-    MOV  = 0x13,   // rd <- rs1 (I=0) or rd <- imm (I=1); flags unchanged
+    MOV  = 0x13,
+    MUL  = 0x14, 
     HALT = 0x1F,
 };
 

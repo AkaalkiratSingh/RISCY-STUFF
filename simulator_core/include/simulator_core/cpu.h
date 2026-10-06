@@ -1,55 +1,68 @@
-// Fetch-decode-execute engine. Supports both pipeline variants (4-stage,
-// 6-stage), selectable via flag (PRD §5.2).
-
 #pragma once
 
 #include "isa201.h"
 #include "alu/alu.h"
 #include "control_unit/control_unit.h"
 #include "memory_safety/stack_guard.h"
-
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
 namespace risc201 {
+    enum class PipelineVariant { FourStage, SixStage };
 
-enum class PipelineVariant { FourStage, SixStage };
+    struct CpuState {
+        std::array<int32_t, kNumGPRegisters> registers{};
+        uint32_t pc = 0;
+        uint32_t sp = 0;
+        Flags    flags;
+        bool     halted = false;
+        std::optional<ExceptionCode> pending_exception;
+    };
 
-struct CpuState {
-    std::array<int32_t, kNumGPRegisters> registers{};
-    uint32_t pc = 0;
-    uint32_t sp = 0;
-    Flags    flags;
-    bool     halted = false;
-    std::optional<ExceptionCode> pending_exception;
-};
+    class Cpu {
+    public:
+        explicit Cpu(PipelineVariant variant, uint32_t memory_words = kDefaultMemoryWords);
 
-class Cpu {
-public:
-    explicit Cpu(PipelineVariant variant, uint32_t memory_words = kDefaultMemoryWords);
+        void loadWords(const std::vector<uint32_t>& words);
 
-    void loadProgram(const std::vector<Instruction>& program);
+        void step();    // single instruction processed
+        void run();     // complete program processed
 
-    void step();
+        // getters
+        const CpuState& state() const { return state_; }
+        std::vector<int32_t>& memory() { return memory_; }
+        const std::vector<int32_t>& memory() const { return memory_; }
 
-    void run();
+        uint64_t cycles() const { return cycles_; }
+        uint64_t retired() const { return retired_; }
 
-    const CpuState& state() const { return state_; }
-    std::vector<int32_t>& memory() { return memory_; }
+    private:
+        void executeInstruction(const Instruction& instr);
 
-private:
-    PipelineVariant variant_;
-    CpuState state_;
-    std::vector<Instruction> program_;
-    std::vector<int32_t> memory_;
-    Alu alu_;
-    ControlUnit control_unit_;
-    // TODO(Akaal, Sept 30): minimal 4-stage loop (ALU ops, load/store,
-    // unconditional jump). TODO(Oct 14): full ISA + 6-stage + hazard
-    // detection. TODO(Nov): wire microPC/control-word display + exception
-    // hooks from memory_safety.
-};
+        // target for branch instructions
+        uint32_t branchTarget(uint32_t instr_pc, const Instruction& instr) const;
 
-} // namespace risc201
+        bool readMemory(int64_t address, int32_t& out) const;
+        bool writeMemory(int64_t address, int32_t value);
+
+        void raiseException(ExceptionCode code);
+
+        PipelineVariant variant_;
+        CpuState state_;
+        std::vector<uint32_t> code_;   // raw program image, decoded at fetch
+        std::vector<int32_t> memory_;
+        Alu alu_;
+        ControlUnit control_unit_;
+        StackGuard stack_guard_;
+
+
+        uint64_t cycles_ = 0;
+        uint64_t retired_ = 0;
+
+        // TODO(Akaal, Oct 14): full ISA + 6-stage + hazard visualization.
+        // TODO(Nov): wire microPC/control-word display + exception hooks from
+        // memory_safety.
+    };
+}
