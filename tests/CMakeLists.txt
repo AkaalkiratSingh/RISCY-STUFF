@@ -22,6 +22,8 @@ add_executable(encoder_test encoder_test.cpp)
 target_link_libraries(encoder_test PRIVATE assembler_lib)
 add_test(NAME EncoderTest COMMAND encoder_test)
 
+add_executable(test_alu test_alu.cpp)
+target_link_libraries(test_alu PRIVATE alu)
 add_test(NAME AluTest COMMAND test_alu)
 
 add_executable(memory_safety_test memory_safety_test.cpp)
