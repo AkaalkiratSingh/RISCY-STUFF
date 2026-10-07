@@ -54,7 +54,8 @@ namespace risc201 {
         int32_t mem_data = 0;
 
         control_unit_.reset();
-        for (int guard = 0; guard < 64 && !control_unit_.routineDone(); ++guard) {
+        int guard = 0;
+        for (; guard < 64 && !control_unit_.routineDone(); ++guard) {
             const ControlWord ctl = control_unit_.step(instr.opcode, state_.flags);
 
             // --- IF: fetch row (PC advance) ---
@@ -132,6 +133,11 @@ namespace risc201 {
                     ctl.mem_to_reg ? mem_data : alu_result;
             }
             // --- WB: end ---
+        }
+
+        // routine never signalled done: its microcode chain is broken
+        if (!control_unit_.routineDone()) {
+            raiseException(ExceptionCode::ILLEGAL_INSTRUCTION);
         }
     }
 
