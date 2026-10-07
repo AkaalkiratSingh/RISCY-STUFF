@@ -17,6 +17,7 @@ target_include_directories(isa_spec INTERFACE ${CMAKE_SOURCE_DIR}/isa_spec)
 
 enable_testing()
 
+add_subdirectory(utils)
 add_subdirectory(alu)
 add_subdirectory(control_unit)
 add_subdirectory(assembler)
