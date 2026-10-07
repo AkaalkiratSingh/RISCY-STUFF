@@ -1,9 +1,3 @@
-// risc201-sim: load a program, run it on the processor, and report the
-// resulting machine state. Bare-bones CLI — see printUsage() for flags.
-//
-// Input can be either assembly source (.asm, assembled here) or the
-// assembler's encoded output (.hex / .bin), which the CPU decodes itself.
-
 #include "assembler/assembler.h"
 #include "simulator_core/cpu.h"
 #include "simulator_core/decoder.h"
@@ -283,7 +277,6 @@ int main(int argc, char** argv) {
     }
 
     // --- run --------------------------------------------------------------
-
     if (variant == risc201::PipelineVariant::SixStage) {
         std::cerr << "note: 6-stage pipeline is not modelled yet; running 4-stage\n";
     }
