@@ -2,7 +2,7 @@
 ; Recursive sum(n) = n + sum(n-1): CALL/RET for recursion, PUSH/POP to keep n.
 ; Expected: R1=15 (sum of 1..5), SP=4096
 
-ADD R1, R0, 5 ; R1 = 5
+ADD R1, R0, 5 ; R2 = 5
 CALL sum
 HALT
 
