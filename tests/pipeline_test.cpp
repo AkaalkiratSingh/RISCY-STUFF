@@ -50,8 +50,10 @@ std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
 Cpu runOn(PipelineVariant variant,
           const std::vector<std::string>& source,
           const std::map<uint32_t, int32_t>& memory = {},
-          uint32_t words = kDefaultMemoryWords) {
+          uint32_t words = kDefaultMemoryWords,
+          bool forwarding = true) {
     Cpu cpu(variant, words);
+    cpu.setForwarding(forwarding);
     for (const auto& [addr, value] : memory) cpu.memory()[addr] = value;
     cpu.loadWords(assembleWords(source));
     cpu.run();
@@ -147,17 +149,68 @@ int main() {
         CHECK(t.state().halted && n.state().halted);
     }
 
-    section("Pipeline: a RAW dependency costs more than the independent version");
+    section("Pipeline: forwarding never changes an architectural result");
     for (PipelineVariant v : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
-        const Cpu dependent = runOn(v, {"ADD R1, R0, 5", "ADD R2, R1, 5", "HALT"});
-        const Cpu independent = runOn(v, {"ADD R1, R0, 5", "ADD R2, R0, 5", "HALT"});
+        int mismatches = 0;
+        for (const Case& c : cases) {
+            const uint32_t words = c.words == 0 ? kDefaultMemoryWords : c.words;
+            const Cpu on  = runOn(v, c.source, c.memory, words, true);
+            const Cpu off = runOn(v, c.source, c.memory, words, false);
+            if (snapshot(on) != snapshot(off)) {
+                ++mismatches;
+                ++failures;
+                std::cerr << "  FAIL " << c.name << "\n"
+                          << "    bypassing: " << snapshot(on) << "\n"
+                          << "    stalling:  " << snapshot(off) << "\n";
+            }
+        }
+        if (mismatches == 0) {
+            std::cout << "  ok    " << variantName(v)
+                      << ": every program matches with and without forwarding\n";
+        }
+    }
 
+    section("Pipeline: forwarding removes the stall on an ALU chain");
+    for (PipelineVariant v : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
         const uint64_t ideal = (v == PipelineVariant::FourStage ? 4u : 6u) + 3u - 1u;
 
-        CHECK_EQ(independent.cycles(), ideal);
-        CHECK(dependent.cycles() > independent.cycles());
-        CHECK_EQ(dependent.state().registers[static_cast<size_t>(Register::R2)], 10);
-        CHECK_EQ(independent.state().registers[static_cast<size_t>(Register::R2)], 5);
+        const Cpu on  = runOn(v, {"ADD R1, R0, 5", "ADD R2, R1, 5", "HALT"}, {}, kDefaultMemoryWords, true);
+        const Cpu off = runOn(v, {"ADD R1, R0, 5", "ADD R2, R1, 5", "HALT"}, {}, kDefaultMemoryWords, false);
+
+        CHECK_EQ(on.cycles(), ideal);
+        CHECK(off.cycles() > ideal);
+        CHECK_EQ(on.state().registers[static_cast<size_t>(Register::R2)], 10);
+        CHECK_EQ(off.state().registers[static_cast<size_t>(Register::R2)], 10);
+    }
+
+    section("Pipeline: a load-use dependency costs one bubble even with forwarding");
+    for (PipelineVariant v : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+        const uint64_t ideal = (v == PipelineVariant::FourStage ? 4u : 6u) + 3u - 1u;
+
+        const Cpu on  = runOn(v, {"LOAD R1, 0[R0]", "ADD R2, R1, R0", "HALT"}, {{0, 9}}, kDefaultMemoryWords, true);
+        const Cpu off = runOn(v, {"LOAD R1, 0[R0]", "ADD R2, R1, R0", "HALT"}, {{0, 9}}, kDefaultMemoryWords, false);
+
+        CHECK_EQ(on.state().registers[static_cast<size_t>(Register::R2)], 9);
+        CHECK_EQ(off.state().registers[static_cast<size_t>(Register::R2)], 9);
+        CHECK(on.cycles() > ideal);             // the value is not ready until MEM completes
+        CHECK(on.cycles() <= off.cycles());
+    }
+
+    section("Pipeline: a store's data source is bypassed, not stalled");
+    for (PipelineVariant v : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+        const uint64_t ideal = (v == PipelineVariant::FourStage ? 4u : 6u) + 4u - 1u;
+
+        const std::vector<std::string> program = {
+            "ADD R2, R0, 7", "STORE R2, 4[R0]", "LOAD R3, 4[R0]", "HALT"};
+
+        const Cpu on  = runOn(v, program, {}, kDefaultMemoryWords, true);
+        const Cpu off = runOn(v, program, {}, kDefaultMemoryWords, false);
+
+        CHECK_EQ(on.memory()[4], 7);            // the freshly computed R2 reached memory
+        CHECK_EQ(off.memory()[4], 7);
+        CHECK_EQ(on.state().registers[static_cast<size_t>(Register::R3)], 7);
+        CHECK_EQ(on.cycles(), ideal);           // bypassed, so nothing stalls
+        CHECK(off.cycles() > ideal);            // without bypassing the store waits
     }
 
     if (failures == 0) {

@@ -330,7 +330,7 @@ int main() {
             "HALT",
         }, {{0, 9}});
         CHECK_EQ(reg(hazard, Register::R2), 9);
-        CHECK(hazard.cycles() > 6u);           // the LOAD -> ADD dependency forced a stall
+        CHECK(hazard.cycles() > 6u);           // load-use: not forwardable until MEM completes
     }
 
     section("Pipeline: a hazard-free program costs k + n - 1 cycles");
