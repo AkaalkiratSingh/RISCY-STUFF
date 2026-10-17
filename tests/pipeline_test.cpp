@@ -213,6 +213,87 @@ int main() {
         CHECK(off.cycles() > ideal);            // without bypassing the store waits
     }
 
+    section("Pipeline: cycles = (k-1) + retired + HALT + stalls + flush bubbles");
+    {
+        const std::vector<std::pair<const char*, std::vector<std::string>>> clean = {
+            {"fibonacci", {"ADD R1, R0, 0", "ADD R2, R0, 1", "ADD R3, R0, 8",
+                           "loop:", "ADD R4, R1, R2", "ADD R1, R2, R0", "ADD R2, R4, R0",
+                           "SUB R3, R3, 1", "BEQ done", "JMP loop", "done:", "HALT"}},
+            {"countdown", {"ADD R1, R0, 5", "loop:", "SUB R1, R1, 1", "BEQ done",
+                           "JMP loop", "done:", "HALT"}},
+            {"recursion", {"ADD R1, R0, 5", "CALL sum", "HALT",
+                           "sum:", "SUB R2, R1, R0", "BEQ zero", "PUSH R1", "SUB R1, R1, 1",
+                           "CALL sum", "POP R2", "ADD R1, R1, R2", "RET",
+                           "zero:", "ADD R1, R0, 0", "RET"}},
+            {"alu chain", {"ADD R1, R0, 5", "ADD R2, R1, 5", "SUB R3, R2, R1", "HALT"}},
+            {"push/pop", {"ADD R1, R0, 42", "PUSH R1", "POP R2", "HALT"}},
+            {"load/store", {"LOAD R1, 0[R0]", "STORE R1, 5[R0]", "LOAD R2, 5[R0]", "HALT"}},
+        };
+
+        for (const auto& [name, source] : clean) {
+            for (PipelineVariant v : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+                for (bool fwd : {true, false}) {
+                    const Cpu cpu = runOn(v, source, {{0, 9}}, kDefaultMemoryWords, fwd);
+                    const PipelineTrace& t = cpu.trace();
+
+                    const uint64_t expected = static_cast<uint64_t>(cpu.stageCount()) - 1
+                                            + cpu.retired() + 1
+                                            + t.stalls + t.flush_bubbles;
+                    if (expected != cpu.cycles()) {
+                        ++failures;
+                        std::cerr << "  FAIL " << name << " " << variantName(v)
+                                  << (fwd ? " forwarding" : " no-forward")
+                                  << ": cycles " << cpu.cycles() << " != " << expected
+                                  << "\n         retired " << cpu.retired()
+                                  << ", stalls " << t.stalls
+                                  << ", bubbles " << t.flush_bubbles << "\n";
+                    }
+                }
+            }
+        }
+        std::cout << "  ok    every clean program reconciles across 4 configurations\n";
+    }
+
+    section("Pipeline: a branch flushes 1 slot on the 4-stage and 3 on the 6-stage");
+    {
+        const std::vector<std::string> fib = {
+            "ADD R1, R0, 0", "ADD R2, R0, 1", "ADD R3, R0, 8",
+            "loop:", "ADD R4, R1, R2", "ADD R1, R2, R0", "ADD R2, R4, R0",
+            "SUB R3, R3, 1", "BEQ done", "JMP loop", "done:", "HALT"};
+
+        const Cpu four = runOn(PipelineVariant::FourStage, fib);
+        const Cpu six  = runOn(PipelineVariant::SixStage,  fib);
+
+        CHECK_EQ(four.trace().flushes, 8u);        // 7 JMP back-edges + the taken BEQ
+        CHECK_EQ(six.trace().flushes, 8u);
+        CHECK_EQ(four.trace().flush_bubbles, 8u);  // 1 per transfer
+        CHECK_EQ(six.trace().flush_bubbles, 24u);  // 3 per transfer
+        CHECK_EQ(four.trace().stalls, 0u);         // forwarding leaves no data hazards
+        CHECK_EQ(six.trace().stalls, 0u);
+    }
+
+    section("Pipeline: RET flushes deeper than a branch");
+    {
+        const std::vector<std::string> call = {
+            "ADD R1, R0, 7", "CALL sub", "HALT", "sub:", "ADD R2, R0, 5", "RET"};
+
+        const Cpu four = runOn(PipelineVariant::FourStage, call);
+        const Cpu six  = runOn(PipelineVariant::SixStage,  call);
+
+        CHECK_EQ(four.trace().flushes, 2u);        // one CALL, one RET
+        CHECK_EQ(six.trace().flushes, 2u);
+        CHECK_EQ(four.trace().flush_bubbles, 3u);  // CALL 1 + RET 2
+        CHECK_EQ(six.trace().flush_bubbles, 7u);   // CALL 3 + RET 4
+    }
+
+    section("Pipeline: a fault is recorded and does not flush");
+    {
+        const Cpu under = runOn(PipelineVariant::FourStage, {"POP R1", "HALT"});
+        CHECK_EQ(under.trace().faults, 1u);
+        CHECK_EQ(under.trace().flushes, 0u);
+        CHECK(under.state().pending_exception.has_value());
+    }
+
     if (failures == 0) {
         std::cout << "\npipeline_test: all checks passed\n";
         return 0;
