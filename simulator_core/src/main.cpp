@@ -282,10 +282,6 @@ int main(int argc, char** argv) {
     }
 
     // --- run --------------------------------------------------------------
-    if (variant == risc201::PipelineVariant::SixStage) {
-        std::cerr << "note: 6-stage pipeline is not modelled yet; running 4-stage\n";
-    }
-
     if (step_mode) {
         uint64_t steps = 0;
         while (!cpu.state().halted && steps < kMaxStepSteps) {
