@@ -1,6 +1,6 @@
-# 04_branch_skip.asm
-# Unconditional jump over a block that must not execute.
-# Expected: R1=1  R2=0 (skipped)  R3=2  PC=4
+; 04_branch_skip.asm
+; Unconditional jump over a block that must not execute.
+; Expected: R1=1  R2=0 (skipped)  R3=2  PC=4
 
 ADD R1, R0, 1
 JMP done
