@@ -1,9 +1,7 @@
 #include "simulator_core/decoder.h"
 
 namespace risc201 {
-
     namespace {
-
         // Only these transfer the program counter through a whole-word offset;
         // every other opcode uses the RI layout.
         bool isJType(Opcode op) {
@@ -16,7 +14,7 @@ namespace risc201 {
             return static_cast<int32_t>(value);
         }
 
-    } // namespace
+    }
 
     Instruction decodeInstruction(uint32_t word) {
         Instruction instr{};
@@ -48,4 +46,4 @@ namespace risc201 {
         return instr;
     }
 
-} // namespace risc201
+}

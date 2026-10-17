@@ -29,6 +29,7 @@ void printUsage(const char* prog) {
         << "  -s, --step      single-step, printing state after each instruction\n"
         << "  -d, --decode    print the decoded instruction listing before running\n"
         << "  -m, --mem S:C   dump C data-memory words starting at word index S\n"
+        << "      --no-forward stall on every dependency instead of bypassing\n"
         << "  -h, --help      show this message\n";
 }
 
@@ -172,6 +173,7 @@ int main(int argc, char** argv) {
     bool step_mode = false;
     bool decode_listing = false;
     bool dump_mem = false;
+    bool forwarding = true;
     uint32_t mem_start = 0;
     uint32_t mem_count = 0;
 
@@ -189,6 +191,8 @@ int main(int argc, char** argv) {
             step_mode = true;
         } else if (arg == "-d" || arg == "--decode") {
             decode_listing = true;
+        } else if (arg == "--no-forward") {
+            forwarding = false;
         } else if (arg == "-m" || arg == "--mem") {
             if (i + 1 >= argc || !parseRange(argv[++i], mem_start, mem_count)) {
                 std::cerr << "error: --mem expects START:COUNT (e.g. 0:16)\n";
@@ -215,6 +219,7 @@ int main(int argc, char** argv) {
     const InputKind kind = kindFromPath(input_path);
     std::vector<uint32_t> words;
     risc201::Cpu cpu(variant);
+    cpu.setForwarding(forwarding);
 
     // --- load -------------------------------------------------------------
     if (kind == InputKind::Assembly) {
@@ -285,7 +290,7 @@ int main(int argc, char** argv) {
         uint64_t steps = 0;
         while (!cpu.state().halted && steps < kMaxStepSteps) {
             std::cout << "--- step @ PC=" << cpu.state().pc << " ---\n";
-            cpu.step();
+            cpu.stepInstruction();
             printRegisters(cpu.state());
             ++steps;
         }

@@ -51,8 +51,9 @@ std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
 }
 
 Cpu runProgram(const std::vector<std::string>& source,
-               const std::map<uint32_t, int32_t>& memory = {}) {
-    Cpu cpu(PipelineVariant::FourStage);
+               const std::map<uint32_t, int32_t>& memory = {},
+               PipelineVariant variant = PipelineVariant::FourStage) {
+    Cpu cpu(variant);
     for (const auto& [addr, value] : memory) cpu.memory()[addr] = value;
     cpu.loadWords(assembleWords(source));
     cpu.run();
@@ -81,7 +82,7 @@ int main() {
         CHECK_EQ(reg(cpu, Register::R1), 12);
     }
 
-    section("Cpu: step() is one macro instruction, not one micro-cycle");
+    section("Cpu: step() advances one clock, stepInstruction() retires one instruction");
     {
         Cpu cpu(PipelineVariant::FourStage);
         cpu.memory()[0] = 3;
@@ -92,19 +93,27 @@ int main() {
             "ADD R3, R1, R2",
             "HALT",
         }));
+
+        const uint64_t before = cpu.cycles();
         cpu.step();
-        CHECK_EQ(cpu.state().pc, 1u);
+        CHECK_EQ(cpu.cycles(), before + 1u);   // one clock
+        CHECK_EQ(cpu.retired(), 0u);           // nothing has drained out yet
+
+        cpu.stepInstruction();
+        CHECK_EQ(cpu.retired(), 1u);
         CHECK_EQ(reg(cpu, Register::R1), 3);
-        cpu.step();
-        CHECK_EQ(cpu.state().pc, 2u);
+
+        cpu.stepInstruction();
+        CHECK_EQ(cpu.retired(), 2u);
         CHECK_EQ(reg(cpu, Register::R2), 4);
-        cpu.step();
-        CHECK_EQ(cpu.state().pc, 3u);
+
+        cpu.stepInstruction();
+        CHECK_EQ(cpu.retired(), 3u);
         CHECK_EQ(reg(cpu, Register::R3), 7);
-        cpu.step();
+
+        cpu.stepInstruction();                 // HALT drains without retiring
         CHECK(cpu.state().halted);
-        cpu.step();
-        CHECK(cpu.state().halted);
+        CHECK_EQ(cpu.retired(), 3u);
     }
 
     section("Cpu: STORE/LOAD round-trip through data memory");
@@ -313,7 +322,7 @@ int main() {
         CHECK(cpu.state().flags.zero);
     }
 
-    section("4-stage: RAW dependency still yields the right value (no interlock)");
+    section("4-stage: a RAW dependency is interlocked and still yields the right value");
     {
         const Cpu hazard = runProgram({
             "LOAD R1, 0[R0]",
@@ -321,18 +330,26 @@ int main() {
             "HALT",
         }, {{0, 9}});
         CHECK_EQ(reg(hazard, Register::R2), 9);
+        CHECK(hazard.cycles() > 6u);           // load-use: not forwardable until MEM completes
     }
 
-    section("4-stage: serial model counts one cycle per instruction");
+    section("Pipeline: a hazard-free program costs k + n - 1 cycles");
     {
-        const Cpu cpu = runProgram({
+        const std::vector<std::string> program = {
             "ADD R1, R0, R0",
             "ADD R2, R0, R0",
             "HALT",
-        });
-        CHECK(cpu.state().halted);
-        CHECK_EQ(cpu.retired(), 2u);
-        CHECK_EQ(cpu.cycles(), 3u);  // ADD, ADD, HALT
+        };
+
+        const Cpu four = runProgram(program, {}, PipelineVariant::FourStage);
+        CHECK(four.state().halted);
+        CHECK_EQ(four.retired(), 2u);
+        CHECK_EQ(four.cycles(), 6u);           // 4 stages + 3 instructions - 1
+
+        const Cpu six = runProgram(program, {}, PipelineVariant::SixStage);
+        CHECK(six.state().halted);
+        CHECK_EQ(six.retired(), 2u);
+        CHECK_EQ(six.cycles(), 8u);            // 6 stages + 3 instructions - 1
     }
 
     if (failures == 0) {

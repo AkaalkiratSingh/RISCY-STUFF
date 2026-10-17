@@ -3,6 +3,7 @@ add_library(simulator_core_lib STATIC
     src/decoder.cpp
     src/debugger.cpp
     src/cli.cpp
+    src/control_decode.cpp
 )
 target_include_directories(simulator_core_lib PUBLIC include)
 target_link_libraries(simulator_core_lib PUBLIC isa_spec alu control_unit memory_safety utils_lib)
