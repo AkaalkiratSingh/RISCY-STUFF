@@ -124,8 +124,10 @@ namespace risc201 {
         }
         if (c.mem_write && !c.mem_data_pc && candidate.instr.rd == dst) return true;
 
-        return false;
-    }
+        control_unit_.reset();
+        int guard = 0;
+        for (; guard < 64 && !control_unit_.routineDone(); ++guard) {
+            const ControlWord ctl = control_unit_.step(instr.opcode, state_.flags);
 
     int32_t Cpu::bypass(Register src, int32_t current) const {
         const Latch& ex_mem = regs_[static_cast<size_t>(ex_slot_)];
@@ -299,9 +301,11 @@ namespace risc201 {
             state_.registers[static_cast<size_t>(out.instr.rd)] =
                 c.mem_to_reg ? out.mem_data : out.alu_result;
         }
-        if (out.writes_sp) state_.sp = out.sp_commit;
-        state_.pc = out.pc;
-        if (!c.halting) ++retired_;
+
+        // routine never signalled done: its microcode chain is broken
+        if (!control_unit_.routineDone()) {
+            raiseException(ExceptionCode::ILLEGAL_INSTRUCTION);
+        }
     }
 
     void Cpu::tick() {
