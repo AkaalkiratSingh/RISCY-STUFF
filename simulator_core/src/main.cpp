@@ -1,9 +1,3 @@
-// risc201-sim: load a program, run it on the processor, and report the
-// resulting machine state. Bare-bones CLI — see printUsage() for flags.
-//
-// Input can be either assembly source (.asm, assembled here) or the
-// assembler's encoded output (.hex / .bin), which the CPU decodes itself.
-
 #include "assembler/assembler.h"
 #include "simulator_core/cpu.h"
 #include "simulator_core/decoder.h"
@@ -35,6 +29,7 @@ void printUsage(const char* prog) {
         << "  -s, --step      single-step, printing state after each instruction\n"
         << "  -d, --decode    print the decoded instruction listing before running\n"
         << "  -m, --mem S:C   dump C data-memory words starting at word index S\n"
+        << "      --no-forward stall on every dependency instead of bypassing\n"
         << "  -h, --help      show this message\n";
 }
 
@@ -178,6 +173,7 @@ int main(int argc, char** argv) {
     bool step_mode = false;
     bool decode_listing = false;
     bool dump_mem = false;
+    bool forwarding = true;
     uint32_t mem_start = 0;
     uint32_t mem_count = 0;
 
@@ -195,6 +191,8 @@ int main(int argc, char** argv) {
             step_mode = true;
         } else if (arg == "-d" || arg == "--decode") {
             decode_listing = true;
+        } else if (arg == "--no-forward") {
+            forwarding = false;
         } else if (arg == "-m" || arg == "--mem") {
             if (i + 1 >= argc || !parseRange(argv[++i], mem_start, mem_count)) {
                 std::cerr << "error: --mem expects START:COUNT (e.g. 0:16)\n";
@@ -221,6 +219,7 @@ int main(int argc, char** argv) {
     const InputKind kind = kindFromPath(input_path);
     std::vector<uint32_t> words;
     risc201::Cpu cpu(variant);
+    cpu.setForwarding(forwarding);
 
     // --- load -------------------------------------------------------------
     if (kind == InputKind::Assembly) {

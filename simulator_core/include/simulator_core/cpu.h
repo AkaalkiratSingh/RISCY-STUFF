@@ -39,6 +39,8 @@ namespace risc201 {
         uint64_t retired() const { return retired_; }
 
         PipelineVariant variant() const { return variant_; }
+        void setForwarding(bool on) { forwarding_ = on; }
+        bool forwarding() const { return forwarding_; }
         bool pipelineEmpty() const;
         int stageCount() const { return n_slots_; }
         int exceptionSlot() const { return ex_slot_; }
@@ -58,6 +60,8 @@ namespace risc201 {
         Latch fetchStage(bool stall);
         bool wouldStall() const;
         bool dependsOn(const Latch& candidate, const Latch& older) const;
+        int32_t bypass(Register src, int32_t current) const;
+        uint32_t bypassSp() const;
         void resetPipeline();
 
         uint32_t branchTarget(uint32_t instr_pc, const Instruction& instr) const;
@@ -75,6 +79,7 @@ namespace risc201 {
         std::array<Latch, kMaxPipelineSlots> regs_{};
         uint32_t fetch_pc_ = 0;
         bool stop_fetch_ = false;
+        bool forwarding_ = true;
         int n_slots_ = 0;
         int ex_slot_ = 0;
 

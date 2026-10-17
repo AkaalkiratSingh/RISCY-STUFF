@@ -20,6 +20,7 @@ namespace risc201 {
 
         int32_t  rs1_val = 0;
         int32_t  rs2_val = 0;
+        int32_t  rd_val = 0;
         int32_t  alu_result = 0;
         int32_t  mem_data = 0;
 

@@ -127,6 +127,36 @@ namespace risc201 {
         return false;
     }
 
+    int32_t Cpu::bypass(Register src, int32_t current) const {
+        const Latch& ex_mem = regs_[static_cast<size_t>(ex_slot_)];
+        if (ex_mem.valid && ex_mem.decoded) {
+            const StageControls& c = controls_[static_cast<uint8_t>(ex_mem.instr.opcode)];
+            if (c.reg_write && ex_mem.instr.rd == src) {
+                return c.mem_to_reg ? current : ex_mem.alu_result;
+            }
+        }
+
+        const Latch& mem_wb = regs_[static_cast<size_t>(ex_slot_ + 1)];
+        if (mem_wb.valid && mem_wb.decoded) {
+            const StageControls& c = controls_[static_cast<uint8_t>(mem_wb.instr.opcode)];
+            if (c.reg_write && mem_wb.instr.rd == src) {
+                return c.mem_to_reg ? mem_wb.mem_data : mem_wb.alu_result;
+            }
+        }
+
+        return current;
+    }
+
+    uint32_t Cpu::bypassSp() const {
+        const Latch& ex_mem = regs_[static_cast<size_t>(ex_slot_)];
+        if (ex_mem.valid && ex_mem.writes_sp) return ex_mem.sp_commit;
+
+        const Latch& mem_wb = regs_[static_cast<size_t>(ex_slot_ + 1)];
+        if (mem_wb.valid && mem_wb.writes_sp) return mem_wb.sp_commit;
+
+        return state_.sp;
+    }
+
     bool Cpu::wouldStall() const {
         Latch candidate;
 
@@ -142,7 +172,16 @@ namespace risc201 {
 
         for (int i = ex_slot_ - 1; i <= n_slots_ - 3; ++i) {
             if (i < 0) continue;
-            if (dependsOn(candidate, regs_[static_cast<size_t>(i)])) return true;
+            const Latch& p = regs_[static_cast<size_t>(i)];
+            if (!dependsOn(candidate, p)) continue;
+            if (!forwarding_) return true;
+
+            // The producer that reaches EX/MEM exactly when this instruction runs
+            // is past bypassing when its value is still in the memory stage.
+            if (i == ex_slot_ - 1 &&
+                controls_[static_cast<uint8_t>(p.instr.opcode)].mem_to_reg) {
+                return true;
+            }
         }
         return false;
     }
@@ -161,10 +200,17 @@ namespace risc201 {
         if (slot.OF && out.decoded) {
             out.rs1_val = state_.registers[static_cast<size_t>(out.instr.rs1)];
             out.rs2_val = state_.registers[static_cast<size_t>(out.instr.rs2)];
+            out.rd_val  = state_.registers[static_cast<size_t>(out.instr.rd)];
         }
 
         if (slot.EX && out.decoded) {
             const StageControls& c = controls_[op];
+
+            if (forwarding_) {
+                out.rs1_val = bypass(out.instr.rs1, out.rs1_val);
+                out.rs2_val = bypass(out.instr.rs2, out.rs2_val);
+                out.rd_val  = bypass(out.instr.rd, out.rd_val);
+            }
 
             if (c.alu_enable) {
                 const int32_t rhs = (c.alu_src_imm || out.instr.I) ? out.instr.imm : out.rs2_val;
@@ -173,14 +219,15 @@ namespace risc201 {
                 if (c.flag_update) state_.flags = r.flags;
             }
 
+            const uint32_t sp = forwarding_ ? bypassSp() : state_.sp;
             if (c.sp_dec) {
-                out.mem_sp_addr = state_.sp - 1;
-                out.sp_commit = state_.sp - 1;
+                out.mem_sp_addr = sp - 1;
+                out.sp_commit = sp - 1;
                 out.writes_sp = true;
             }
             if (c.sp_inc) {
-                out.mem_sp_addr = state_.sp;
-                out.sp_commit = state_.sp + 1;
+                out.mem_sp_addr = sp;
+                out.sp_commit = sp + 1;
                 out.writes_sp = true;
             }
 
@@ -220,7 +267,7 @@ namespace risc201 {
             if (c.mem_write) {
                 const int32_t value = c.mem_data_pc
                     ? static_cast<int32_t>(out.pc + 1)
-                    : state_.registers[static_cast<size_t>(out.instr.rd)];
+                    : out.rd_val;
                 if (!writeMemory(address, value)) {
                     fx.fault = true;
                     fx.code = ExceptionCode::INVALID_MEMORY_ACCESS;
