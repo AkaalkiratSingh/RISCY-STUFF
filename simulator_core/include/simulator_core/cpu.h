@@ -4,14 +4,13 @@
 #include "alu/alu.h"
 #include "control_unit/control_unit.h"
 #include "memory_safety/stack_guard.h"
+#include "simulator_core/pipeline_types.h"
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
 namespace risc201 {
-    enum class PipelineVariant { FourStage, SixStage };
-
     struct CpuState {
         std::array<int32_t, kNumGPRegisters> registers{};
         uint32_t pc = 0;
