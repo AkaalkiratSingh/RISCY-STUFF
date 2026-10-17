@@ -10,25 +10,25 @@ namespace risc201 {
         void mergeRow(StageControls& sc, const MicroOp& row) {
             const ControlWord& c = row.ctl;
 
-            sc.pc_inc = c.pc_inc;
+            sc.pc_inc |= c.pc_inc;
 
             if (c.alu_enable) {
                 sc.alu_enable = true;
                 sc.alu_op = c.alu_op;
-                sc.alu_src_imm = c.alu_src_imm;
-                sc.flag_update = c.flag_update;
+                sc.alu_src_imm |= c.alu_src_imm;
+                sc.flag_update |= c.flag_update;
             }
 
-            sc.sp_dec = c.sp_dec;
-            sc.sp_inc = c.sp_inc;
-            sc.mem_read = c.mem_read;
-            sc.mem_write = c.mem_write;
-            sc.mem_addr_sp = c.mem_addr_sp;
-            sc.mem_data_pc = c.mem_data_pc;
-            sc.stack_check = c.stack_check;
-            sc.reg_write = c.reg_write;
-            sc.mem_to_reg = c.mem_to_reg;
-            sc.halting = c.halt;
+            sc.sp_dec |= c.sp_dec;
+            sc.sp_inc |= c.sp_inc;
+            sc.mem_read |= c.mem_read;
+            sc.mem_write |= c.mem_write;
+            sc.mem_addr_sp |= c.mem_addr_sp;
+            sc.mem_data_pc |= c.mem_data_pc;
+            sc.stack_check |= c.stack_check;
+            sc.reg_write |= c.reg_write;
+            sc.mem_to_reg |= c.mem_to_reg;
+            sc.halting |= c.halt;
 
             if (c.pc_write) {
                 if (c.pc_src_mem) sc.pc_from_mem = true;

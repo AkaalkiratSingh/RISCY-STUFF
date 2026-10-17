@@ -6,27 +6,63 @@
 
 namespace risc201 {
 
-    // Constructor
+    namespace {
+
+        bool condHolds(BranchCond c, const Flags& f) {
+            switch (c) {
+            case BranchCond::None:     return false;
+            case BranchCond::Zero:     return f.zero;
+            case BranchCond::NotZero:  return !f.zero;
+            case BranchCond::Negative: return f.negative;
+            case BranchCond::Carry:    return f.carry;
+            case BranchCond::Overflow: return f.overflow;
+            }
+            return false;
+        }
+
+        int stageWith(const StageLayout& layout, bool StageSlot::* which) {
+            for (size_t i = 0; i < layout.count; ++i) {
+                if (layout[i].*which) return static_cast<int>(i);
+            }
+            return -1;
+        }
+
+    }
+
     Cpu::Cpu(PipelineVariant variant, uint32_t memory_words) :
         variant_(variant),
         memory_(memory_words, 0),
         control_unit_(MicrocodeEncoding::Horizontal),
-        stack_guard_(memory_words, 0) {
+        stack_guard_(memory_words, 0),
+        controls_(buildStageControls(control_unit_)) {
         state_.sp = memory_words;
+        resetPipeline();
     }
 
-    
+    void Cpu::resetPipeline() {
+        regs_.fill(Latch{});
+        fetch_pc_ = 0;
+        stop_fetch_ = false;
+
+        const StageLayout layout = layoutFor(variant_);
+        n_slots_ = static_cast<int>(layout.count);
+        ex_slot_ = stageWith(layout, &StageSlot::EX);
+    }
+
     void Cpu::loadWords(const std::vector<uint32_t>& words) {
         code_ = words;
         state_ = CpuState{};
         state_.sp = static_cast<uint32_t>(memory_.size());
         cycles_ = 0;
         retired_ = 0;
+        resetPipeline();
     }
 
-    void Cpu::raiseException(ExceptionCode code) {
-        state_.pending_exception = code;
-        state_.halted = true;
+    bool Cpu::pipelineEmpty() const {
+        for (const Latch& l : regs_) {
+            if (l.valid) return false;
+        }
+        return true;
     }
 
     bool Cpu::readMemory(int64_t address, int32_t& out) const {
@@ -42,127 +78,270 @@ namespace risc201 {
     }
 
     uint32_t Cpu::branchTarget(uint32_t instr_pc, const Instruction& instr) const {
-        const uint64_t byte_target = 4 * static_cast<uint64_t>(instr_pc) + static_cast<uint64_t>(instr.imm) + 4;
+        const uint64_t byte_target =
+            4 * static_cast<uint64_t>(instr_pc) + static_cast<uint64_t>(instr.imm) + 4;
         return static_cast<uint32_t>(byte_target / 4);
     }
 
-    // EX + WB 
-    void Cpu::executeInstruction(const Instruction& instr) {
-        const uint32_t instr_pc = state_.pc;
+    Latch Cpu::fetchStage(bool stall) {
+        Latch out;
+        if (stop_fetch_) return out;
 
-        int32_t alu_result = 0;
-        int32_t mem_data = 0;
+        if (fetch_pc_ >= code_.size()) {
+            out.valid = true;
+            out.pc = fetch_pc_;
+            out.instr = Instruction{};
+            out.decoded = true;
+            out.fault = true;
+            out.fault_code = ExceptionCode::INVALID_MEMORY_ACCESS;
+            return out;
+        }
 
-        control_unit_.reset();
-        for (int guard = 0; guard < 64 && !control_unit_.routineDone(); ++guard) {
-            const ControlWord ctl = control_unit_.step(instr.opcode, state_.flags);
+        out.valid = true;
+        out.pc = fetch_pc_;
+        out.word = code_[fetch_pc_];
+        if (!stall) fetch_pc_ += 1;
+        return out;
+    }
 
-            // --- IF: fetch row (PC advance) ---
-            if (ctl.pc_inc) {
-                state_.pc = instr_pc + 1;
+    bool Cpu::dependsOn(const Latch& candidate, const Latch& older) const {
+        if (!older.valid || !older.decoded) return false;
+
+        const StageControls& c = controls_[static_cast<uint8_t>(candidate.instr.opcode)];
+        const StageControls& o = controls_[static_cast<uint8_t>(older.instr.opcode)];
+
+        if ((o.sp_dec || o.sp_inc) &&
+            (c.sp_dec || c.sp_inc || c.mem_addr_sp || c.pc_from_mem)) {
+            return true;
+        }
+
+        if (!o.reg_write) return false;
+
+        const Register dst = older.instr.rd;
+        if (c.alu_enable &&
+            (candidate.instr.rs1 == dst || (!c.alu_src_imm && candidate.instr.rs2 == dst))) {
+            return true;
+        }
+        if (c.mem_write && !c.mem_data_pc && candidate.instr.rd == dst) return true;
+
+        return false;
+    }
+
+    bool Cpu::wouldStall() const {
+        Latch candidate;
+
+        if (ex_slot_ == 1) {
+            if (fetch_pc_ >= code_.size()) return false;
+            candidate.valid = true;
+            candidate.decoded = true;
+            candidate.instr = decodeInstruction(code_[fetch_pc_]);
+        } else {
+            candidate = regs_[static_cast<size_t>(ex_slot_ - 2)];
+            if (!candidate.valid || !candidate.decoded) return false;
+        }
+
+        for (int i = ex_slot_ - 1; i <= n_slots_ - 3; ++i) {
+            if (i < 0) continue;
+            if (dependsOn(candidate, regs_[static_cast<size_t>(i)])) return true;
+        }
+        return false;
+    }
+
+    void Cpu::applySlot(const StageSlot& slot, Latch& out, Effects& fx) {
+        if (out.fault) return;
+
+        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
+
+        if (slot.ID && !out.decoded) {
+            out.instr = decodeInstruction(out.word);
+            out.decoded = true;
+            if (controls_[static_cast<uint8_t>(out.instr.opcode)].halting) fx.stop_fetch = true;
+        }
+
+        if (slot.OF && out.decoded) {
+            out.rs1_val = state_.registers[static_cast<size_t>(out.instr.rs1)];
+            out.rs2_val = state_.registers[static_cast<size_t>(out.instr.rs2)];
+        }
+
+        if (slot.EX && out.decoded) {
+            const StageControls& c = controls_[op];
+
+            if (c.alu_enable) {
+                const int32_t rhs = (c.alu_src_imm || out.instr.I) ? out.instr.imm : out.rs2_val;
+                const Alu::Result r = alu_.execute(c.alu_op, out.rs1_val, rhs);
+                out.alu_result = r.value;
+                if (c.flag_update) state_.flags = r.flags;
             }
 
-            // --- EX: begin [MEM is folded into EX]---
-            if (ctl.alu_enable) {
-                const int32_t lhs = state_.registers[static_cast<size_t>(instr.rs1)];
-
-                const int32_t rhs = (ctl.alu_src_imm || instr.I)
-                    ? instr.imm
-                    : state_.registers[static_cast<size_t>(instr.rs2)];
-                
-                const Alu::Result r = alu_.execute(ctl.alu_op, lhs, rhs);
-                alu_result = r.value;
-
-                if (ctl.flag_update)
-                    state_.flags = r.flags;
-                
+            if (c.sp_dec) {
+                out.mem_sp_addr = state_.sp - 1;
+                out.sp_commit = state_.sp - 1;
+                out.writes_sp = true;
+            }
+            if (c.sp_inc) {
+                out.mem_sp_addr = state_.sp;
+                out.sp_commit = state_.sp + 1;
+                out.writes_sp = true;
             }
 
-            // full-descending stack pointer moves
-            if (ctl.sp_dec) --state_.sp;
-            if (ctl.sp_inc) ++state_.sp;
+            if (c.pc_from_target && (!c.is_branch || condHolds(c.cond, state_.flags))) {
+                out.redirect = true;
+                out.next_pc = branchTarget(out.pc, out.instr);
+                fx.taken = true;
+                fx.target = out.next_pc;
+            }
+        }
 
-            // --- EX: continue (MEM folded into EX) — data access ---
-            const int64_t mem_addr = ctl.mem_addr_sp
-                ? static_cast<int64_t>(state_.sp)
-                : alu_result;
+        if (slot.MEM && out.decoded) {
+            const StageControls& c = controls_[op];
+            const uint32_t address =
+                c.mem_addr_sp ? out.mem_sp_addr : static_cast<uint32_t>(out.alu_result);
 
-            if (ctl.stack_check) {
-                // push rows decrement SP first, so validate the pre-decrement value
-                const auto fault = ctl.mem_write
-                    ? stack_guard_.checkPush(state_.sp + 1)
-                    : stack_guard_.checkPop(state_.sp);
+            if (c.stack_check) {
+                const auto fault = c.mem_write ? stack_guard_.checkPush(out.mem_sp_addr + 1)
+                                               : stack_guard_.checkPop(out.mem_sp_addr);
                 if (fault) {
-                    raiseException(*fault);
+                    fx.fault = true;
+                    fx.code = *fault;
                     return;
                 }
             }
 
-            if (ctl.mem_read) {
-                if (!readMemory(mem_addr, mem_data)) {
-                    raiseException(ExceptionCode::INVALID_MEMORY_ACCESS);
+            if (c.mem_read) {
+                int32_t loaded = 0;
+                if (!readMemory(address, loaded)) {
+                    fx.fault = true;
+                    fx.code = ExceptionCode::INVALID_MEMORY_ACCESS;
+                    return;
+                }
+                out.mem_data = loaded;
+            }
+
+            if (c.mem_write) {
+                const int32_t value = c.mem_data_pc
+                    ? static_cast<int32_t>(out.pc + 1)
+                    : state_.registers[static_cast<size_t>(out.instr.rd)];
+                if (!writeMemory(address, value)) {
+                    fx.fault = true;
+                    fx.code = ExceptionCode::INVALID_MEMORY_ACCESS;
                     return;
                 }
             }
 
-            if (ctl.mem_write) {
-                const int32_t value = ctl.mem_data_pc
-                    ? static_cast<int32_t>(state_.pc)
-                    : state_.registers[static_cast<size_t>(instr.rd)];
-                if (!writeMemory(mem_addr, value)) {
-                    raiseException(ExceptionCode::INVALID_MEMORY_ACCESS);
-                    return;
-                }
+            if (c.pc_from_mem) {
+                out.redirect = true;
+                out.next_pc = static_cast<uint32_t>(out.mem_data);
+                fx.taken = true;
+                fx.target = out.next_pc;
             }
-
-            if (ctl.pc_write) {
-                state_.pc = ctl.pc_src_mem
-                    ? static_cast<uint32_t>(mem_data)
-                    : branchTarget(instr_pc, instr);
-            }
-
-            if (ctl.halt) {
-                state_.halted = true;
-            }
-            // --- EX: end ---
-
-            // --- WB: begin — register writeback ---
-            if (ctl.reg_write) {
-                state_.registers[static_cast<size_t>(instr.rd)] =
-                    ctl.mem_to_reg ? mem_data : alu_result;
-            }
-            // --- WB: end ---
         }
     }
 
-    void Cpu::step() {
-        // === IF (instruction fetch): begin ===
-        if (state_.halted) return; // running step() on a halted program does nothing
+    void Cpu::retire(const Latch& out) {
+        if (!out.valid || !out.decoded) return;
 
-        // pc moved out of the bounds of code
-        if (static_cast<size_t>(state_.pc) >= code_.size()) {
-            raiseException(ExceptionCode::INVALID_MEMORY_ACCESS);
+        if (out.fault) {
+            state_.pending_exception = out.fault_code;
+            stop_fetch_ = true;
             return;
         }
 
-        const uint32_t word = code_[static_cast<size_t>(state_.pc)];
-        // === IF: end ===
+        const StageControls& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
 
-        // === ID (decode): begin ===
-        const Instruction instr = decodeInstruction(word); // decode the fetched word
-        // === ID: end ===
+        if (c.reg_write) {
+            state_.registers[static_cast<size_t>(out.instr.rd)] =
+                c.mem_to_reg ? out.mem_data : out.alu_result;
+        }
+        if (out.writes_sp) state_.sp = out.sp_commit;
+        state_.pc = out.pc;
+        if (!c.halting) ++retired_;
+    }
 
-        // === EX + WB: begin ... end (see executeInstruction) ===
-        executeInstruction(instr);
+    void Cpu::tick() {
+        const StageLayout layout = layoutFor(variant_);
+        const int n = n_slots_;
+        const int ex = ex_slot_;
 
+        std::array<Latch, kMaxPipelineSlots> next{};
+
+        const bool stall = !stop_fetch_ && wouldStall();
+
+        int effect_slot = -1;
+        Effects oldest;
+        bool have_effect = false;
+
+        for (int i = n - 1; i >= 0; --i) {
+            const StageSlot& slot = layout[static_cast<size_t>(i)];
+            const bool wrong_path = effect_slot >= 0 && i < effect_slot;
+
+            Effects here;
+            Latch out;
+
+            if (stall && i < ex - 1) {
+                out = regs_[static_cast<size_t>(i)];
+            } else {
+                if (i == 0) {
+                    out = fetchStage(stall);
+                } else {
+                    out = regs_[static_cast<size_t>(i - 1)];
+                }
+
+                const bool bubble = stall && i == ex - 1;
+                if (out.valid && !bubble && !wrong_path) {
+                    applySlot(slot, out, here);
+                }
+                if (bubble) out = Latch{};
+            }
+
+            if (i == n - 1) {
+                if (!wrong_path) retire(out);
+            } else {
+                if (wrong_path) out = Latch{};
+                next[static_cast<size_t>(i)] = out;
+            }
+
+            if (!wrong_path && !have_effect &&
+                (here.fault || here.taken || here.stop_fetch)) {
+                oldest = here;
+                have_effect = true;
+                effect_slot = i;
+            }
+        }
+
+        if (have_effect) {
+            if (oldest.fault) {
+                for (int i = 0; i <= effect_slot && i < n - 1; ++i) {
+                    next[static_cast<size_t>(i)].valid = false;
+                }
+                stop_fetch_ = true;
+                state_.pending_exception = oldest.code;
+            } else if (oldest.taken) {
+                fetch_pc_ = oldest.target;
+                stop_fetch_ = false;
+            }
+            if (oldest.stop_fetch) stop_fetch_ = true;
+        }
+
+        regs_ = next;
+
+        if (stop_fetch_ && pipelineEmpty()) state_.halted = true;
+    }
+
+    void Cpu::step() {
+        if (state_.halted) return;
         ++cycles_;
-        if (!state_.halted) ++retired_;
+        tick();
+    }
+
+    void Cpu::stepInstruction() {
+        const uint64_t before = retired_;
+        for (int guard = 0; guard < 64 && !state_.halted && retired_ == before; ++guard) {
+            step();
+        }
     }
 
     void Cpu::run() {
-        while (!state_.halted) {
-            step();
-        }
+        while (!state_.halted) step();
     }
 
 } // namespace risc201

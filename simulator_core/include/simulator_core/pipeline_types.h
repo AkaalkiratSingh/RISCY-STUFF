@@ -1,5 +1,7 @@
 #pragma once
 
+#include "isa201.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -7,37 +9,33 @@
 namespace risc201 {
     enum class PipelineVariant { FourStage, SixStage };
 
-    enum class Action : uint8_t { IF = 0, ID, OF, EX, MEM, WB, Count };
+    inline constexpr size_t kMaxPipelineSlots = 6;
 
-    inline const char* actionName(Action a) {
-        switch (a) {
-        case Action::IF:    return "IF";
-        case Action::ID:    return "ID";
-        case Action::OF:    return "OF";
-        case Action::EX:    return "EX";
-        case Action::MEM:   return "MEM";
-        case Action::WB:    return "WB";
-        case Action::Count: break;
-        }
-        return "?";
-    }
+    struct Latch {
+        bool     valid = false;
+        uint32_t pc = 0;
+        uint32_t word = 0;
+        Instruction instr{};
+        bool     decoded = false;
+
+        int32_t  rs1_val = 0;
+        int32_t  rs2_val = 0;
+        int32_t  alu_result = 0;
+        int32_t  mem_data = 0;
+
+        uint32_t mem_sp_addr = 0;
+        uint32_t sp_commit = 0;
+        bool     writes_sp = false;
+
+        bool     redirect = false;
+        uint32_t next_pc = 0;
+        bool     fault = false;
+        ExceptionCode fault_code = ExceptionCode::NONE;
+    };
 
     struct StageSlot {
         const char* name;
         bool IF, ID, OF, EX, MEM, WB;
-
-        bool has(Action a) const {
-            switch (a) {
-            case Action::IF:    return IF;
-            case Action::ID:    return ID;
-            case Action::OF:    return OF;
-            case Action::EX:    return EX;
-            case Action::MEM:   return MEM;
-            case Action::WB:    return WB;
-            case Action::Count: break;
-            }
-            return false;
-        }
     };
 
     inline constexpr StageSlot kFourStageLayout[] = {
