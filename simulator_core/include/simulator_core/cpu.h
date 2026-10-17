@@ -41,6 +41,12 @@ namespace risc201 {
         PipelineVariant variant() const { return variant_; }
         void setForwarding(bool on) { forwarding_ = on; }
         bool forwarding() const { return forwarding_; }
+        void setTracing(bool on) { tracing_ = on; }
+        bool tracing() const { return tracing_; }
+        const PipelineTrace& trace() const { return trace_; }
+        const std::array<Latch, kMaxPipelineSlots>& stages() const { return regs_; }
+        uint32_t fetchPc() const { return fetch_pc_; }
+        bool fetching() const { return !stop_fetch_; }
         bool pipelineEmpty() const;
         int stageCount() const { return n_slots_; }
         int exceptionSlot() const { return ex_slot_; }
@@ -58,7 +64,7 @@ namespace risc201 {
         void applySlot(const StageSlot& slot, Latch& out, Effects& fx);
         void retire(const Latch& out);
         Latch fetchStage(bool stall);
-        bool wouldStall() const;
+        bool wouldStall(uint32_t* pc = nullptr) const;
         bool dependsOn(const Latch& candidate, const Latch& older) const;
         int32_t bypass(Register src, int32_t current) const;
         uint32_t bypassSp() const;
@@ -77,9 +83,11 @@ namespace risc201 {
         StackGuard stack_guard_;
         StageControlTable controls_;
         std::array<Latch, kMaxPipelineSlots> regs_{};
+        PipelineTrace trace_;
         uint32_t fetch_pc_ = 0;
         bool stop_fetch_ = false;
         bool forwarding_ = true;
+        bool tracing_ = false;
         int n_slots_ = 0;
         int ex_slot_ = 0;
 

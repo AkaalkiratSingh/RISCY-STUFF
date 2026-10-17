@@ -41,6 +41,7 @@ namespace risc201 {
 
     void Cpu::resetPipeline() {
         regs_.fill(Latch{});
+        trace_.clear();
         fetch_pc_ = 0;
         stop_fetch_ = false;
 
@@ -157,13 +158,14 @@ namespace risc201 {
         return state_.sp;
     }
 
-    bool Cpu::wouldStall() const {
+    bool Cpu::wouldStall(uint32_t* pc) const {
         Latch candidate;
 
         if (ex_slot_ == 1) {
             if (fetch_pc_ >= code_.size()) return false;
             candidate.valid = true;
             candidate.decoded = true;
+            candidate.pc = fetch_pc_;
             candidate.instr = decodeInstruction(code_[fetch_pc_]);
         } else {
             candidate = regs_[static_cast<size_t>(ex_slot_ - 2)];
@@ -174,12 +176,17 @@ namespace risc201 {
             if (i < 0) continue;
             const Latch& p = regs_[static_cast<size_t>(i)];
             if (!dependsOn(candidate, p)) continue;
-            if (!forwarding_) return true;
+
+            if (!forwarding_) {
+                if (pc) *pc = candidate.pc;
+                return true;
+            }
 
             // The producer that reaches EX/MEM exactly when this instruction runs
             // is past bypassing when its value is still in the memory stage.
             if (i == ex_slot_ - 1 &&
                 controls_[static_cast<uint8_t>(p.instr.opcode)].mem_to_reg) {
+                if (pc) *pc = candidate.pc;
                 return true;
             }
         }
@@ -311,9 +318,12 @@ namespace risc201 {
 
         std::array<Latch, kMaxPipelineSlots> next{};
 
-        const bool stall = !stop_fetch_ && wouldStall();
+        uint32_t stall_pc = 0;
+        const bool stall = !stop_fetch_ && wouldStall(&stall_pc);
 
         int effect_slot = -1;
+        uint32_t effect_pc = 0;
+        int discarded = 0;
         Effects oldest;
         bool have_effect = false;
 
@@ -343,7 +353,10 @@ namespace risc201 {
             if (i == n - 1) {
                 if (!wrong_path) retire(out);
             } else {
-                if (wrong_path) out = Latch{};
+                if (wrong_path) {
+                    if (out.valid) ++discarded;
+                    out = Latch{};
+                }
                 next[static_cast<size_t>(i)] = out;
             }
 
@@ -352,6 +365,7 @@ namespace risc201 {
                 oldest = here;
                 have_effect = true;
                 effect_slot = i;
+                effect_pc = out.pc;
             }
         }
 
@@ -362,11 +376,35 @@ namespace risc201 {
                 }
                 stop_fetch_ = true;
                 state_.pending_exception = oldest.code;
+                ++trace_.faults;
+                if (tracing_) {
+                    trace_.events.push_back(
+                        {cycles_, HazardKind::Fault, effect_pc, effect_slot, 0,
+                         effect_slot, discarded});
+                }
             } else if (oldest.taken) {
                 fetch_pc_ = oldest.target;
                 stop_fetch_ = false;
+                ++trace_.flushes;
+                trace_.flush_bubbles += static_cast<uint64_t>(effect_slot);
+                trace_.squashed += static_cast<uint64_t>(discarded);
+                if (tracing_) {
+                    trace_.events.push_back(
+                        {cycles_, HazardKind::Flush, effect_pc, effect_slot,
+                         oldest.target, effect_slot, discarded});
+                }
             }
             if (oldest.stop_fetch) stop_fetch_ = true;
+        }
+
+        // A redirect in the same clock already discards the slot the interlock
+        // was holding, so counting the stall too would double-count that clock.
+        if (stall && !(have_effect && oldest.taken)) {
+            ++trace_.stalls;
+            if (tracing_) {
+                trace_.events.push_back(
+                    {cycles_, HazardKind::Stall, stall_pc, ex - 1, 0, 0, 0});
+            }
         }
 
         regs_ = next;
