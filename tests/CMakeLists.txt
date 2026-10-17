@@ -33,3 +33,7 @@ add_test(NAME MemorySafetyTest COMMAND memory_safety_test)
 add_executable(control_decode_test control_decode_test.cpp)
 target_link_libraries(control_decode_test PRIVATE simulator_core_lib)
 add_test(NAME ControlDecodeTest COMMAND control_decode_test)
+
+add_executable(pipeline_test pipeline_test.cpp)
+target_link_libraries(pipeline_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME PipelineTest COMMAND pipeline_test)

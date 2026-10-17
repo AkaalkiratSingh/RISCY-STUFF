@@ -149,9 +149,7 @@ int main() {
         CHECK_EQ(std::string(six[4].name),  std::string("MEM"));
         CHECK_EQ(std::string(six[5].name),  std::string("WB"));
 
-        CHECK(four[0].has(Action::IF) &&
-              four[0].has(Action::ID) &&
-              four[0].has(Action::OF));
+        CHECK(four[0].IF && four[0].ID && four[0].OF);
 
         std::cout << "  ok    4-stage: " << stageNames(PipelineVariant::FourStage) << "\n";
         std::cout << "  ok    6-stage: " << stageNames(PipelineVariant::SixStage) << "\n";
