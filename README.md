@@ -63,7 +63,7 @@ This produces three executables:
 ### Run a program
 
 ```bash
-build/simulator_core/risc201-sim examples/11_fibonacci.asm
+build/simulator_core/risc201-sim examples/collatz.asm
 ```
 
 `.asm` input is assembled first. `.hex` and `.bin` input is decoded by the simulator itself. Output is the final register file, PC/SP, flags, cycle and retired-instruction counts, and any exception.
@@ -76,19 +76,21 @@ usage: risc201-sim <program.asm|program.hex|program.bin> [options]
   -s, --step      single-step, printing state after each instruction
   -d, --decode    print the decoded instruction listing before running
   -m, --mem S:C   dump C data-memory words starting at word index S
+      --trace         print the pipeline per clock, with hazard events
+      --no-forward stall on every dependency instead of bypassing
   -h, --help      show help
 ```
 
 ### Assemble to a file
 
 ```bash
-build/assembler/risc201-asm examples/17_recursive_sum.asm -o sum.hex
+build/assembler/risc201-asm examples/recursive_sum.asm -o sum.hex
 build/simulator_core/risc201-sim sum.hex
 ```
 
 ### Example program
 
-`examples/17_recursive_sum.asm` computes `sum(5)` recursively using `CALL`/`RET` and `PUSH`/`POP`:
+`examples/recursive_sum.asm` computes `sum(5)` recursively using `CALL`/`RET` and `PUSH`/`POP`:
 
 ```asm
 ADD R1, R0, 5 ; R1 = 5
@@ -111,7 +113,9 @@ zero:
 
 Result: `R2 = 15`, `SP` back at 4096.
 
-The `examples/` folder has 17 programs: arithmetic and logic, flags and overflow, memory round-trips, branches and loops, multiplication by repeated addition, Fibonacci, bit masks and shifts, and stack usage. `16_stack_overflow.asm` triggers `STACK_OVERFLOW` on purpose.
+The `examples/` folder has 13 programs. Most are real algorithms running from hundreds to tens of thousands of cycles: Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, plus recursion and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `STACK_OVERFLOW` on purpose.
+
+Every run prints a `pipeline:` line counting stalls, flushes and flush bubbles, and `--trace` prints the pipeline clock by clock. Those explain the cycle count exactly: `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`.
 
 ## The ISA
 
