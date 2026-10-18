@@ -14,6 +14,7 @@
 namespace {
 
 constexpr uint64_t kMaxStepSteps = 10'000'000;  // guard against runaway loops
+constexpr uint64_t kMaxTraceCycles = 4'000;     // guard against a flooding trace
 
 void printUsage(const char* prog) {
     std::cout
@@ -29,6 +30,7 @@ void printUsage(const char* prog) {
         << "  -s, --step      single-step, printing state after each instruction\n"
         << "  -d, --decode    print the decoded instruction listing before running\n"
         << "  -m, --mem S:C   dump C data-memory words starting at word index S\n"
+        << "      --trace         print the pipeline per clock, with hazard events\n"
         << "      --no-forward stall on every dependency instead of bypassing\n"
         << "  -h, --help      show this message\n";
 }
@@ -165,6 +167,49 @@ bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out) {
     return true;
 }
 
+std::string slotText(const risc201::Latch& l) {
+    if (!l.valid) return "-";
+    const risc201::Instruction instr =
+        l.decoded ? l.instr : risc201::decodeInstruction(l.word);
+    return std::to_string(l.pc) + " " + risc201::opcodeName(instr.opcode);
+}
+
+void printTraceHeader(risc201::PipelineVariant variant) {
+    const risc201::StageLayout layout = risc201::layoutFor(variant);
+    std::cout << "  cycle |";
+    for (size_t i = 0; i < layout.count; ++i) {
+        std::cout << " " << std::right << std::setw(12) << layout[i].name << " |";
+    }
+    std::cout << "\n";
+}
+
+void printTraceLine(const risc201::Cpu& cpu, size_t& event_cursor) {
+    const risc201::StageLayout layout = risc201::layoutFor(cpu.variant());
+    const auto& stages = cpu.stages();
+
+    std::cout << "  " << std::right << std::setw(5) << cpu.cycles() << " |";
+    for (size_t i = 0; i < layout.count; ++i) {
+        std::string text;
+        if (i == 0) {
+            text = cpu.fetching() ? "@" + std::to_string(cpu.fetchPc()) : "-";
+        } else {
+            text = slotText(stages[i - 1]);
+        }
+        std::cout << " " << std::left << std::setw(12) << text << " |";
+    }
+
+    const auto& events = cpu.trace().events;
+    for (; event_cursor < events.size(); ++event_cursor) {
+        const risc201::HazardEvent& e = events[event_cursor];
+        std::cout << " " << risc201::hazardName(e.kind) << " pc=" << e.pc;
+        if (e.kind == risc201::HazardKind::Flush) {
+            std::cout << " -> " << e.target << " (depth " << e.depth
+                      << ", squashed " << e.discarded << ")";
+        }
+    }
+    std::cout << "\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -174,6 +219,7 @@ int main(int argc, char** argv) {
     bool decode_listing = false;
     bool dump_mem = false;
     bool forwarding = true;
+    bool trace_mode = false;
     uint32_t mem_start = 0;
     uint32_t mem_count = 0;
 
@@ -193,6 +239,8 @@ int main(int argc, char** argv) {
             decode_listing = true;
         } else if (arg == "--no-forward") {
             forwarding = false;
+        } else if (arg == "--trace") {
+            trace_mode = true;
         } else if (arg == "-m" || arg == "--mem") {
             if (i + 1 >= argc || !parseRange(argv[++i], mem_start, mem_count)) {
                 std::cerr << "error: --mem expects START:COUNT (e.g. 0:16)\n";
@@ -220,6 +268,7 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> words;
     risc201::Cpu cpu(variant);
     cpu.setForwarding(forwarding);
+    cpu.setTracing(trace_mode);
 
     // --- load -------------------------------------------------------------
     if (kind == InputKind::Assembly) {
@@ -282,7 +331,21 @@ int main(int argc, char** argv) {
     }
 
     // --- run --------------------------------------------------------------
-    if (step_mode) {
+    if (trace_mode) {
+        std::cout << "\n--- pipeline trace: " << risc201::variantName(variant)
+                  << (forwarding ? " (forwarding)" : " (no forwarding)") << " ---\n";
+        printTraceHeader(variant);
+        size_t event_cursor = 0;
+        uint64_t clock = 0;
+        while (!cpu.state().halted && clock < kMaxTraceCycles) {
+            cpu.step();
+            ++clock;
+            printTraceLine(cpu, event_cursor);
+        }
+        if (!cpu.state().halted) {
+            std::cout << "  (trace stopped after " << kMaxTraceCycles << " cycles)\n";
+        }
+    } else if (step_mode) {
         uint64_t steps = 0;
         while (!cpu.state().halted && steps < kMaxStepSteps) {
             std::cout << "--- step @ PC=" << cpu.state().pc << " ---\n";
@@ -298,6 +361,15 @@ int main(int argc, char** argv) {
     std::cout << "\nHalted: " << (cpu.state().halted ? "yes" : "no")
               << "   retired " << cpu.retired() << " instruction(s)"
               << "   in " << cpu.cycles() << " cycle(s)\n";
+
+    const risc201::PipelineTrace& hazards = cpu.trace();
+    std::cout << "  pipeline: " << risc201::variantName(cpu.variant())
+              << (cpu.forwarding() ? ", forwarding" : ", no forwarding")
+              << "   stalls " << hazards.stalls
+              << "   flushes " << hazards.flushes
+              << " (" << hazards.flush_bubbles << " bubble(s), "
+              << hazards.squashed << " squashed)"
+              << "   faults " << hazards.faults << "\n";
 
     if (cpu.state().pending_exception) {
         std::cout << "EXCEPTION: "
