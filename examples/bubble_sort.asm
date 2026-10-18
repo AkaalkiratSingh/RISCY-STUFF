@@ -1,5 +1,5 @@
 ; Bubble sort of 10 words, in place. Heavy on LOAD->use hazards.
-; Run with: risc201-sim 22_bubble_sort.asm --mem 0:10
+; Run with: risc201-sim bubble_sort.asm --mem 0:10
 ; Expected: MEM[0..9] = 3 7 15 28 36 42 51 64 80 93
 
 ADD R1, R0, 93

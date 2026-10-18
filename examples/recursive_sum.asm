@@ -1,4 +1,3 @@
-; 17_recursive_sum.asm
 ; Recursive sum(n) = n + sum(n-1): CALL/RET for recursion, PUSH/POP to keep n.
 ; Expected: R1=5  R2=15 (sum of 1..5)  SP=4096
 

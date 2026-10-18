@@ -1,5 +1,5 @@
 ; Sieve of Eratosthenes below 100. MEM[k] = 1 marks k as composite.
-; Run with: risc201-sim 21_sieve.asm --mem 0:100
+; Run with: risc201-sim sieve.asm --mem 0:100
 ; Expected: R8=25 (primes below 100)
 
 ADD R1, R0, 2
