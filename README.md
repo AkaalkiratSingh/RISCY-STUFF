@@ -203,11 +203,13 @@ ctest --test-dir build --output-on-failure
 |------|--------|
 | `AluTest` | ALU operations, flags, multiplication |
 | `ControlUnitTest` | Microcode routines and control words |
+| `ControlDecodeTest` | Collapsing each micro-routine into one action-tagged control bundle |
 | `DecodeTest` | Instruction decoding |
 | `Pass1Test`, `Pass2Test` | Assembler label pass and resolve/encode pass |
 | `EncoderTest` | Instruction word encoding |
 | `MemorySafetyTest` | Stack guard bounds and exceptions |
 | `CpuIntegrationTest` | End-to-end program execution |
+| `PipelineTest` | Variant equivalence, cycle accounting and hazard counters |
 
 ## Status and roadmap
 
@@ -218,11 +220,13 @@ ctest --test-dir build --output-on-failure
 - [x] Stack guard with overflow/underflow detection
 - [x] Two-pass assembler with `.bin` / `.hex` output
 - [x] Decoder, CPU execution loop and simulator CLI
+- [x] Pipelined datapath: 4-stage (`IF/ID/OF → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
+- [x] Operand forwarding (bypassing), with `--no-forward` as a stall-everything comparison mode
+- [x] Per-cycle pipeline trace and hazard counters (`--trace`), reconciling `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`
 
 **In progress / planned**
-- [ ] Pipeline modelling: the 4-stage and 6-stage variants can be selected, but execution is currently one instruction at a time
-- [ ] Debugger: breakpoints and watchpoints are stubbed, not yet wired up
-- [ ] Per-cycle microPC and control-word display
+- [ ] Debugger: breakpoints and watchpoints are stubbed, not yet wired up (`stepInstruction` works; `continueExecution`, `reset` and `printMemory` are TODO)
+- [ ] Control-unit display: `--trace` shows the pipeline slot by slot, but the microPC, the packed control word and the signal bundle are not shown
 - [ ] Wire the stack visualizer into the simulator output
 - [ ] Complete the ISA, with end to end implementation
 - [ ] Vertical microcode encoding 
