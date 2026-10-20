@@ -1,6 +1,6 @@
 #pragma once
 
-#include "control_unit/control_unit.h"
+#include "control_unit/horizontal_control_unit.h"
 #include "simulator_core/pipeline_types.h"
 
 #include <array>

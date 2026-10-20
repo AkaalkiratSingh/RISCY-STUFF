@@ -2,7 +2,7 @@
 
 #include "isa201.h"
 #include "alu/alu.h"
-#include "control_unit/control_unit.h"
+#include "control_unit/horizontal_control_unit.h"
 #include "memory_safety/stack_guard.h"
 #include "simulator_core/control_decode.h"
 #include "simulator_core/pipeline_types.h"
