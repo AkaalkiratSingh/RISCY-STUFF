@@ -3,7 +3,7 @@
 
 namespace risc201 {
 
-void Debugger::stepInstruction() { cpu_.step(); }
+void Debugger::stepInstruction() { cpu_.stepInstruction(); }
 
 void Debugger::continueExecution() {
     // TODO(Akaal): run until halt, exception, or a hit breakpoint.
