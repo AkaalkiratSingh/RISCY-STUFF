@@ -1,4 +1,5 @@
 #include "alu/alu.h"
+#include <cstdint>
 
 namespace risc201 {
 
@@ -133,6 +134,67 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             break;
         }
 
+        // --- DIVISION AND REMAINDER ---
+        case Opcode::DIV:
+        case Opcode::REM: {
+            // 1. Handle Divide by Zero
+            if (rhs == 0) {
+                res = 0; 
+                // TODO: Signal ExceptionCode::DIVIDE_BY_ZERO to control unit
+                break;
+            }
+
+            // 2. Handle Overflow (INT32_MIN / -1)
+            if (lhs == INT32_MIN && rhs == -1) {
+                if (op == Opcode::DIV) {
+                    res = static_cast<uint32_t>(INT32_MIN); 
+                } else {
+                    res = 0; // Remainder is 0 for this overflow case
+                }
+                break;
+            }
+
+            // 3. Extract signs
+            bool neg_lhs = (lhs < 0);
+            bool neg_rhs = (rhs < 0);
+            bool neg_quotient = neg_lhs ^ neg_rhs; // Quotient is neg if signs differ
+
+            // Convert to absolute values
+            uint32_t u_lhs = neg_lhs ? (0u - static_cast<uint32_t>(lhs)) : static_cast<uint32_t>(lhs);
+            uint32_t u_rhs = neg_rhs ? (0u - static_cast<uint32_t>(rhs)) : static_cast<uint32_t>(rhs);
+
+            // 4. Bitwise Restoring Division Loop
+            uint32_t quotient = 0;
+            uint32_t remainder = 0;
+
+            for (int i = 31; i >= 0; --i) {
+                // Shift remainder left and bring down the next bit
+                remainder = (remainder << 1) | ((u_lhs >> i) & 1);
+                // Shift quotient left
+                quotient = quotient << 1;
+
+                // If Remainder >= Divisor, subtract using your CLA Adder
+                if (remainder >= u_rhs) {
+                    bool carry_out_div; 
+                    // remainder = remainder - u_rhs
+                    remainder = carryLookaheadAdder(remainder, ~u_rhs, true, carry_out_div);
+                    // Set LSB of quotient to 1
+                    quotient |= 1;
+                }
+            }
+
+            // 5. Apply signs and assign the correct result based on the Opcode
+            if (op == Opcode::DIV) {
+                res = neg_quotient ? (0u - quotient) : quotient;
+            } else { // Opcode::REM
+                // In C/C++ and most ISAs, the remainder takes the sign of the dividend (lhs)
+                res = neg_lhs ? (0u - remainder) : remainder;
+            }
+            
+            break;
+        }
+        // ------------------------------
+
         case Opcode::AND: res = a & b; break;
         case Opcode::OR:  res = a | b; break;
         case Opcode::XOR: res = a ^ b; break;
@@ -191,4 +253,4 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
     return r;
 }
 
-} 
+} // namespace risc201
