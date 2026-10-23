@@ -23,7 +23,9 @@ namespace risc201 {
 
     class Cpu {
     public:
-        explicit Cpu(PipelineVariant variant, uint32_t memory_words = kDefaultMemoryWords);
+        explicit Cpu(PipelineVariant variant,
+                     uint32_t memory_words = kDefaultMemoryWords,
+                     MicrocodeEncoding encoding = MicrocodeEncoding::Horizontal);
 
         void loadWords(const std::vector<uint32_t>& words);
 
@@ -39,6 +41,7 @@ namespace risc201 {
         uint64_t retired() const { return retired_; }
 
         PipelineVariant variant() const { return variant_; }
+        MicrocodeEncoding encoding() const { return encoding_; }
         void setForwarding(bool on) { forwarding_ = on; }
         bool forwarding() const { return forwarding_; }
         void setTracing(bool on) { tracing_ = on; }
@@ -75,6 +78,7 @@ namespace risc201 {
         bool writeMemory(int64_t address, int32_t value);
 
         PipelineVariant variant_;
+        MicrocodeEncoding encoding_;
         CpuState state_;
         std::vector<uint32_t> code_;
         std::vector<int32_t> memory_;
