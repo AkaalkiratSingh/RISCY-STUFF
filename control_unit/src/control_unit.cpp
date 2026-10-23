@@ -1,4 +1,5 @@
-#include "control_unit/control_unit.h"
+#include "control_unit/horizontal_control_unit.h"
+#include "utils/utils.h"
 
 #include <iomanip>
 #include <map>
@@ -7,13 +8,13 @@
 namespace risc201 {
     namespace {
 
-        MicroOp fetchRow() {          // μ1: sequential fetch, PC <- PC + 1
+        MicroOp fetchRow() {          
             MicroOp m;
             m.ctl.pc_inc = true;
             return m;
         }
 
-        MicroOp aluRow(Opcode fn) {   // execute, operand B from rs2, latch flags
+        MicroOp aluRow(Opcode fn) {   
             MicroOp m;
             m.ctl.alu_enable = true;
             m.ctl.flag_update = true;
@@ -48,19 +49,11 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp pushRow() {
+        MicroOp pushWriteRow() {      // MEM[SP] <- selected register; guard checks SP first
             MicroOp m;
-            m.ctl.sp_dec = true;
             m.ctl.mem_write = true;
-            return m;
-        }
-
-        MicroOp popRow() {
-            MicroOp m;
-            m.ctl.mem_read = true;
-            m.ctl.sp_inc = true;
-            m.ctl.reg_write = true;
-            m.ctl.mem_to_reg = true;
+            m.ctl.mem_addr_sp = true;
+            m.ctl.stack_check = true;
             return m;
         }
 
@@ -156,33 +149,6 @@ namespace risc201 {
             return "?";
         }
 
-        const char* opName(Opcode op) {
-            switch (op) {
-                case Opcode::NOP:   return "NOP";
-                case Opcode::ADD:   return "ADD";
-                case Opcode::SUB:   return "SUB";
-                case Opcode::AND:   return "AND";
-                case Opcode::OR:    return "OR";
-                case Opcode::XOR:   return "XOR";
-                case Opcode::SHL:   return "SHL";
-                case Opcode::SHR:   return "SHR";
-                case Opcode::LOAD:  return "LOAD";
-                case Opcode::STORE: return "STORE";
-                case Opcode::JMP:   return "JMP";
-                case Opcode::BEQ:   return "BEQ";
-                case Opcode::CALL:  return "CALL";
-                case Opcode::RET:   return "RET";
-                case Opcode::PUSH:  return "PUSH";
-                case Opcode::POP:   return "POP";
-                case Opcode::NOT:   return "NOT";
-                case Opcode::SAR:   return "SAR";
-                case Opcode::CMP:   return "CMP";
-                case Opcode::MOV:   return "MOV";
-                case Opcode::HALT:  return "HALT";
-            }
-            return "?";
-        }
-
         std::string signalList(const ControlWord& w) {
             std::string s;
             auto add = [&s](bool on, const char* name) {
@@ -193,7 +159,7 @@ namespace risc201 {
             add(w.alu_enable, "alu_enable");
             if (w.alu_enable) {
                 s += ' ';
-                s += std::string("alu_op=") + opName(w.alu_op);
+                s += std::string("alu_op=") + opcodeName(w.alu_op);
             }
             add(w.alu_src_imm,  "alu_src_imm");
             add(w.flag_update,  "flag_update");
@@ -287,11 +253,24 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { stackPopReadRow(), pcFromMemRow(), spIncRow() });
 
-        // PUSH: decrease SP, then write the selected register to the stack.
-        appendRoutine(Opcode::PUSH, { fetchRow(), pushRow() });
+        // PUSH: make room, then write the selected register to the stack.
+        appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
 
-        // POP: read the stack word, increase SP, then write it to the selected register.
-        appendRoutine(Opcode::POP, { fetchRow(), popRow() });
+        // POP: read the stack word, write it back, then release the slot.
+        appendRoutine(Opcode::POP,
+            { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
+
+        // ---- Remaining ALU-class instructions (appended last so no existing address moves) ----
+
+        // NOT rd, rs (unary: uses rs1 only), SAR (arithmetic shift right), MUL:
+        // same fetch -> execute -> writeback shape as the other ALU ops, flags updated.
+        appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
+        appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
+        appendRoutine(Opcode::MUL, aluRoutine(Opcode::MUL));
+
+        // CMP rs1, rs2: compute rs1 - rs2 only to set the flags. No writeback row,
+        // so no register is modified.
+        appendRoutine(Opcode::CMP, { fetchRow(), aluRow(Opcode::CMP) });
     }
 
     // Appends `routine` contiguously at the end of CM and returns its base address, rewriting each row's `next` to chain through the block.
@@ -418,7 +397,7 @@ namespace risc201 {
         std::map<int, std::string> labels;
         if (!cm_.empty()) labels[illegal_entry_] = "ILLEGAL";
         for (const auto& [opc, addr] : entries_) {
-            labels[addr] = opName(static_cast<Opcode>(opc));
+            labels[addr] = opcodeName(static_cast<Opcode>(opc));
         }
 
         std::ostringstream os;
