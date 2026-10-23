@@ -1,4 +1,3 @@
-// RISC201 shared ISA contract.
 #pragma once
 
 #include <cstdint>
@@ -6,10 +5,10 @@
 
 namespace risc201 {
 
-constexpr int kWordSizeBits      = 32;
-constexpr int kNumGPRegisters    = 16;
-constexpr int kInstructionBits   = 32;
-constexpr int kDefaultMemoryWords = 4096; // TODO: confirm final size w/ Core Engine + Memory leads
+constexpr int kWordSizeBits         = 32;
+constexpr int kNumGPRegisters       = 16;
+constexpr int kInstructionBits      = 32;
+constexpr int kDefaultMemoryWords   = 4096; // TODO: confirm final size w/ Core Engine + Memory leads
 
 enum class Register : uint8_t {
     R0 = 0, R1, R2, R3, R4, R5, R6, R7,
@@ -21,11 +20,13 @@ struct Flags {
     bool negative = false;
     bool carry    = false;
     bool overflow = false;
+    bool equal    = false;       
+    bool greaterThan = false;
 };
 
 enum class InstrFormat : uint8_t {
-    RI_TYPE, // reg-reg-reg/immediate
-    J_TYPE, // opcode + 26-bit address/offset
+    RI_TYPE,    // opcode + reg-reg-reg/immediate
+    J_TYPE,     // opcode + 26-bit address/offset
 };
 
 enum class Opcode : uint8_t {
@@ -45,6 +46,13 @@ enum class Opcode : uint8_t {
     RET  = 0x0D,
     PUSH = 0x0E,
     POP  = 0x0F,
+    NOT  = 0x10, 
+    SAR  = 0x11, 
+    CMP  = 0x12, 
+    MOV  = 0x13,
+    MUL  = 0x14,
+    DIV  = 0x15,
+    REM  = 0x16, 
     HALT = 0x1F,
 };
 

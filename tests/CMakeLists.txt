@@ -1,3 +1,15 @@
+add_executable(control_unit_test control_unit_test.cpp)
+target_link_libraries(control_unit_test PRIVATE control_unit)
+add_test(NAME ControlUnitTest COMMAND control_unit_test)
+
+add_executable(cpu_integration_test cpu_integration_test.cpp)
+target_link_libraries(cpu_integration_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME CpuIntegrationTest COMMAND cpu_integration_test)
+
+add_executable(decode_test decode_test.cpp)
+target_link_libraries(decode_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME DecodeTest COMMAND decode_test)
+
 add_executable(pass1_test pass1_test.cpp)
 target_link_libraries(pass1_test PRIVATE assembler_lib)
 add_test(NAME Pass1Test COMMAND pass1_test)
@@ -13,3 +25,19 @@ add_test(NAME EncoderTest COMMAND encoder_test)
 add_executable(disassembler_test disassembler_test.cpp)
 target_link_libraries(disassembler_test PRIVATE assembler_lib)
 add_test(NAME DisassemblerTest COMMAND disassembler_test)
+
+add_executable(test_alu test_alu.cpp)
+target_link_libraries(test_alu PRIVATE alu)
+add_test(NAME AluTest COMMAND test_alu)
+
+add_executable(memory_safety_test memory_safety_test.cpp)
+target_link_libraries(memory_safety_test PRIVATE simulator_core_lib)
+add_test(NAME MemorySafetyTest COMMAND memory_safety_test)
+
+add_executable(control_decode_test control_decode_test.cpp)
+target_link_libraries(control_decode_test PRIVATE simulator_core_lib)
+add_test(NAME ControlDecodeTest COMMAND control_decode_test)
+
+add_executable(pipeline_test pipeline_test.cpp)
+target_link_libraries(pipeline_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME PipelineTest COMMAND pipeline_test)
