@@ -29,12 +29,15 @@ namespace risc201 {
 
     }
 
-    Cpu::Cpu(PipelineVariant variant, uint32_t memory_words) :
+    Cpu::Cpu(PipelineVariant variant, uint32_t memory_words, MicrocodeEncoding encoding) :
         variant_(variant),
+        encoding_(encoding),
         memory_(memory_words, 0),
         control_unit_(MicrocodeEncoding::Horizontal),
         stack_guard_(memory_words, 0),
-        controls_(buildStageControls(control_unit_)) {
+        controls_(encoding == MicrocodeEncoding::Vertical
+                      ? buildStageControls(VerticalControlUnit{})
+                      : buildStageControls(control_unit_)) {
         state_.sp = memory_words;
         resetPipeline();
     }

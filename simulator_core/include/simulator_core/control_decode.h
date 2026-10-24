@@ -1,6 +1,7 @@
 #pragma once
 
 #include "control_unit/horizontal_control_unit.h"
+#include "control_unit/vertical_control_unit.h"
 #include "simulator_core/pipeline_types.h"
 
 #include <array>
@@ -38,7 +39,8 @@ namespace risc201 {
 
     using StageControlTable = std::array<StageControls, 256>;
     StageControlTable buildStageControls(const ControlUnit& cu);
-
+    StageControls controlFor(const VerticalControlUnit& cu, Opcode op);
+    StageControlTable buildStageControls(const VerticalControlUnit& cu);
 
     std::vector<int> reachableRows(const ControlUnit& cu, Opcode op);
     std::string controlProblem(const ControlUnit& cu, Opcode op);
