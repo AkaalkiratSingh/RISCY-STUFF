@@ -346,6 +346,26 @@ void testFileRoundtripHex() {
     std::cout << "testFileRoundtripHex passed\n";
 }
 
+void testDisassembleWithLabels() {
+    Instruction i0; i0.opcode = Opcode::ADD; i0.format = InstrFormat::RI_TYPE;
+    i0.I = false; i0.rd = Register::R1; i0.rs1 = Register::R2; i0.rs2 = Register::R3;
+
+    Instruction i1; i1.opcode = Opcode::JMP; i1.format = InstrFormat::J_TYPE;
+    i1.imm = -8;  // JMP is at address 4, so target = 4 + 4 - 8 = 0
+
+    Disassembler disasm;
+    std::vector<Instruction> program = { i0, i1 };
+    std::vector<std::string> lines = disasm.disassembleWithLabels(program);
+
+    // Expect: a label line before instruction 0, JMP referencing that label.
+    assert(lines.size() == 3);  // label line + 2 instructions
+    assert(lines[0].back() == ':');
+    assert(lines[1] == "ADD R1, R2, R3");
+    assert(lines[2].substr(0, 4) == "JMP ");
+    assert(lines[2].find(lines[0].substr(0, lines[0].size() - 1)) != std::string::npos);
+    std::cout << "testDisassembleWithLabels passed\n";
+}
+
 int main() {
     testDecodeRType();
     testDecodeIType();
@@ -366,6 +386,8 @@ int main() {
     testFullPipelineRoundtrip();
     testFileRoundtripBinary();
     testFileRoundtripHex();
+
+    testDisassembleWithLabels();
 
     std::cout << "All disassembler tests passed.\n";
     return 0;

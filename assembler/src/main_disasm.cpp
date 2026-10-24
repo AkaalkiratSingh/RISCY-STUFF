@@ -3,24 +3,31 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include<vector>
+#include <vector>
 
 int main(int argc, char** argv) {
-    if (argc != 2 && argc != 4) {
-        std::cerr << "usage: risc201-disasm <input.bin/input.hex> [-o output.asm]\n";
-        return 1;
-    }
-
-    std::string input_path = argv[1];
+    std::string input_path;
     std::string output_path;
+    bool use_labels = false;
 
-    if (argc == 2) output_path = "a.asm";
-    else if (argc == 4 && std::string(argv[2]) == "-o") output_path = argv[3];
-    else {
-        std::cerr << "usage: risc201-asm <input.asm> [-o output.bin/output.hex]\n";
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+
+        if (arg == "-o" && i + 1 < argc) {
+            output_path = argv[++i];
+        } else if (arg == "-l") {
+            use_labels = true;
+        } else if (input_path.empty()) {
+            input_path = arg;
+        }
+    }
+
+    if (input_path.empty()) {
+        std::cerr << "usage: risc201-disasm <input.bin/input.hex> [-o output.asm] [-l]\n";
         return 1;
     }
-    
+    if (output_path.empty()) output_path = "a.asm";
+
     bool is_hex = input_path.size() >= 4 && (input_path.compare(input_path.size() - 4, 4, ".hex") == 0);
 
     risc201::Disassembler disassembler;
@@ -38,10 +45,12 @@ int main(int argc, char** argv) {
     std::vector<risc201::Instruction> program = disassembler.decodeProgram(words);
 
     for (const auto& [index, word] : disassembler.decodeErrors()) {
-        std::cerr << "warning: word " << index << " (0x" << std::hex << word << std::dec << ") has an unrecognized opcode, skipped\n";
+        std::cerr << "warning: word " << index << " (0x" << std::hex << word << std::dec << ") has an unrecognized opcode, emitted as '; unknown opcode'\n";
     }
 
-    std::vector<std::string> lines = disassembler.disassemble(program);
+    std::vector<std::string> lines;
+    if (use_labels) lines = disassembler.disassembleWithLabels(program);
+    else lines = disassembler.disassemble(program);
 
     std::ofstream out(output_path);
     if (!out) {
@@ -51,7 +60,7 @@ int main(int argc, char** argv) {
     for (const auto& line : lines) {
         out << line << "\n";
     }
-    std::cout << "Disassembled " << lines.size() << " instruction(s) -> " << output_path << "\n";
+    std::cout << "Disassembled " << program.size() << " instruction(s) -> " << output_path << "\n";
 
     return 0;
 }

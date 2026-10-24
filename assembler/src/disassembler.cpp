@@ -1,6 +1,9 @@
 #include "assembler/disassembler.h"
 
 #include <fstream>
+#include <algorithm>
+#include <iomanip>
+#include <sstream>
 
 namespace risc201 {
 
@@ -151,10 +154,139 @@ namespace risc201 {
         return result;
     }
 
+    std::string Disassembler::formatInstructionWithLabels(const Instruction& instr, int32_t address, const std::unordered_map<int32_t, std::string>& label_map) {
+        auto name_it = opcodeToMnemonic().find(instr.opcode);
+        if (name_it == opcodeToMnemonic().end()) {
+            return "; unknown opcode";
+        }
+        const std::string& mnemonic = name_it->second;
+
+        auto info_it = opTable().find(mnemonic);
+        const OpInfo& info = info_it->second;
+
+        std::vector<std::string> operand_strs;
+        size_t reg_slot_idx = 0;
+
+        for (OperandKind kind : info.operand_kinds) {
+            switch (kind) {
+                case OperandKind::REG: {
+                    Register r;
+                    if (reg_slot_idx == 0) r = instr.rd;
+                    else if (reg_slot_idx == 1) r = instr.rs1;
+                    else r = instr.rs2;
+                    operand_strs.push_back(regName(r));
+                    ++reg_slot_idx;
+
+                    break;
+                }
+                case OperandKind::REG_OR_IMM: {
+                    if (instr.I) {
+                        operand_strs.push_back(std::to_string(instr.imm));
+                    }
+                    else {
+                        Register r;
+                        if (reg_slot_idx == 0) r = instr.rd;
+                        else if (reg_slot_idx == 1) r = instr.rs1;
+                        else r = instr.rs2;
+                        operand_strs.push_back(regName(r));
+                        ++reg_slot_idx;
+                    }
+
+                    break;
+                }
+                case OperandKind::IMM: {
+                    operand_strs.push_back(std::to_string(instr.imm));
+
+                    break;
+                }
+                case OperandKind::MEM: {
+                    operand_strs.push_back(std::to_string(instr.imm) + "[" + regName(instr.rs1) + "]");
+
+                    break;
+                }
+                case OperandKind::LABEL: {
+                    int32_t target = address + 4 + instr.imm;
+                    auto label_it = label_map.find(target);
+                    if (label_it != label_map.end()) {
+                        operand_strs.push_back(label_it->second);
+                    }
+                    else {
+                        operand_strs.push_back(std::to_string(instr.imm));
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        std::string result = mnemonic;
+        for (size_t i = 0; i < operand_strs.size(); ++i) {
+            if (i == 0) result += " ";
+            else result += ", ";
+            result += operand_strs[i];
+        }
+
+        return result;
+    }
+
     std::vector<std::string> Disassembler::disassemble(const std::vector<Instruction>& program) {
         std::vector<std::string> lines;
         for (const auto& instr : program) {
             lines.push_back(formatInstruction(instr));
+        }
+
+        return lines;
+    }
+
+    std::vector<std::string> Disassembler::disassembleWithLabels(const std::vector<Instruction>& program) {
+        std::vector<int32_t> target_addresses;
+        std::unordered_map<int32_t, bool> seen_target;
+
+        for (size_t i = 0; i < program.size(); ++i) {
+            const Instruction& instr = program[i];
+            int32_t address = static_cast<int32_t>(i * 4);
+
+            auto name_it = opcodeToMnemonic().find(instr.opcode);
+            if (name_it == opcodeToMnemonic().end()) continue;
+
+            auto info_it = opTable().find(name_it->second);
+            const OpInfo& info = info_it->second;
+
+            bool uses_label = false;
+            for (OperandKind kind : info.operand_kinds) {
+                if (kind == OperandKind::LABEL) {
+                    uses_label = true;
+                    break;
+                }
+            }
+            if (!uses_label) continue;
+
+            int32_t target = address + 4 + instr.imm;
+            if (!seen_target[target]) {
+                seen_target[target] = true;
+                target_addresses.push_back(target);
+            }
+        }
+
+        std::sort(target_addresses.begin(), target_addresses.end());
+
+        std::unordered_map<int32_t, std::string> label_map;
+        for (size_t i = 0; i < target_addresses.size(); ++i) {
+            std::ostringstream name;
+            name << "L" << std::setfill('0') << std::setw(4) << std::hex << target_addresses[i];
+            label_map[target_addresses[i]] = name.str();
+        }
+
+        std::vector<std::string> lines;
+        for (size_t i = 0; i < program.size(); ++i) {
+            int32_t address = static_cast<int32_t>(i * 4);
+
+            auto label_it = label_map.find(address);
+            if (label_it != label_map.end()) {
+                lines.push_back(label_it->second + ":");
+            }
+
+            lines.push_back(formatInstructionWithLabels(program[i], address, label_map));
         }
 
         return lines;
