@@ -43,56 +43,84 @@ namespace risc201 {
 
     }
 
-    std::vector<int> reachableRows(const ControlUnit& cu, Opcode op) {
-        std::vector<int> out;
+    namespace {
 
-        const auto& cm = cu.controlMemory();
-        if (cm.empty()) return out;
+        // shared by the horizontal and the vertical control unit.
+        template <class Unit>
+        std::vector<int> reachableRowsOf(const Unit& cu, Opcode op) {
+            std::vector<int> out;
 
-        std::vector<bool> seen(cm.size(), false);
-        std::vector<int> pending{ cu.routineEntry(op) };
+            const auto& cm = cu.controlMemory();
+            if (cm.empty()) return out;
 
-        while (!pending.empty()) {
-            const int addr = pending.back();
-            pending.pop_back();
+            std::vector<bool> seen(cm.size(), false);
+            std::vector<int> pending{ cu.routineEntry(op) };
 
-            if (addr < 0 || static_cast<size_t>(addr) >= cm.size()) continue;
-            if (seen[static_cast<size_t>(addr)]) continue;
-            seen[static_cast<size_t>(addr)] = true;
-            out.push_back(addr);
+            while (!pending.empty()) {
+                const int addr = pending.back();
+                pending.pop_back();
 
-            const MicroOp& row = cm[static_cast<size_t>(addr)];
-            if (row.next != kMicroEnd) pending.push_back(row.next);
+                if (addr < 0 || static_cast<size_t>(addr) >= cm.size()) continue;
+                if (seen[static_cast<size_t>(addr)]) continue;
+                seen[static_cast<size_t>(addr)] = true;
+                out.push_back(addr);
 
-            if (row.cond != BranchCond::None && row.branch_target != kMicroEnd) {
-                pending.push_back(row.branch_target);
+                const MicroOp& row = cm[static_cast<size_t>(addr)];
+                if (row.next != kMicroEnd) pending.push_back(row.next);
+
+                if (row.cond != BranchCond::None && row.branch_target != kMicroEnd) {
+                    pending.push_back(row.branch_target);
+                }
             }
+
+            std::sort(out.begin(), out.end());
+            return out;
         }
 
-        std::sort(out.begin(), out.end());
-        return out;
-    }
+        template <class Unit>
+        StageControls controlForUnit(const Unit& cu, Opcode op) {
+            StageControls sc;
 
-    StageControls controlFor(const ControlUnit& cu, Opcode op) {
-        StageControls sc;
+            if (cu.controlMemory().empty()) {
+                sc.halting = true;
+                return sc;
+            }
 
-        if (cu.controlMemory().empty()) {
-            sc.halting = true;
+            for (int addr : reachableRowsOf(cu, op)) {
+                mergeRow(sc, cu.controlMemory()[static_cast<size_t>(addr)]);
+            }
             return sc;
         }
 
-        for (int addr : reachableRows(cu, op)) {
-            mergeRow(sc, cu.controlMemory()[static_cast<size_t>(addr)]);
+        template <class Unit>
+        StageControlTable buildTableOf(const Unit& cu) {
+            StageControlTable table{};
+            for (int i = 0; i < 256; ++i) {
+                table[static_cast<size_t>(i)] = controlForUnit(cu, static_cast<Opcode>(i));
+            }
+            return table;
         }
-        return sc;
+
+    }
+
+    std::vector<int> reachableRows(const ControlUnit& cu, Opcode op) {
+        return reachableRowsOf(cu, op);
+    }
+
+    StageControls controlFor(const ControlUnit& cu, Opcode op) {
+        return controlForUnit(cu, op);
     }
 
     StageControlTable buildStageControls(const ControlUnit& cu) {
-        StageControlTable table{};
-        for (int i = 0; i < 256; ++i) {
-            table[static_cast<size_t>(i)] = controlFor(cu, static_cast<Opcode>(i));
-        }
-        return table;
+        return buildTableOf(cu);
+    }
+
+    StageControls controlFor(const VerticalControlUnit& cu, Opcode op) {
+        return controlForUnit(cu, op);
+    }
+
+    StageControlTable buildStageControls(const VerticalControlUnit& cu) {
+        return buildTableOf(cu);
     }
 
     std::string controlProblem(const ControlUnit& cu, Opcode op) {
