@@ -8,6 +8,9 @@ namespace risc201 {
             case Opcode::ADD:   return "ADD";
             case Opcode::SUB:   return "SUB";
             case Opcode::AND:   return "AND";
+            case Opcode::MUL:   return "MUL";
+            case Opcode::DIV:   return "DIV";
+            case Opcode::REM:   return "REM";
             case Opcode::OR:    return "OR";
             case Opcode::XOR:   return "XOR";
             case Opcode::SHL:   return "SHL";
@@ -24,7 +27,6 @@ namespace risc201 {
             case Opcode::SAR:   return "SAR";
             case Opcode::CMP:   return "CMP";
             case Opcode::MOV:   return "MOV";
-            case Opcode::MUL:   return "MUL";
             case Opcode::HALT:  return "HALT";
         }
         return "?";
