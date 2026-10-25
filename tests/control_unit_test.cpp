@@ -4,7 +4,7 @@
 //
 // No CPU involved yet — this is the proof Milan inherits a working sequencer.
 
-#include "control_unit/control_unit.h"
+#include "control_unit/horizontal_control_unit.h"
 
 #include <iostream>
 #include <set>
