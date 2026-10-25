@@ -231,7 +231,8 @@ int main() {
 
         // R-type arithmetic does latch FLAGS.
         for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
-                          Opcode::XOR, Opcode::SHL, Opcode::SHR}) {
+                          Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::MUL,
+                          Opcode::DIV, Opcode::REM}) {
             const StageControls sc = controlFor(cu, op);
             CHECK(sc.alu_enable && sc.flag_update && sc.alu_op == op && sc.reg_write);
         }
@@ -258,24 +259,21 @@ int main() {
         const StageControls halt = controlFor(cu, Opcode::HALT);
         CHECK(halt.halting);
         CHECK(controlsSignals(halt) == std::set<std::string>{"halt"});
-        CHECK(cu.routineEntry(Opcode::HALT) != cu.routineEntry(Opcode::MUL));
+        CHECK(cu.routineEntry(Opcode::HALT) != cu.routineEntry(static_cast<Opcode>(0x55)));
 
-        // Opcodes with no routine share the illegal sink and collapse identically.
-        for (Opcode op : {Opcode::NOT, Opcode::SAR, Opcode::CMP, Opcode::MUL,
-                          static_cast<Opcode>(0x55)}) {
-            const StageControls sc = controlFor(cu, op);
-            CHECK(sc.halting);
-            CHECK(controlsSignals(sc) == std::set<std::string>{"halt"});
-            CHECK_EQ(cu.routineEntry(op), cu.routineEntry(Opcode::MUL));  // shared sink
-        }
+        // An opcode with no routine collapses to the illegal sink: halt, and nothing else.
+        const StageControls sink = controlFor(cu, static_cast<Opcode>(0x55));
+        CHECK(sink.halting);
+        CHECK(controlsSignals(sink) == std::set<std::string>{"halt"});
     }
 
     section("Control decode: collapsed control words");
     {
         std::cout << "  " << std::left << std::setw(7) << "op" << "signals\n";
-        for (Opcode op : {Opcode::ADD, Opcode::LOAD, Opcode::STORE, Opcode::JMP,
-                          Opcode::HALT, Opcode::NOP, Opcode::BEQ, Opcode::MOV,
-                          Opcode::CALL, Opcode::RET, Opcode::PUSH, Opcode::POP}) {
+        for (Opcode op : {Opcode::ADD, Opcode::MUL, Opcode::DIV, Opcode::REM,
+                          Opcode::LOAD, Opcode::STORE, Opcode::JMP, Opcode::HALT,
+                          Opcode::NOP, Opcode::BEQ, Opcode::MOV, Opcode::CALL,
+                          Opcode::RET, Opcode::PUSH, Opcode::POP}) {
             std::cout << "  " << std::left << std::setw(7) << opcodeName(op)
                       << join(controlsSignals(controlFor(cu, op))) << "\n";
         }

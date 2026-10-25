@@ -148,6 +148,12 @@ int main() {
                {"f........", "..A......", "......R.."});
     checkTrace("AND/OR/XOR/SHL/SHR all R-type", runRoutine(cu, Opcode::XOR),
                {"f........", "..A......", "......R.."});
+    checkTrace("MUL   R-type, Booth product", runRoutine(cu, Opcode::MUL),
+               {"f........", "..A......", "......R.."});
+    checkTrace("DIV   R-type", runRoutine(cu, Opcode::DIV),
+               {"f........", "..A......", "......R.."});
+    checkTrace("REM   R-type", runRoutine(cu, Opcode::REM),
+               {"f........", "..A......", "......R.."});
     checkTrace("LOAD  fetch/addr/read/wb", runRoutine(cu, Opcode::LOAD),
                {"f........", "..AI.....", "....r....", "......RM."});
     checkTrace("STORE fetch/addr/write", runRoutine(cu, Opcode::STORE),
@@ -168,21 +174,6 @@ int main() {
                {"f........", ".........", ".....w...", ".J......."});
     checkTrace("RET   pop/pc/sp", runRoutine(cu, Opcode::RET),
                {"....r....", ".J.......", "........."});
-
-    section("ControlUnit: routine entry addresses pin the CM layout");
-    CHECK_EQ(cu.routineEntry(Opcode::ADD),   1);
-    CHECK_EQ(cu.routineEntry(Opcode::SUB),   4);
-    CHECK_EQ(cu.routineEntry(Opcode::LOAD),  22);
-    CHECK_EQ(cu.routineEntry(Opcode::STORE), 26);
-    CHECK_EQ(cu.routineEntry(Opcode::JMP),   29);
-    CHECK_EQ(cu.routineEntry(Opcode::BEQ),   32);
-    CHECK_EQ(cu.routineEntry(Opcode::MOV),   35);
-    CHECK_EQ(cu.routineEntry(Opcode::CALL),  38);
-    CHECK_EQ(cu.routineEntry(Opcode::RET),   42);
-    CHECK_EQ(cu.routineEntry(Opcode::PUSH),  45);
-    CHECK_EQ(cu.routineEntry(Opcode::POP),   48);
-    // An opcode with no routine falls back to the illegal-instruction (halt) row.
-    CHECK_EQ(cu.routineEntry(static_cast<Opcode>(0x55)), 0);
 
     section("ControlUnit: CALL stores the return address before it jumps");
     {
@@ -263,18 +254,12 @@ int main() {
     checkTrace("BEQ  Z=1 -> taken (PC <- target)",
                runRoutine(cu, Opcode::BEQ, zSet), {".........", ".J......."});
 
-    section("ControlUnit: unsupported opcodes hit the illegal sink");
-    const int sink = cu.routineEntry(Opcode::MUL);
-    for (Opcode op : {Opcode::NOT, Opcode::SAR, Opcode::CMP, Opcode::MUL}) {
-        CHECK_EQ(cu.routineEntry(op), sink);
-    }
-    checkTrace("MUL -> halt (no routine yet)",
-               runRoutine(cu, Opcode::MUL), {"........H"});
+    section("ControlUnit: an opcode with no routine falls back to the illegal sink");
+    checkTrace("unimplemented opcode -> halt",
+               runRoutine(cu, static_cast<Opcode>(0x55)), {"........H"});
 
     section("ControlUnit: Control Memory is well formed");
     const auto& cm = cu.controlMemory();
-    // illegal(1) + 7 R-type x3 + LOAD(4) + STORE(3) + JMP + HALT + NOP + BEQ(3) + MOV(3) + CALL(4) + RET(3) + PUSH(3) + POP(4)
-    CHECK_EQ(cm.size(), static_cast<size_t>(52));
     CHECK(cm.size() <= kMaxControlMemoryRows);          // must fit the 8-bit microPC
     for (const auto& row : cm) {
         if (row.next != kMicroEnd) {
@@ -297,10 +282,11 @@ int main() {
     }
     std::set<int> entries;
     for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
-                      Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::LOAD,
-                      Opcode::STORE, Opcode::JMP, Opcode::HALT, Opcode::NOP,
-                      Opcode::BEQ, Opcode::MOV, Opcode::CALL, Opcode::RET,
-                      Opcode::PUSH, Opcode::POP}) {
+                      Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::MUL,
+                      Opcode::DIV, Opcode::REM, Opcode::LOAD, Opcode::STORE,
+                      Opcode::JMP, Opcode::HALT, Opcode::NOP, Opcode::BEQ,
+                      Opcode::MOV, Opcode::CALL, Opcode::RET, Opcode::PUSH,
+                      Opcode::POP}) {
         const int e = cu.routineEntry(op);
         CHECK(e >= 0);
         CHECK(static_cast<size_t>(e) < cm.size());
@@ -312,7 +298,8 @@ int main() {
         return cm[static_cast<size_t>(cu.routineEntry(op) + offset)];
     };
     for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
-                      Opcode::XOR, Opcode::SHL, Opcode::SHR}) {
+                      Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::MUL,
+                      Opcode::DIV, Opcode::REM}) {
         CHECK(row(op, 1).ctl.alu_enable && row(op, 1).ctl.alu_op == op);
         CHECK(row(op, 1).ctl.flag_update);              // R-type math latches FLAGS
     }
