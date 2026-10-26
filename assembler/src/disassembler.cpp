@@ -1,4 +1,5 @@
 #include "assembler/disassembler.h"
+#include "utils/utils.h"
 
 #include <fstream>
 #include <algorithm>
@@ -6,7 +7,6 @@
 #include <sstream>
 #include <cmath>
 #include <cstdlib>
-#include <cstring>
 
 namespace risc201 {
 
@@ -245,8 +245,7 @@ namespace risc201 {
         lines.push_back(".literals:");
         for (size_t i = 0; i < literal_words_.size(); ++i) {
             uint32_t bits = literal_words_[i];
-            float value;
-            std::memcpy(&value, &bits, sizeof(value));
+            float value = bitsToFloat(bits);
 
             std::string name = "lit" + std::to_string(i);
             if (!std::isfinite(value)) {

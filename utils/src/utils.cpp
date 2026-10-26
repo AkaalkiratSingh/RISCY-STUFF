@@ -30,4 +30,18 @@ namespace risc201 {
         return "?";
     }
 
+    uint32_t floatToBits(float value) {
+        static_assert(sizeof(float) == sizeof(uint32_t), "float must be 32 bits");
+        uint32_t bits;
+        std::memcpy(&bits, &value, sizeof(bits));
+        return bits;
+    }
+
+    float bitsToFloat(uint32_t bits) {
+        static_assert(sizeof(float) == sizeof(uint32_t), "float must be 32 bits");
+        float value;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
+
 }

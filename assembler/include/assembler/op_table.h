@@ -10,11 +10,11 @@ namespace risc201 {
     constexpr uint32_t kLiteralsMarker = 0xFFFFFFFFu;
 
     enum class OperandKind : uint8_t {
-    REG,
-    IMM,
-    REG_OR_IMM,
-    MEM, //imm[rs1] type
-    LABEL,
+        REG,
+        IMM,
+        REG_OR_IMM,
+        MEM, //imm[rs1] type
+        LABEL,
     };
 
     struct OpInfo {
@@ -42,7 +42,7 @@ namespace risc201 {
             {"PUSH",  {Opcode::PUSH,  InstrFormat::RI_TYPE, {OperandKind::REG}}},
             {"POP",   {Opcode::POP,   InstrFormat::RI_TYPE, {OperandKind::REG}}},
             {"HALT",  {Opcode::HALT,  InstrFormat::RI_TYPE, {}}},
-            };
+        };
 
         return table;
     }

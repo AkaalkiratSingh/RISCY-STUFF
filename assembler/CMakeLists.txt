@@ -4,7 +4,7 @@ add_library(assembler_lib STATIC
     src/preprocessor.cpp
 )
 target_include_directories(assembler_lib PUBLIC include)
-target_link_libraries(assembler_lib PUBLIC isa_spec)
+target_link_libraries(assembler_lib PUBLIC isa_spec utils_lib)
 
 # CLI tool: risc201-asm
 add_executable(risc201-asm src/main_asm.cpp)

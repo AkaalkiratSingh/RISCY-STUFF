@@ -1,12 +1,11 @@
 #include "assembler/assembler.h"
+#include "utils/utils.h"
 
 #include <sstream>
 #include <cctype>
 #include <fstream>
 #include <iomanip>
 #include <cmath>
-#include <cstdlib>
-#include <cstring>
 
 namespace risc201 {
 
@@ -153,7 +152,7 @@ namespace risc201 {
                 float value = std::stof(body, &pos);
                 if (pos != body.size() || !std::isfinite(value)) return false;
 
-                std::memcpy(&bits_out, &value, sizeof(bits_out));
+                bits_out = floatToBits(value);
                 return true;
             }
             catch (...) {
