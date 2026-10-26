@@ -48,11 +48,19 @@ enum class Opcode : uint8_t {
     POP  = 0x0F,
     NOT  = 0x10, 
     SAR  = 0x11, 
-    CMP  = 0x12, 
-    MOV  = 0x13,
+    CMP  = 0x12,//
+    MOV  = 0x13,//
     MUL  = 0x14,
     DIV  = 0x15,
-    REM  = 0x16, 
+    REM  = 0x16,
+    //17 FADD,
+    //18 FSUB,
+    //19 FMUL,
+    //1A FDIV,
+    //1B FTOI,
+    //1C ITOF,
+    //1D
+    //1E
     HALT = 0x1F,
 };
 
