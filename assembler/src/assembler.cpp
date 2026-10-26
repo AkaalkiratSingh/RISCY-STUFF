@@ -350,10 +350,36 @@ namespace risc201 {
         parsed_lines_.clear();
         location_counter_ = 0;
 
+        int main_count = 0;
+        int main_line = 0;
+
         for (size_t i = 0; i < source_lines.size(); ++i) {
+            std::string line = stripCommentandTrim(source_lines[i]);
+            std::string label;
+
+            if (extractLabel(line, label) && label == ".main") {
+                ++main_count;
+                main_line = static_cast<int>(i) + 1;
+            }
+        }
+
+        if (main_count == 0) {
+            addError(0, "missing required entry-point label '.main:'");
+            return false;
+        }
+
+        if (main_count > 1) {
+            addError(main_line, "duplicate entry-point label '.main:'");
+            return false;
+        }
+
+        std::vector<std::string> lines = source_lines;
+        lines.insert(lines.begin(), "JMP .main");
+
+        for (size_t i = 0; i < lines.size(); ++i) {
             ParsedLine pl;
 
-            if (parseLine(source_lines[i], static_cast<int>(i) + 1, pl)) {
+            if (parseLine(lines[i], static_cast<int>(i) + 1, pl)) {
                 parsed_lines_.push_back(pl);
                 if (pl.emits_word) location_counter_ += 4;
             }
