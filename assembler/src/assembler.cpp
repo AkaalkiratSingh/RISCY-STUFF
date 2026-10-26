@@ -455,6 +455,15 @@ namespace risc201 {
         else return std::vector<Instruction>{};
     }
 
+    std::vector<uint32_t> Assembler::literalSection() const {
+        std::vector<uint32_t> section;
+        if (literal_words_.empty()) return section;
+
+        section.push_back(kLiteralsMarker);
+        section.insert(section.end(), literal_words_.begin(), literal_words_.end());
+        return section;
+    }
+
     uint32_t Assembler::encodeInstruction(const Instruction& instr) {
         uint32_t word = 0;
 

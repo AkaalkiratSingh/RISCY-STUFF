@@ -54,8 +54,8 @@ int main(int argc, char** argv) {
         encoded.push_back(assembler.encodeInstruction(instr));
     }
 
-    for (uint32_t literal : assembler.literalWords()) {
-        encoded.push_back(literal);
+    for (uint32_t word : assembler.literalSection()) {
+        encoded.push_back(word);
     }
 
     bool is_hex = output_path.size() >= 4 && (output_path.compare(output_path.size() - 4, 4, ".hex") == 0);

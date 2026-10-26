@@ -7,13 +7,15 @@
 
 namespace risc201 {
 
+    constexpr uint32_t kLiteralsMarker = 0xFFFFFFFFu;
+
     enum class OperandKind : uint8_t {
     REG,
     IMM,
     REG_OR_IMM,
     MEM, //imm[rs1] type
     LABEL,
-};
+    };
 
     struct OpInfo {
         Opcode op;

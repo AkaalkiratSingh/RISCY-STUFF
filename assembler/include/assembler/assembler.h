@@ -36,6 +36,7 @@ namespace risc201 {
         const std::vector<AssemblyError>& errors() const { return errors_; }
         const std::vector<AssemblyError>& warnings() const { return warnings_; }
         const std::vector<uint32_t>& literalWords() const { return literal_words_; }
+        std::vector<uint32_t> literalSection() const;
 
         uint32_t encodeInstruction(const Instruction& instr);
         bool writeBinaryFile(const std::string& path, const std::vector<uint32_t>& words);
