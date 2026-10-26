@@ -11,5 +11,4 @@ namespace risc201 {
     //            I=0 -> [17:14] rs2
     //   J_TYPE : [26:0]  offset (27-bit signed, relative to PC+4, in bytes)
     Instruction decodeInstruction(uint32_t word);
-    const char* opcodeName(Opcode op);
 }

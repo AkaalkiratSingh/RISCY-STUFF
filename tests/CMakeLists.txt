@@ -1,6 +1,11 @@
-add_executable(control_unit_test control_unit_test.cpp)
-target_link_libraries(control_unit_test PRIVATE control_unit)
-add_test(NAME ControlUnitTest COMMAND control_unit_test)
+add_executable(horizontal_control_unit_test horizontal_control_unit_test.cpp)
+target_link_libraries(horizontal_control_unit_test PRIVATE control_unit)
+add_test(NAME HorizontalControlUnitTest COMMAND horizontal_control_unit_test)
+
+add_executable(vertical_control_unit_test vertical_control_unit_test.cpp)
+target_link_libraries(vertical_control_unit_test PRIVATE simulator_core_lib assembler_lib)
+target_compile_definitions(vertical_control_unit_test PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples")
+add_test(NAME VerticalControlUnitTest COMMAND vertical_control_unit_test)
 
 add_executable(cpu_integration_test cpu_integration_test.cpp)
 target_link_libraries(cpu_integration_test PRIVATE simulator_core_lib assembler_lib)
@@ -29,3 +34,11 @@ add_test(NAME AluTest COMMAND test_alu)
 add_executable(memory_safety_test memory_safety_test.cpp)
 target_link_libraries(memory_safety_test PRIVATE simulator_core_lib)
 add_test(NAME MemorySafetyTest COMMAND memory_safety_test)
+
+add_executable(control_decode_test control_decode_test.cpp)
+target_link_libraries(control_decode_test PRIVATE simulator_core_lib)
+add_test(NAME ControlDecodeTest COMMAND control_decode_test)
+
+add_executable(pipeline_test pipeline_test.cpp)
+target_link_libraries(pipeline_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME PipelineTest COMMAND pipeline_test)

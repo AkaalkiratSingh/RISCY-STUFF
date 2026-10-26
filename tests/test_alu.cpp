@@ -18,28 +18,47 @@ int main() {
 
     // --- Standard ALU Tests ---
     
-    // ADD
-    check(alu.execute(Opcode::ADD, 2, 3), 5, false, false, false, false);
-    check(alu.execute(Opcode::ADD, 0x7FFFFFFF, 1), 
-          static_cast<int32_t>(0x80000000), false, true, false, true);
-    check(alu.execute(Opcode::ADD, -1, 1), 0, true, false, true, false);
+      // ADD
+      check(alu.execute(Opcode::ADD, 2, 3), 5, false, false, false, false);
+      check(alu.execute(Opcode::ADD, 0x7FFFFFFF, 1), 
+            static_cast<int32_t>(0x80000000), false, true, false, true);
+      check(alu.execute(Opcode::ADD, -1, 1), 0, true, false, true, false);
 
-    // SUB
-    check(alu.execute(Opcode::SUB, 5, 3), 2, false, false, true, false);
-    check(alu.execute(Opcode::SUB, 3, 5), -2, false, true, false, false);
+      // SUB
+      check(alu.execute(Opcode::SUB, 5, 3), 2, false, false, true, false);
+      check(alu.execute(Opcode::SUB, 3, 5), -2, false, true, false, false);
 
-    // Logic
-    check(alu.execute(Opcode::AND, 0xF0F0F0F0, 0x0FF00FF0), 
-          static_cast<int32_t>(0x00F000F0), false, false, false, false);
-    check(alu.execute(Opcode::XOR, -1, -1), 0, true, false, false, false);
-    check(alu.execute(Opcode::NOT, 0, 0), -1, false, true, false, false);
+      // Logic
+      check(alu.execute(Opcode::AND, 0xF0F0F0F0, 0x0FF00FF0), 
+            static_cast<int32_t>(0x00F000F0), false, false, false, false);
+      check(alu.execute(Opcode::XOR, -1, -1), 0, true, false, false, false);
+      check(alu.execute(Opcode::NOT, 0, 0), -1, false, true, false, false);
 
-    // Shifts
-    check(alu.execute(Opcode::SHL, static_cast<int32_t>(0x80000000), 1), 
-          0, true, false, true, false);
-    check(alu.execute(Opcode::SAR, static_cast<int32_t>(0x80000000), 1), 
-          static_cast<int32_t>(0xC0000000), false, true, false, false);
+      // Shifts
+      check(alu.execute(Opcode::SHL, static_cast<int32_t>(0x80000000), 1), 
+            0, true, false, true, false);
+      check(alu.execute(Opcode::SAR, static_cast<int32_t>(0x80000000), 1), 
+            static_cast<int32_t>(0xC0000000), false, true, false, false);
+      // Standard Division
+      check(alu.execute(Opcode::DIV, 20, 4), 5, false, false, false, false);
+      check(alu.execute(Opcode::DIV, 7, 3), 2, false, false, false, false); // Truncates towards zero
 
+      // Signed Division
+      check(alu.execute(Opcode::DIV, -20, 4), -5, false, true, false, false);
+      check(alu.execute(Opcode::DIV, 20, -4), -5, false, true, false, false);
+      check(alu.execute(Opcode::DIV, -20, -4), 5, false, false, false, false);
+
+      // Divide by Zero
+      check(alu.execute(Opcode::DIV, 10, 0), 0, true, false, false, false);
+      
+      // Remainder Tests
+      check(alu.execute(Opcode::REM, 20, 4), 0, true, false, false, false);
+      check(alu.execute(Opcode::REM, 7, 3), 1, false, false, false, false);
+      
+      // Signed Remainder (Sign matches the dividend)
+      check(alu.execute(Opcode::REM, -7, 3), -1, false, true, false, false);
+      check(alu.execute(Opcode::REM, 7, -3), 1, false, false, false, false);
+      check(alu.execute(Opcode::REM, -7, -3), -1, false, true, false, false);
 
     // --- CMP and New Flags Tests ---
 

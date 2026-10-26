@@ -5,6 +5,7 @@
 #include "assembler/assembler.h"
 #include "simulator_core/cpu.h"
 #include "simulator_core/decoder.h"
+#include "utils/utils.h"
 
 #include <cstdint>
 #include <iostream>
@@ -131,8 +132,8 @@ int main() {
 
     section("Decoder: undefined opcode bits are named '?'");
     {
-        const Instruction d = decodeInstruction(0x13u << 27);
-        CHECK(d.opcode == static_cast<Opcode>(0x13));
+        const Instruction d = decodeInstruction(0x1Eu << 27);
+        CHECK(d.opcode == static_cast<Opcode>(0x1E));
         CHECK_EQ(std::string(opcodeName(d.opcode)), std::string("?"));
     }
 

@@ -50,7 +50,7 @@ enum class Opcode : uint8_t {
     SAR  = 0x11, 
     CMP  = 0x12, 
     MOV  = 0x13,
-    MUL  = 0x14, 
+    MUL  = 0x14,
     DIV  = 0x15,
     REM  = 0x16,
     HALT = 0x1F,
