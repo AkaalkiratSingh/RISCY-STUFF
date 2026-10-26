@@ -379,7 +379,7 @@ namespace risc201 {
         for (size_t i = 0; i < lines.size(); ++i) {
             ParsedLine pl;
 
-            if (parseLine(lines[i], static_cast<int>(i) + 1, pl)) {
+            if (parseLine(lines[i], static_cast<int>(i), pl)) {
                 parsed_lines_.push_back(pl);
                 if (pl.emits_word) location_counter_ += 4;
             }
