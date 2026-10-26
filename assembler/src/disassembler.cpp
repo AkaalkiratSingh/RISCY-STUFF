@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 
 namespace risc201 {
 
@@ -69,9 +72,15 @@ namespace risc201 {
 
     std::vector<Instruction> Disassembler::decodeProgram(const std::vector<uint32_t>& words) {
         decode_errors_.clear();
+        literal_words_.clear();
         std::vector<Instruction> program;
 
         for (size_t i = 0; i < words.size(); ++i) {
+            if (words[i] == kLiteralsMarker) {
+                literal_words_.assign(words.begin() + i + 1, words.end());
+                break;
+            }
+
             Instruction instr;
             if (decodeWord(words[i], instr)) {
                 program.push_back(instr);
@@ -227,6 +236,38 @@ namespace risc201 {
         }
 
         return result;
+    }
+
+    std::vector<std::string> Disassembler::formatLiterals() const {
+        std::vector<std::string> lines;
+        if (literal_words_.empty()) return lines;
+
+        lines.push_back(".literals:");
+        for (size_t i = 0; i < literal_words_.size(); ++i) {
+            uint32_t bits = literal_words_[i];
+            float value;
+            std::memcpy(&value, &bits, sizeof(value));
+
+            std::string name = "lit" + std::to_string(i);
+            if (!std::isfinite(value)) {
+                std::ostringstream hex;
+                hex << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << bits;
+                lines.push_back("; " + name + ": non-finite float, raw bits 0x" + hex.str());
+                continue;
+            }
+
+            std::string text;
+            for (int precision = 1; precision <= 9; ++precision) {
+                std::ostringstream os;
+                os << std::setprecision(precision) << value;
+                text = os.str();
+                if (std::strtof(text.c_str(), nullptr) == value) break;
+            }
+            if (text.find_first_of(".eE") == std::string::npos) text += ".0";
+
+            lines.push_back(name + ": " + text + "f");
+        }
+        return lines;
     }
 
     std::vector<std::string> Disassembler::disassemble(const std::vector<Instruction>& program) {

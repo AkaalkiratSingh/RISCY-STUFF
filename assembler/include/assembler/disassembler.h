@@ -18,14 +18,17 @@ public:
     std::vector<Instruction> decodeProgram(const std::vector<uint32_t>& words);
 
     std::string formatInstruction(const Instruction& instr);
+    std::vector<std::string> formatLiterals() const;
 
     const std::vector<std::pair<size_t, uint32_t>>& decodeErrors() const { return decode_errors_; }
+    const std::vector<uint32_t>& literalWords() const { return literal_words_; }
 
     bool readBinaryFile(const std::string& path, std::vector<uint32_t>& words_out);
     bool readHexFile(const std::string& path, std::vector<uint32_t>& words_out);
 
 private:
     std::vector<std::pair<size_t, uint32_t>> decode_errors_;
+    std::vector<uint32_t> literal_words_;
 
     std::string formatInstructionWithLabels(const Instruction& instr, int32_t address, const std::unordered_map<int32_t, std::string>& label_map);
 };

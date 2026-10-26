@@ -52,6 +52,8 @@ int main(int argc, char** argv) {
     if (use_labels) lines = disassembler.disassembleWithLabels(program);
     else lines = disassembler.disassemble(program);
 
+    for (const auto& lit_line : disassembler.formatLiterals()) lines.push_back(lit_line);
+
     std::ofstream out(output_path);
     if (!out) {
         std::cerr << "error: cannot open " << output_path << "\n";
