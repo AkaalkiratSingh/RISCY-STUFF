@@ -4,6 +4,9 @@
 #include <cctype>
 #include <fstream>
 #include <iomanip>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 
 namespace risc201 {
 
@@ -138,6 +141,26 @@ namespace risc201 {
             return true;
         }
 
+        bool parseFloatLiteral(const std::string& token, uint32_t& bits_out) {
+            if (token.size() < 2) return false;
+            char suffix = token.back();
+            if (suffix != 'f' && suffix != 'F') return false;
+
+            std::string body = token.substr(0, token.size() - 1);
+
+            try {
+                size_t pos;
+                float value = std::stof(body, &pos);
+                if (pos != body.size() || !std::isfinite(value)) return false;
+
+                std::memcpy(&bits_out, &value, sizeof(bits_out));
+                return true;
+            }
+            catch (...) {
+                return false;
+            }
+        }
+
         bool inRange(int32_t value, int32_t lo, int32_t hi) {
             return (value >= lo && value <= hi);
         }
@@ -188,6 +211,24 @@ namespace risc201 {
         out.line_number = line_num;
         out.label = label;
         out.address = location_counter_;
+
+        if (has_label && label == ".literals") {
+            in_literals_ = true;
+            out.emits_word = false;
+            if (!line.empty()) addError(line_num, "unexpected text after '.literals:'");
+            return true;
+        }
+
+        if (in_literals_) {
+            out.is_literal = true;
+            out.emits_word = true;
+            uint32_t bits = 0;
+            if (!has_label) addError(line_num, "literal needs a name, expected 'name: 1.0f'");
+            else if (line.empty()) addError(line_num, "literal '" + label + "' has no value");
+            else if (!parseFloatLiteral(line, bits)) addError(line_num, "invalid float literal '" + line + "' (expected e.g. 3.14f)");
+            literal_words_.push_back(bits);
+            return true;
+        }
 
        if (line.empty()) {
             out.emits_word = false;
@@ -348,6 +389,8 @@ namespace risc201 {
         symbol_table_.clear();
         errors_.clear();
         parsed_lines_.clear();
+        literal_words_.clear();
+        in_literals_ = false;
         location_counter_ = 0;
 
         int main_count = 0;
@@ -394,6 +437,7 @@ namespace risc201 {
 
         for (const auto& pl : parsed_lines_) {
             if (!pl.emits_word) continue;
+            if (pl.is_literal) continue;
 
             auto valid = opTable().find(pl.op);
             if (valid == opTable().end()) {

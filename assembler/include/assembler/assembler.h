@@ -16,6 +16,7 @@ namespace risc201 {
         std::vector<std::string> operands;
         uint32_t address = 0;
         bool emits_word = false;
+        bool is_literal = false;
     };
 
     struct AssemblyError {
@@ -34,6 +35,7 @@ namespace risc201 {
         }
         const std::vector<AssemblyError>& errors() const { return errors_; }
         const std::vector<AssemblyError>& warnings() const { return warnings_; }
+        const std::vector<uint32_t>& literalWords() const { return literal_words_; }
 
         uint32_t encodeInstruction(const Instruction& instr);
         bool writeBinaryFile(const std::string& path, const std::vector<uint32_t>& words);
@@ -41,10 +43,12 @@ namespace risc201 {
 
     private:
         uint32_t location_counter_ = 0;
+        bool in_literals_ = false;
         std::unordered_map<std::string, uint32_t> symbol_table_;
         std::vector<ParsedLine> parsed_lines_;
         std::vector<AssemblyError> errors_;
-        std::vector<AssemblyError> warnings_; 
+        std::vector<AssemblyError> warnings_;
+        std::vector<uint32_t> literal_words_;
 
         void addError(int line_num, std::string msg);
         void addWarning(int line_num, std::string msg);
