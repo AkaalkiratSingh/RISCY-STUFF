@@ -45,4 +45,16 @@ namespace risc201 {
         return table;
     }
 
+    inline const std::unordered_map<Opcode, std::string>& opcodeToMnemonic() {
+        static const std::unordered_map<Opcode, std::string> reverse = [] {
+            std::unordered_map<Opcode, std::string> m;
+            for (const auto& pair : opTable()) {
+                m[pair.second.op] = pair.first;
+            }
+            return m;
+        }();
+
+        return reverse;
+    }
+
 }

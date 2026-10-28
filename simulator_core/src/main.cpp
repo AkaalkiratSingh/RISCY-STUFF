@@ -32,6 +32,8 @@ void printUsage(const char* prog) {
         << "  -m, --mem S:C   dump C data-memory words starting at word index S\n"
         << "      --trace         print the pipeline per clock, with hazard events\n"
         << "      --no-forward stall on every dependency instead of bypassing\n"
+        << "      --horizontal use the horizontal microcode ROM (default)\n"
+        << "      --vertical   use the vertical microcode ROM (same behaviour, narrower words)\n"
         << "  -h, --help      show this message\n";
 }
 
@@ -220,6 +222,7 @@ int main(int argc, char** argv) {
     bool dump_mem = false;
     bool forwarding = true;
     bool trace_mode = false;
+    risc201::MicrocodeEncoding encoding = risc201::MicrocodeEncoding::Horizontal;
     uint32_t mem_start = 0;
     uint32_t mem_count = 0;
 
@@ -239,6 +242,10 @@ int main(int argc, char** argv) {
             decode_listing = true;
         } else if (arg == "--no-forward") {
             forwarding = false;
+        } else if (arg == "--horizontal") {
+            encoding = risc201::MicrocodeEncoding::Horizontal;
+        } else if (arg == "--vertical") {
+            encoding = risc201::MicrocodeEncoding::Vertical;
         } else if (arg == "--trace") {
             trace_mode = true;
         } else if (arg == "-m" || arg == "--mem") {
@@ -266,7 +273,7 @@ int main(int argc, char** argv) {
 
     const InputKind kind = kindFromPath(input_path);
     std::vector<uint32_t> words;
-    risc201::Cpu cpu(variant);
+    risc201::Cpu cpu(variant, risc201::kDefaultMemoryWords, encoding);
     cpu.setForwarding(forwarding);
     cpu.setTracing(trace_mode);
 
@@ -370,6 +377,10 @@ int main(int argc, char** argv) {
               << " (" << hazards.flush_bubbles << " bubble(s), "
               << hazards.squashed << " squashed)"
               << "   faults " << hazards.faults << "\n";
+    
+    std::cout << "  control:  "
+              << (cpu.encoding() == risc201::MicrocodeEncoding::Vertical ? "vertical" : "horizontal")
+              << " microcode\n";
 
     if (cpu.state().pending_exception) {
         std::cout << "EXCEPTION: "

@@ -52,7 +52,7 @@ enum class Opcode : uint8_t {
     MOV  = 0x13,
     MUL  = 0x14,
     DIV  = 0x15,
-    REM  = 0x16, 
+    REM  = 0x16,
     HALT = 0x1F,
 };
 
