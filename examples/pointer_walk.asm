@@ -3,7 +3,7 @@
 ; MEM stage completes, so this is the one hazard forwarding cannot remove. Expect
 ; exactly one stall per iteration with forwarding on, and many more without it.
 ; Run with: risc201-sim pointer_walk.asm --mem 0:16
-; Expected: MEM[0..255] = 1, stalls 256, flushes 256 (the loop's JMP)
+; Expected: MEM[0..255] = 1, stalls 256, flushes 257 (the entry JMP plus the loop's JMP)
 
 .main:
 ADD R2, R0, 0

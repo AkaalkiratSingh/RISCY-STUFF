@@ -272,6 +272,16 @@ void testDisassembleProgram() {
     std::cout << "testDisassembleProgram passed\n";
 }
 
+std::vector<Instruction> assembleProgram(const std::vector<std::string>& source,
+                                         Assembler& asmblr) {
+    std::vector<std::string> source_lines = source;
+    source_lines.insert(source_lines.begin(), ".main:");
+    asmblr.assemblePass1(source_lines);
+    auto program = asmblr.assemblePass2();
+    if (!program.empty()) program.erase(program.begin());
+    return program;
+}
+
 void testFullPipelineRoundtrip() {
     Assembler asmblr;
     std::vector<std::string> src = {
@@ -279,8 +289,7 @@ void testFullPipelineRoundtrip() {
         "ADD R4, R5, 10",
         "LOAD R6, 8[R7]",
     };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
 
@@ -307,8 +316,7 @@ void testFullPipelineRoundtrip() {
 void testFileRoundtripBinary() {
     Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, R3", "HALT" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     assert(asmblr.errors().empty());
 
     std::vector<uint32_t> words;
@@ -328,8 +336,7 @@ void testFileRoundtripBinary() {
 void testFileRoundtripHex() {
     Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, R3", "HALT" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     assert(asmblr.errors().empty());
 
     std::vector<uint32_t> words;

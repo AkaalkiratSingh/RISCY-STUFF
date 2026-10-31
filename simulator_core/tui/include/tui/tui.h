@@ -16,7 +16,8 @@ public:
     Tui(Cpu& cpu,
         std::vector<std::string> raw_assembly,
         std::vector<uint32_t> code_words,
-        const std::string& filename = "");
+        const std::string& filename = "",
+        bool show_trace = false);
 
     void run();
     bool loadProgram(const std::string& path);
@@ -31,6 +32,7 @@ private:
     void renderRegisters(int r, int c, int h, int w);
     void renderExtraStats(int r, int c, int h, int w);
     void renderStack(int r, int c, int h, int w);
+    void renderHazardTimeline(int r, int c, int h, int w);
     void renderCommandLine(int r, int c, int h, int w);
     void renderFeedback(int r, int c, int h, int w);
 
@@ -55,6 +57,9 @@ private:
     int asm_scroll_ = 0;
     int bin_scroll_ = 0;
     bool auto_scroll_ = true;
+
+    bool show_trace_ = false;
+    int trace_scroll_ = 0;
 
     std::set<uint32_t> breakpoints_;
 };

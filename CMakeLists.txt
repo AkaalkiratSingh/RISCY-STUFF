@@ -23,7 +23,6 @@ add_subdirectory(control_unit)
 add_subdirectory(assembler)
 add_subdirectory(memory_safety)
 add_subdirectory(simulator_core)
-add_subdirectory(tui)
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
   add_subdirectory(tests)

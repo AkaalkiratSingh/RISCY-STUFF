@@ -90,12 +90,16 @@ const char* exceptionName(ExceptionCode code) {
 Tui::Tui(Cpu& cpu,
          std::vector<std::string> raw_assembly,
          std::vector<uint32_t> code_words,
-         const std::string& filename)
+         const std::string& filename,
+         bool show_trace)
     : cpu_(cpu),
       raw_assembly_(std::move(raw_assembly)),
       code_words_(std::move(code_words)),
       original_words_(code_words_),
-      filename_(filename) {}
+      filename_(filename),
+      show_trace_(show_trace) {
+    cpu_.setTracing(true);
+}
 
 std::string Tui::formatInstr(const Instruction& in) const {
     const std::string name = opcodeName(in.opcode);
@@ -182,7 +186,12 @@ void Tui::render() {
     const int bottom_h = (total_rows >= 20) ? 6 : 4;
     const int cmd_h = 3;
     const int fb_h = std::max(2, bottom_h - cmd_h);
-    const int top_h = std::max(10, total_rows - (cmd_h + fb_h));
+    int trace_h = 0;
+    if (show_trace_) {
+        trace_h = std::min(7, total_rows - (cmd_h + fb_h) - 10);
+        if (trace_h < 3) trace_h = 0;
+    }
+    const int top_h = std::max(10, total_rows - (cmd_h + fb_h + trace_h));
 
     // Widths: 3-column top
     // Column 1 (Assembly): ~28%
@@ -214,9 +223,11 @@ void Tui::render() {
     renderExtraStats(reg_h, col1_w + col2_w, sub_h, stats_w);
     renderStack(reg_h, col1_w + col2_w + stats_w, sub_h, stack_w);
 
+    if (trace_h > 0) renderHazardTimeline(top_h, 0, trace_h, total_cols);
+
     // Bottom panes
-    renderCommandLine(top_h, 0, cmd_h, total_cols);
-    renderFeedback(top_h + cmd_h, 0, fb_h, total_cols);
+    renderCommandLine(top_h + trace_h, 0, cmd_h, total_cols);
+    renderFeedback(top_h + trace_h + cmd_h, 0, fb_h, total_cols);
 
     screen_.flush();
 }
@@ -412,6 +423,9 @@ void Tui::renderExtraStats(int r, int c, int h, int w) {
                             (cpu_.forwarding() ? " (Fwd)" : " (NoFwd)");
     stat_lines.push_back(pipe_info);
 
+    stat_lines.push_back(cpu_.encoding() == MicrocodeEncoding::Vertical ? "• ROM: vert"
+                                                                       : "• ROM: horiz");
+
     for (size_t i = 0; i < stat_lines.size() && static_cast<int>(i) < inner_h; ++i) {
         screen_.drawText(r + 1 + static_cast<int>(i), c + 1, stat_lines[i],
                          Style{Color::Default, Color::Default, false}, inner_w);
@@ -464,6 +478,47 @@ void Tui::renderStack(int r, int c, int h, int w) {
     }
 }
 
+void Tui::renderHazardTimeline(int r, int c, int h, int w) {
+    const PipelineTrace& hazards = cpu_.trace();
+    const std::string title = "HAZARD TIMELINE - " + std::to_string(hazards.flushes) + " flush, " +
+                              std::to_string(hazards.stalls) + " stall, " +
+                              std::to_string(hazards.faults) + " fault";
+    screen_.drawBox(r, c, h, w, title,
+                    Style{Color::White, Color::Default, false},
+                    Style{Color::BrightCyan, Color::Default, true});
+
+    const int inner_h = h - 2;
+    const int inner_w = w - 2;
+    if (inner_h <= 0 || inner_w <= 0) return;
+
+    const auto& events = hazards.events;
+    const int total = static_cast<int>(events.size());
+    if (total == 0) {
+        screen_.drawText(r + 1, c + 2, "no hazard events yet",
+                         Style{Color::BrightBlack}, inner_w);
+        return;
+    }
+
+    int first = total - inner_h - trace_scroll_;
+    if (first > total - 1) first = total - 1;
+    if (first < 0) first = 0;
+
+    for (int i = 0; i < inner_h && first + i < total; ++i) {
+        const HazardEvent& e = events[static_cast<size_t>(first + i)];
+        std::string line = std::to_string(e.cycle) + " | " + hazardName(e.kind) +
+                           " | pc=" + std::to_string(e.pc);
+        if (e.kind == HazardKind::Flush) {
+            line += " -> " + std::to_string(e.target) + " (depth " + std::to_string(e.depth) +
+                    ", squashed " + std::to_string(e.discarded) + ")";
+        }
+        Style line_style;
+        line_style.fg = Color::Cyan;
+        if (e.kind == HazardKind::Stall) line_style.fg = Color::Yellow;
+        if (e.kind == HazardKind::Fault) line_style.fg = Color::Red;
+        screen_.drawText(r + 1 + i, c + 2, line, line_style, inner_w);
+    }
+}
+
 void Tui::renderCommandLine(int r, int c, int h, int w) {
     screen_.drawBox(r, c, h, w, "COMMAND LINE (Input)",
                     Style{Color::White, Color::Default, false},
@@ -478,7 +533,7 @@ void Tui::renderCommandLine(int r, int c, int h, int w) {
         screen_.setCell(r + 1, c + 2 + static_cast<int>(prompt.size()), " ",
                         Style{Color::Default, Color::BrightWhite, false, false, true});
     } else {
-        std::string hint = "[NORMAL MODE]  ':' cmd | 's' step | 'c' clock | 'r' run | 'j'/'k' scroll | 'q' quit";
+        std::string hint = "[NORMAL MODE]  ':' cmd | 's' step | 'c' clock | 'r' run | 'j'/'k' scroll | 'T' trace | 'q' quit";
         screen_.drawText(r + 1, c + 2, hint, Style{Color::BrightBlack, Color::Default, false}, w - 4);
     }
 }
@@ -551,6 +606,20 @@ void Tui::handleKey(const KeyEvent& ev) {
                     auto_scroll_ = false;
                     bin_scroll_ = std::max(0, bin_scroll_ - 1);
                     asm_scroll_ = std::max(0, asm_scroll_ - 1);
+                    break;
+                case 'T':
+                    show_trace_ = !show_trace_;
+                    trace_scroll_ = 0;
+                    feedback_message_ = show_trace_ ? "Hazard timeline shown."
+                                                    : "Hazard timeline hidden.";
+                    feedback_is_error_ = false;
+                    break;
+                case '[':
+                    show_trace_ = true;
+                    ++trace_scroll_;
+                    break;
+                case ']':
+                    trace_scroll_ = std::max(0, trace_scroll_ - 1);
                     break;
                 case 'a':
                     auto_scroll_ = true;
@@ -761,6 +830,11 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         asm_scroll_ = 0;
         auto_scroll_ = true;
         feedback_message_ = "CPU reset to initial state.";
+    } else if (action == "trace") {
+        show_trace_ = !show_trace_;
+        trace_scroll_ = 0;
+        feedback_message_ = show_trace_ ? "Hazard timeline shown." : "Hazard timeline hidden.";
+        feedback_is_error_ = false;
     } else if (action == "mem") {
         std::string range_str;
         iss >> range_str;
@@ -788,7 +862,7 @@ void Tui::executeCommand(const std::string& raw_cmd) {
             loadProgram(path);
         }
     } else if (action == "h" || action == "help" || action == "?") {
-        feedback_message_ = "Commands: :load <path>, :step [n], :clock [n], :run, :break <pc>, :clearbreak, :reset, :mem <s:c>, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), q (quit)";
+        feedback_message_ = "Commands: :load <path>, :step [n], :clock [n], :run, :break <pc>, :clearbreak, :reset, :mem <s:c>, :trace, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), T (hazard timeline), [ ] (scroll timeline), q (quit)";
     } else {
         feedback_message_ = "Unknown command '" + action + "'. Type ':help' for available commands.";
         feedback_is_error_ = true;

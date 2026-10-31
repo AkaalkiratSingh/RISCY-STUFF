@@ -21,6 +21,9 @@ void printUsage(const char* prog) {
         << "  -4, --4stage    select the 4-stage pipeline (default)\n"
         << "  -6, --6stage    select the 6-stage pipeline\n"
         << "      --no-forward stall on every dependency instead of bypassing\n"
+        << "      --horizontal use the horizontal microcode ROM (default)\n"
+        << "      --vertical   use the vertical microcode ROM (same behaviour, narrower words)\n"
+        << "      --trace      open the hazard timeline panel at startup\n"
         << "  -h, --help      show this message\n";
 }
 
@@ -83,6 +86,8 @@ int main(int argc, char** argv) {
     std::string input_path;
     risc201::PipelineVariant variant = risc201::PipelineVariant::FourStage;
     bool forwarding = true;
+    risc201::MicrocodeEncoding encoding = risc201::MicrocodeEncoding::Horizontal;
+    bool trace_view = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -96,6 +101,12 @@ int main(int argc, char** argv) {
             variant = risc201::PipelineVariant::SixStage;
         } else if (arg == "--no-forward") {
             forwarding = false;
+        } else if (arg == "--vertical") {
+            encoding = risc201::MicrocodeEncoding::Vertical;
+        } else if (arg == "--horizontal") {
+            encoding = risc201::MicrocodeEncoding::Horizontal;
+        } else if (arg == "--trace") {
+            trace_view = true;
         } else if (!arg.empty() && arg[0] == '-') {
             std::cerr << "error: unknown option '" << arg << "'\n";
             printUsage(argv[0]);
@@ -161,13 +172,13 @@ int main(int argc, char** argv) {
         }
     }
 
-    risc201::Cpu cpu(variant);
+    risc201::Cpu cpu(variant, risc201::kDefaultMemoryWords, encoding);
     cpu.setForwarding(forwarding);
     if (!words.empty()) {
         cpu.loadWords(words);
     }
 
-    risc201::Tui tui(cpu, raw_lines, words, input_path);
+    risc201::Tui tui(cpu, raw_lines, words, input_path, trace_view);
     tui.run();
 
     return 0;

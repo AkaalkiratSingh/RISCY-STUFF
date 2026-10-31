@@ -34,8 +34,10 @@ void section(const char* name) { std::cout << name << "\n"; }
 using namespace risc201;
 
 std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
+    std::vector<std::string> source_lines = source;
+    source_lines.insert(source_lines.begin(), ".main:");
     Assembler asmblr;
-    if (!asmblr.assemblePass1(source)) {
+    if (!asmblr.assemblePass1(source_lines)) {
         std::cerr << "  FAIL: assembly (pass 1) failed\n";
         for (const auto& e : asmblr.errors()) {
             std::cerr << "    line " << e.line_number << ": " << e.message << "\n";
@@ -47,6 +49,7 @@ std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
     for (const auto& instr : asmblr.assemblePass2()) {
         words.push_back(asmblr.encodeInstruction(instr));
     }
+    if (!words.empty()) words.erase(words.begin());
     return words;
 }
 

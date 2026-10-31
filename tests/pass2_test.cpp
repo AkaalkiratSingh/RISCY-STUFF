@@ -18,13 +18,22 @@ void printWarnings(const risc201::Assembler& asmblr) {
 
 }  // namespace
 
+std::vector<risc201::Instruction> assembleProgram(const std::vector<std::string>& source,
+                                                  risc201::Assembler& asmblr) {
+    std::vector<std::string> source_lines = source;
+    source_lines.insert(source_lines.begin(), ".main:");
+    asmblr.assemblePass1(source_lines);
+    auto program = asmblr.assemblePass2();
+    if (!program.empty()) program.erase(program.begin());
+    return program;
+}
+
 // ---------- Success cases ----------
 
 void testResolveRegisters() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, R3" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
     assert(program.size() == 1);
@@ -38,8 +47,7 @@ void testResolveRegisters() {
 void testResolveRegOrImm() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, 5" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
     assert(program.size() == 1);
@@ -51,8 +59,7 @@ void testResolveRegOrImm() {
 void testResolveMemOperand() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "LOAD R1, 4[R2]" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
     assert(program.size() == 1);
@@ -70,8 +77,7 @@ void testResolveLabel() {
         "       NOP",       // address 4
         "end:   HALT",      // address 8
     };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
     assert(program.size() == 3);
@@ -83,8 +89,7 @@ void testResolveLabel() {
 void testHexImmediate() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, 0x2A" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
     assert(program.size() == 1);
@@ -96,8 +101,7 @@ void testHexImmediate() {
 void testNegativeImmediate() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, -5" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
     assert(program.size() == 1);
@@ -110,8 +114,7 @@ void testNegativeImmediate() {
 void testUndefinedLabel() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "JMP nowhere" };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(!asmblr.errors().empty());
     assert(program.empty());
@@ -121,8 +124,7 @@ void testUndefinedLabel() {
 void testInvalidRegister() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "ADD R99, R1, R2" };  // R99 out of R0-R15 range
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(!asmblr.errors().empty());
     assert(program.empty());
@@ -132,8 +134,7 @@ void testInvalidRegister() {
 void testInvalidRegOrImmToken() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, notanumber" };  // fails both register and immediate parse
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(!asmblr.errors().empty());
     assert(program.empty());
@@ -143,8 +144,7 @@ void testInvalidRegOrImmToken() {
 void testMalformedMemOperandMissingBracket() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "LOAD R1, 4R2" };  // missing brackets entirely
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(!asmblr.errors().empty());
     assert(program.empty());
@@ -154,8 +154,7 @@ void testMalformedMemOperandMissingBracket() {
 void testMalformedMemOperandBadRegister() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "LOAD R1, 4[R99]" };  // bracket present but bad register inside
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(!asmblr.errors().empty());
     assert(program.empty());
@@ -165,8 +164,7 @@ void testMalformedMemOperandBadRegister() {
 void testMalformedMemOperandBadImmediate() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "LOAD R1, abc[R2]" };  // bracket present but bad immediate inside
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(!asmblr.errors().empty());
     assert(program.empty());
@@ -176,8 +174,7 @@ void testMalformedMemOperandBadImmediate() {
 void testOutOfRangeWarnsAndTruncates() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "ADD R1, R2, 999999" };  // exceeds 18-bit signed range
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     printWarnings(asmblr);
     assert(asmblr.errors().empty());
@@ -194,8 +191,7 @@ void testOutOfRangeOffsetJType() {
     // test rather than this placeholder).
     risc201::Assembler asmblr;
     std::vector<std::string> src = { "start: JMP start" };  // offset = 0 - (0+4) = -4, well within range
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     printWarnings(asmblr);
     assert(asmblr.errors().empty());
@@ -212,8 +208,7 @@ void testMultipleErrorsAllReported() {
         "JMP missing",        // line 2: undefined label
         "LOAD R1, x[R2]",     // line 3: malformed mem operand
     };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().size() == 3);
     assert(program.empty());

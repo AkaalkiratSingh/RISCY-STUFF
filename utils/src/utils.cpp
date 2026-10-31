@@ -11,6 +11,10 @@ namespace risc201 {
             case Opcode::MUL:   return "MUL";
             case Opcode::DIV:   return "DIV";
             case Opcode::REM:   return "REM";
+            case Opcode::FADD:  return "FADD";
+            case Opcode::FSUB:  return "FSUB";
+            case Opcode::FMUL:  return "FMUL";
+            case Opcode::FDIV:  return "FDIV";
             case Opcode::OR:    return "OR";
             case Opcode::XOR:   return "XOR";
             case Opcode::SHL:   return "SHL";

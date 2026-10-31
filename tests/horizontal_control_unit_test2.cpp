@@ -1,5 +1,5 @@
 // tests/control_unit_test.cpp — horizontal control unit (Sept 30 milestone)
-#include "control_unit/control_unit.h"
+#include "control_unit/horizontal_control_unit.h"
 #include <cassert>
 #include <iostream>
 #include <vector>
