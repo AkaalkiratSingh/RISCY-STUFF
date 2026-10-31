@@ -250,6 +250,8 @@ void Tui::render() {
         screen_.recolour(fr, fc, fh, fw, 0x00FF00);
     }
 
+    if (mode_ == Mode::Dialog) renderDialog();
+
     screen_.flush();
 }
 
@@ -625,7 +627,96 @@ std::string Tui::paneName() const {
     return "?";
 }
 
+void Tui::openConfigDialog() {
+    dialog_rows_.clear();
+    dialog_rows_.push_back({"stage", cpu_.variant() == PipelineVariant::SixStage ? "6-stage" : "4-stage"});
+    dialog_rows_.push_back({"ROM", cpu_.encoding() == MicrocodeEncoding::Vertical ? "vertical" : "horizontal"});
+    dialog_rows_.push_back({"forwarding", cpu_.forwarding() ? "on" : "off"});
+    dialog_selected_ = 0;
+    mode_ = Mode::Dialog;
+    feedback_message_ = "CONFIG - Up/Down select, Left/Right change, Enter apply, Esc cancel";
+    feedback_is_error_ = false;
+}
+
+void Tui::cycleDialogValue() {
+    if (dialog_rows_.empty()) return;
+    DialogRow& row = dialog_rows_[static_cast<size_t>(dialog_selected_)];
+    if (dialog_selected_ == 0) {
+        row.value = row.value == "4-stage" ? "6-stage" : "4-stage";
+    } else if (dialog_selected_ == 1) {
+        row.value = row.value == "horizontal" ? "vertical" : "horizontal";
+    } else {
+        row.value = row.value == "on" ? "off" : "on";
+    }
+}
+
+void Tui::applyDialog() {
+    if (dialog_rows_.size() < 3) {
+        mode_ = Mode::Normal;
+        return;
+    }
+    const PipelineVariant v = dialog_rows_[0].value == "6-stage" ? PipelineVariant::SixStage
+                                                                : PipelineVariant::FourStage;
+    const MicrocodeEncoding e = dialog_rows_[1].value == "vertical" ? MicrocodeEncoding::Vertical
+                                                                    : MicrocodeEncoding::Horizontal;
+    if (v != cpu_.variant() || e != cpu_.encoding()) {
+        cpu_.reconfigure(v, e);
+        feedback_message_ = "config applied - run reset";
+    } else {
+        feedback_message_ = "config applied";
+    }
+    cpu_.setForwarding(dialog_rows_[2].value == "on");
+    feedback_is_error_ = false;
+    mode_ = Mode::Normal;
+}
+
+void Tui::renderDialog() {
+    const int w = std::min(46, screen_.cols() - 4);
+    const int h = 9;
+    if (w < 34 || screen_.rows() < h + 4) return;
+
+    const int r = (screen_.rows() - h) / 2;
+    const int c = (screen_.cols() - w) / 2;
+    Style face;
+    face.fg_rgb = 0x00FF00;
+    Style title_face = face;
+    title_face.bold = true;
+
+    screen_.fill(r, c, h, w, " ", face);
+    screen_.drawBox(r, c, h, w, "CPU CONFIG", face, title_face);
+
+    for (size_t i = 0; i < dialog_rows_.size(); ++i) {
+        Style st = face;
+        if (static_cast<int>(i) == dialog_selected_) {
+            st.reverse = true;
+            st.bold = true;
+        }
+        screen_.drawText(r + 1 + static_cast<int>(i), c + 2,
+                         dialog_rows_[i].label + ": " + dialog_rows_[i].value, st, w - 4);
+    }
+    Style footer_face = face;
+    footer_face.dim = true;
+    screen_.drawText(r + h - 2, c + 2, "stage/ROM changes restart the run", footer_face, w - 4);
+}
+
 void Tui::handleKey(const KeyEvent& ev) {
+    if (mode_ == Mode::Dialog) {
+        if (ev.key == Key::Escape) {
+            mode_ = Mode::Normal;
+            feedback_message_ = "config cancelled";
+            feedback_is_error_ = false;
+        } else if (ev.key == Key::Enter) {
+            applyDialog();
+        } else if (ev.key == Key::Down) {
+            if (dialog_selected_ + 1 < static_cast<int>(dialog_rows_.size())) ++dialog_selected_;
+        } else if (ev.key == Key::Up) {
+            if (dialog_selected_ > 0) --dialog_selected_;
+        } else if (ev.key == Key::Left || ev.key == Key::Right ||
+                   (ev.key == Key::Char && ev.ch == ' ')) {
+            cycleDialogValue();
+        }
+        return;
+    }
     if (mode_ == Mode::Command) {
         if (ev.key == Key::Escape) {
             mode_ = Mode::Normal;
@@ -917,10 +1008,7 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         iss >> what >> value;
         feedback_is_error_ = false;
         if (what.empty()) {
-            feedback_message_ = "config: " + variantName(cpu_.variant()) + ", " +
-                                (cpu_.forwarding() ? "forwarding" : "no-forwarding") + ", " +
-                                (cpu_.encoding() == MicrocodeEncoding::Vertical ? "vertical" : "horizontal") +
-                                " ROM";
+            openConfigDialog();
         } else if (what == "stage" && (value == "4" || value == "6")) {
             const PipelineVariant chosen = value == "6" ? PipelineVariant::SixStage
                                                         : PipelineVariant::FourStage;

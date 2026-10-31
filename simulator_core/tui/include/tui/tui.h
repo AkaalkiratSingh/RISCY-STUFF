@@ -14,6 +14,11 @@ namespace risc201 {
 enum class Mode { Normal, Inspect, Command, Dialog };
 enum class Pane { Assembly, Binary, Registers, Stats, Memory, Timeline };
 
+struct DialogRow {
+    std::string label;
+    std::string value;
+};
+
 class Tui {
 public:
     Tui(Cpu& cpu,
@@ -32,6 +37,10 @@ private:
 
     void cyclePane();
     void clampFocusedScroll();
+    void openConfigDialog();
+    void applyDialog();
+    void cycleDialogValue();
+    void renderDialog();
     bool paneFocused(Pane p) const { return mode_ == Mode::Inspect && pane_ == p; }
     int* focusedScroll();
     std::string paneName() const;
@@ -74,6 +83,9 @@ private:
 
     bool show_trace_ = false;
     int trace_scroll_ = 0;
+
+    std::vector<DialogRow> dialog_rows_;
+    int dialog_selected_ = 0;
 
     std::set<uint32_t> breakpoints_;
 };
