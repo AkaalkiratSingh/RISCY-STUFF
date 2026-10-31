@@ -2,6 +2,7 @@
 ; Run with: risc201-sim bubble_sort.asm --mem 0:10
 ; Expected: MEM[0..9] = 3 7 15 28 36 42 51 64 80 93
 
+.main:
 ADD R1, R0, 93
 STORE R1, 0[R0]
 ADD R1, R0, 7

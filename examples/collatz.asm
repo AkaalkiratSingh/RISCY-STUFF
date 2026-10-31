@@ -2,6 +2,7 @@
 ; Tracks the step count and the peak value (signed compare via SHR 31).
 ; Expected: R2=111 (steps)  R3=9232 (peak)  R1=1
 
+.main:
 ADD R1, R0, 27
 ADD R2, R0, 0
 ADD R3, R0, 27

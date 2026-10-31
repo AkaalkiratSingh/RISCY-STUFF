@@ -2,6 +2,7 @@
 ; Run with: risc201-sim sieve.asm --mem 0:100
 ; Expected: R8=25 (primes below 100)
 
+.main:
 ADD R1, R0, 2
 outer:
     SUB R2, R1, 10

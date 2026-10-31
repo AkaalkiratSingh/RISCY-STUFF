@@ -5,6 +5,7 @@
 ; Run with: risc201-sim pointer_walk.asm --mem 0:16
 ; Expected: MEM[0..255] = 1, stalls 256, flushes 256 (the loop's JMP)
 
+.main:
 ADD R2, R0, 0
 loop:
     LOAD R3, 0[R2]

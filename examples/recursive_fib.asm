@@ -4,6 +4,7 @@
 ; load-use stall per level.
 ; Expected: R1=610 (fib(15))  SP=4096
 
+.main:
 ADD R1, R0, 15
 CALL fib
 HALT

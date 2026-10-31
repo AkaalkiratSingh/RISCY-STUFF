@@ -4,6 +4,7 @@
 ; Run with: risc201-sim insertion_sort.asm --mem 0:32
 ; Expected: MEM[0..31] = 1 2 3 ... 32
 
+.main:
 ADD R1, R0, 0
 ADD R2, R0, 32
 init:

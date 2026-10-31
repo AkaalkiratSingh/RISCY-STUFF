@@ -7,6 +7,7 @@
 ; Run with: risc201-sim matmul.asm --mem 128:64
 ; Expected: MEM[128]=28  MEM[135]=28  MEM[191]=476
 
+.main:
 ADD R1, R0, 0
 init:
     STORE R1, 0[R1]
