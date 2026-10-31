@@ -216,11 +216,47 @@ uint32_t Alu::floatDiv(uint32_t a, uint32_t b) {
         result_exp--;
     }
 
+
+
     uint32_t result_mant = Q_fp >> 8; // Shift back to 24-bit mantissa
     
     return packFloat(result_sign, result_exp, result_mant);
 }
+    Alu::Result Alu::floatCmp(uint32_t a, uint32_t b) {
+        Result r{};
 
+        // Handle +0.0 and -0.0 (they are equal in value)
+        if ((a & 0x7FFFFFFF) == 0 && (b & 0x7FFFFFFF) == 0) {
+            r.flags.zero = true;
+            r.flags.equal = true;
+            r.flags.greaterThan = false;
+            return r;
+        }
+
+        uint32_t sign_a = (a >> 31) & 1;
+        uint32_t sign_b = (b >> 31) & 1;
+
+        if (sign_a != sign_b) {
+            // Different signs: positive is always greater than negative
+            r.flags.greaterThan = (sign_a == 0);
+            r.flags.zero = false;
+            r.flags.equal = false;
+        } else {
+            // Same signs: Compare the raw bit patterns as unsigned integers
+            if (sign_a == 0) {
+                // Both positive: normal unsigned comparison
+                r.flags.greaterThan = (a > b);
+                r.flags.equal = (a == b);
+            } else {
+                // Both negative: inverted comparison (larger bits = smaller value)
+                r.flags.greaterThan = (a < b);
+                r.flags.equal = (a == b);
+            }
+            r.flags.zero = r.flags.equal;
+        }
+
+        return r;
+    }
 // ============================================================
 //  EXECUTE
 // ============================================================
@@ -292,7 +328,8 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
         case Opcode::FDIV: 
             r.value = static_cast<int32_t>(floatDiv(a, b));
             return r;
-
+        case Opcode::FCMP: 
+            return floatCmp(a, b);
         case Opcode::AND: res = a & b; break;
         case Opcode::OR:  res = a | b; break;
         case Opcode::XOR: res = a ^ b; break;
