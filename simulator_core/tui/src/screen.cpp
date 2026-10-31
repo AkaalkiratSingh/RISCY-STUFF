@@ -61,6 +61,15 @@ void Screen::drawText(int r, int c, const std::string& text, Style style, int ma
     }
 }
 
+void Screen::recolour(int r, int c, int h, int w, int rgb) {
+    for (int row = r; row < r + h; ++row) {
+        for (int col = c; col < c + w; ++col) {
+            if (row < 0 || row >= rows_ || col < 0 || col >= cols_) continue;
+            buffer_[row * cols_ + col].style.fg_rgb = rgb;
+        }
+    }
+}
+
 void Screen::fill(int r, int c, int h, int w, const std::string& glyph, Style style) {
     for (int row = r; row < r + h && row < rows_; ++row) {
         if (row < 0) continue;
@@ -120,7 +129,14 @@ void Screen::flush() {
                 if (cell.style.bold) out.append(";1");
                 if (cell.style.dim) out.append(";2");
                 if (cell.style.reverse) out.append(";7");
-                if (cell.style.fg != Color::Default) {
+                if (cell.style.fg_rgb >= 0) {
+                    out.append(";38;2;");
+                    out.append(std::to_string((cell.style.fg_rgb >> 16) & 0xFF));
+                    out.append(";");
+                    out.append(std::to_string((cell.style.fg_rgb >> 8) & 0xFF));
+                    out.append(";");
+                    out.append(std::to_string(cell.style.fg_rgb & 0xFF));
+                } else if (cell.style.fg != Color::Default) {
                     out.append(";");
                     out.append(std::to_string(static_cast<int>(cell.style.fg)));
                 }

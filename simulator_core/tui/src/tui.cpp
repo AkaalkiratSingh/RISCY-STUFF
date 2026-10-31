@@ -176,6 +176,7 @@ void Tui::run() {
 }
 
 void Tui::render() {
+    clampFocusedScroll();
     screen_.clear();
 
     const int total_rows = screen_.rows();
@@ -223,11 +224,31 @@ void Tui::render() {
     renderExtraStats(reg_h, col1_w + col2_w, sub_h, stats_w);
     renderStack(reg_h, col1_w + col2_w + stats_w, sub_h, stack_w);
 
+    asm_view_h_ = std::max(0, top_h - 2);
+    bin_view_h_ = asm_view_h_;
+    mem_view_h_ = std::max(0, sub_h - 2);
+
     if (trace_h > 0) renderHazardTimeline(top_h, 0, trace_h, total_cols);
 
     // Bottom panes
     renderCommandLine(top_h + trace_h, 0, cmd_h, total_cols);
     renderFeedback(top_h + trace_h + cmd_h, 0, fb_h, total_cols);
+
+    if (mode_ == Mode::Inspect) {
+        int fr = 0;
+        int fc = 0;
+        int fh = 0;
+        int fw = 0;
+        switch (pane_) {
+            case Pane::Assembly:  fr = 0;     fc = 0;                               fh = top_h;  fw = col1_w;    break;
+            case Pane::Binary:    fr = 0;     fc = col1_w;                          fh = top_h;  fw = col2_w;    break;
+            case Pane::Registers: fr = 0;     fc = col1_w + col2_w;                 fh = reg_h;  fw = col3_w;    break;
+            case Pane::Stats:     fr = reg_h; fc = col1_w + col2_w;                 fh = sub_h;  fw = stats_w;   break;
+            case Pane::Memory:    fr = reg_h; fc = col1_w + col2_w + stats_w;       fh = sub_h;  fw = stack_w;   break;
+            case Pane::Timeline:  fr = top_h; fc = 0;                               fh = trace_h; fw = total_cols; break;
+        }
+        screen_.recolour(fr, fc, fh, fw, 0x00FF00);
+    }
 
     screen_.flush();
 }
@@ -445,7 +466,8 @@ void Tui::renderStack(int r, int c, int h, int w) {
     const auto& memory = cpu_.memory();
     const uint32_t mem_sz = static_cast<uint32_t>(memory.size());
 
-    int start_addr = static_cast<int>(std::min(sp + 1, mem_sz));
+    int start_addr = static_cast<int>(std::min(sp + 1, mem_sz)) - mem_scroll_;
+    if (start_addr < 0) start_addr = 0;
     for (int i = 0; i < inner_h; ++i) {
         int addr = start_addr - i;
         if (addr < 0) break;
@@ -526,14 +548,16 @@ void Tui::renderCommandLine(int r, int c, int h, int w) {
 
     if (h < 3) return;
 
-    if (command_mode_) {
+    if (mode_ == Mode::Command) {
         std::string prompt = ": " + command_buffer_;
         screen_.drawText(r + 1, c + 2, prompt, Style{Color::BrightWhite, Color::Default, true});
         // Render block cursor
         screen_.setCell(r + 1, c + 2 + static_cast<int>(prompt.size()), " ",
                         Style{Color::Default, Color::BrightWhite, false, false, true});
     } else {
-        std::string hint = "[NORMAL MODE]  ':' cmd | 's' step | 'c' clock | 'r' run | 'j'/'k' scroll | 'T' trace | 'q' quit";
+        std::string hint = (mode_ == Mode::Inspect)
+            ? "[INSPECT " + paneName() + "]  Tab next pane | j/k scroll | ':' cmd | Esc normal | 'q' quit"
+            : "[NORMAL MODE]  ':' cmd | 's' step | 'c' clock | 'r' run | Tab inspect | 'T' trace | 'q' quit";
         screen_.drawText(r + 1, c + 2, hint, Style{Color::BrightBlack, Color::Default, false}, w - 4);
     }
 }
@@ -556,15 +580,60 @@ void Tui::renderFeedback(int r, int c, int h, int w) {
     screen_.drawText(r + 1, c + 2, feedback_message_, fb_style, w - 4);
 }
 
+int* Tui::focusedScroll() {
+    switch (pane_) {
+        case Pane::Assembly: return &asm_scroll_;
+        case Pane::Binary:   return &bin_scroll_;
+        case Pane::Memory:   return &mem_scroll_;
+        default:             return nullptr;
+    }
+}
+
+void Tui::clampFocusedScroll() {
+    asm_scroll_ = std::max(0, std::min(asm_scroll_,
+        std::max(0, static_cast<int>(raw_assembly_.size()) - asm_view_h_)));
+    bin_scroll_ = std::max(0, std::min(bin_scroll_,
+        std::max(0, static_cast<int>(code_words_.size()) - bin_view_h_)));
+    const int top = static_cast<int>(std::min(cpu_.state().sp + 1,
+                                              static_cast<uint32_t>(cpu_.memory().size())));
+    mem_scroll_ = std::max(0, std::min(mem_scroll_, std::max(0, top - mem_view_h_ + 1)));
+}
+
+void Tui::cyclePane() {
+    for (int guard = 0; guard < 8; ++guard) {
+        switch (pane_) {
+            case Pane::Assembly:  pane_ = Pane::Binary; break;
+            case Pane::Binary:    pane_ = Pane::Registers; break;
+            case Pane::Registers: pane_ = Pane::Stats; break;
+            case Pane::Stats:     pane_ = Pane::Memory; break;
+            case Pane::Memory:    pane_ = Pane::Timeline; break;
+            case Pane::Timeline:  pane_ = Pane::Assembly; break;
+        }
+        if (pane_ != Pane::Timeline || show_trace_) break;
+    }
+}
+
+std::string Tui::paneName() const {
+    switch (pane_) {
+        case Pane::Assembly:  return "ASM";
+        case Pane::Binary:    return "BIN";
+        case Pane::Registers: return "REGS";
+        case Pane::Stats:     return "STATS";
+        case Pane::Memory:    return "MEM";
+        case Pane::Timeline:  return "TRACE";
+    }
+    return "?";
+}
+
 void Tui::handleKey(const KeyEvent& ev) {
-    if (command_mode_) {
+    if (mode_ == Mode::Command) {
         if (ev.key == Key::Escape) {
-            command_mode_ = false;
+            mode_ = Mode::Normal;
             command_buffer_.clear();
             feedback_message_ = "Command input cancelled.";
             feedback_is_error_ = false;
         } else if (ev.key == Key::Enter) {
-            command_mode_ = false;
+            mode_ = Mode::Normal;
             executeCommand(command_buffer_);
             command_buffer_.clear();
         } else if (ev.key == Key::Backspace) {
@@ -577,12 +646,33 @@ void Tui::handleKey(const KeyEvent& ev) {
         return;
     }
 
+    if (mode_ == Mode::Inspect) {
+        if (ev.key == Key::Tab) { cyclePane(); return; }
+        if (ev.key == Key::Escape) {
+            mode_ = Mode::Normal;
+            feedback_message_ = "NORMAL MODE";
+            feedback_is_error_ = false;
+            return;
+        }
+        if (ev.key == Key::Char && (ev.ch == 'j' || ev.ch == 'k')) {
+            if (int* scroll = focusedScroll()) {
+                auto_scroll_ = false;
+                *scroll = std::max(0, *scroll + (ev.ch == 'j' ? 1 : -1));
+            }
+            return;
+        }
+        if (ev.key == Key::Char && ev.ch == 'g') {
+            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll = 0; }
+            return;
+        }
+    }
+
     // Normal mode keys
     switch (ev.key) {
         case Key::Char:
             switch (ev.ch) {
                 case ':':
-                    command_mode_ = true;
+                    mode_ = Mode::Command;
                     command_buffer_.clear();
                     feedback_message_ = "Type command and press Enter (or Esc to cancel). Commands: step, clock, run, break, reset, help, quit";
                     feedback_is_error_ = false;
@@ -596,16 +686,6 @@ void Tui::handleKey(const KeyEvent& ev) {
                     break;
                 case 'r':
                     executeCommand("run");
-                    break;
-                case 'j':
-                    auto_scroll_ = false;
-                    ++bin_scroll_;
-                    ++asm_scroll_;
-                    break;
-                case 'k':
-                    auto_scroll_ = false;
-                    bin_scroll_ = std::max(0, bin_scroll_ - 1);
-                    asm_scroll_ = std::max(0, asm_scroll_ - 1);
                     break;
                 case 'T':
                     show_trace_ = !show_trace_;
@@ -651,24 +731,25 @@ void Tui::handleKey(const KeyEvent& ev) {
             executeCommand("step");
             break;
         case Key::Down:
-            auto_scroll_ = false;
-            ++bin_scroll_;
-            ++asm_scroll_;
+            if (int* scroll = focusedScroll()) { auto_scroll_ = false; ++*scroll; }
             break;
         case Key::Up:
-            auto_scroll_ = false;
-            bin_scroll_ = std::max(0, bin_scroll_ - 1);
-            asm_scroll_ = std::max(0, asm_scroll_ - 1);
+            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll = std::max(0, *scroll - 1); }
             break;
         case Key::PageDown:
-            auto_scroll_ = false;
-            bin_scroll_ += 10;
-            asm_scroll_ += 10;
+            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll += 10; }
             break;
         case Key::PageUp:
-            auto_scroll_ = false;
-            bin_scroll_ = std::max(0, bin_scroll_ - 10);
-            asm_scroll_ = std::max(0, asm_scroll_ - 10);
+            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll = std::max(0, *scroll - 10); }
+            break;
+        case Key::Tab:
+            if (mode_ == Mode::Normal) {
+                mode_ = Mode::Inspect;
+                feedback_message_ = "INSPECT MODE - Tab cycles panes, j/k scroll, Esc returns";
+                feedback_is_error_ = false;
+            } else {
+                cyclePane();
+            }
             break;
         case Key::Escape:
             auto_scroll_ = true;
@@ -863,6 +944,19 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         trace_scroll_ = 0;
         feedback_message_ = show_trace_ ? "Hazard timeline shown." : "Hazard timeline hidden.";
         feedback_is_error_ = false;
+    } else if (action == "mem_focus") {
+        uint32_t addr = 0;
+        if (!(iss >> addr)) {
+            feedback_message_ = "Usage: :mem_focus <address>";
+            feedback_is_error_ = true;
+        } else {
+            const int top = static_cast<int>(std::min(cpu_.state().sp + 1,
+                                                      static_cast<uint32_t>(cpu_.memory().size())));
+            mem_scroll_ = std::max(0, std::min(top - static_cast<int>(addr),
+                                               std::max(0, top - mem_view_h_ + 1)));
+            feedback_message_ = "memory view at " + std::to_string(addr);
+            feedback_is_error_ = false;
+        }
     } else if (action == "mem") {
         std::string range_str;
         iss >> range_str;

@@ -32,9 +32,11 @@ struct Style {
     bool bold = false;
     bool dim = false;
     bool reverse = false;
+    int fg_rgb = -1;
 
     bool operator==(const Style& o) const {
-        return fg == o.fg && bg == o.bg && bold == o.bold && dim == o.dim && reverse == o.reverse;
+        return fg == o.fg && bg == o.bg && bold == o.bold && dim == o.dim &&
+               reverse == o.reverse && fg_rgb == o.fg_rgb;
     }
     bool operator!=(const Style& o) const { return !(*this == o); }
 };
@@ -58,6 +60,7 @@ public:
     void drawText(int r, int c, const std::string& text, Style style = {}, int max_len = -1);
     void drawBox(int r, int c, int h, int w, const std::string& title = "", Style style = {}, Style title_style = {});
     void fill(int r, int c, int h, int w, const std::string& glyph = " ", Style style = {});
+    void recolour(int r, int c, int h, int w, int rgb);
 
     void flush();
 
