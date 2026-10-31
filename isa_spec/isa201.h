@@ -53,14 +53,10 @@ enum class Opcode : uint8_t {
     MUL  = 0x14,
     DIV  = 0x15,
     REM  = 0x16,
-    //17 FADD,
-    //18 FSUB,
-    //19 FMUL,
-    //1A FDIV,
-    //1B FTOI,
-    //1C ITOF,
-    //1D
-    //1E
+    FADD = 0x17,  
+    FSUB = 0x18,  
+    FMUL = 0x19,  
+    FDIV = 0x1A,  
     HALT = 0x1F,
 };
 

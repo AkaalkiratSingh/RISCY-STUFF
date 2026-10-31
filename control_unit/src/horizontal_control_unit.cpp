@@ -8,13 +8,13 @@
 namespace risc201 {
     namespace {
 
-        MicroOp fetchRow() {          // μ1: sequential fetch, PC <- PC + 1
+        MicroOp fetchRow() {          
             MicroOp m;
             m.ctl.pc_inc = true;
             return m;
         }
 
-        MicroOp aluRow(Opcode fn) {   // execute, operand B from rs2, latch flags
+        MicroOp aluRow(Opcode fn) {   
             MicroOp m;
             m.ctl.alu_enable = true;
             m.ctl.flag_update = true;
@@ -22,16 +22,16 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp movRow() {            // execute: ALU passes the single source operand
-            MicroOp m;                // (rs1 when I=0, immediate when I=1). Like most
-            m.ctl.alu_enable = true;  // MOVs it leaves FLAGS alone, so flag_update = 0.
+        MicroOp movRow() {
+            MicroOp m;
+            m.ctl.alu_enable = true;
             m.ctl.alu_op = Opcode::MOV;
             return m;
         }
 
-        MicroOp aluImmRow(Opcode fn) {  // execute, operand B from immediate — for
-            MicroOp m;                  // LOAD/STORE this is the effective-address calc
-            m.ctl.alu_enable = true;    // (address arithmetic must NOT disturb the flags)
+        MicroOp aluImmRow(Opcode fn) {
+            MicroOp m;
+            m.ctl.alu_enable = true;
             m.ctl.alu_src_imm = true;
             m.ctl.alu_op = fn;
             return m;
@@ -49,7 +49,7 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp pushWriteRow() {      // MEM[SP] <- selected register; guard checks SP first
+        MicroOp pushWriteRow() {
             MicroOp m;
             m.ctl.mem_write = true;
             m.ctl.mem_addr_sp = true;
@@ -57,40 +57,38 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp writebackRow() {      // WB, source = ALU result
+        MicroOp writebackRow() {
             MicroOp m;
             m.ctl.reg_write = true;
             return m;
         }
 
-        MicroOp writebackMemRow() {   // WB, source = loaded word
+        MicroOp writebackMemRow() {
             MicroOp m;
             m.ctl.reg_write = true;
             m.ctl.mem_to_reg = true;
             return m;
         }
 
-        MicroOp jumpRow() {           // taken transfer, PC <- instruction target
+        MicroOp jumpRow() {
             MicroOp m;
             m.ctl.pc_write = true;
             return m;
         }
 
-        // ---- stack rows (full-descending: SP decrements BEFORE a push, points at the last valid item) ----
-
-        MicroOp spDecRow() {          // SP <- SP - 1  (make room; nothing is written yet)
+        MicroOp spDecRow() {
             MicroOp m;
             m.ctl.sp_dec = true;
             return m;
         }
 
-        MicroOp spIncRow() {          // SP <- SP + 1  (release the slot; only after it was read)
+        MicroOp spIncRow() {
             MicroOp m;
             m.ctl.sp_inc = true;
             return m;
         }
 
-        MicroOp stackPushWriteRow() { // MEM[SP] <- return address (PC); guard checks SP first
+        MicroOp stackPushWriteRow() {
             MicroOp m;
             m.ctl.mem_write = true;
             m.ctl.mem_addr_sp = true;
@@ -99,7 +97,7 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp stackPopReadRow() {   // MDR <- MEM[SP]; guard checks SP first
+        MicroOp stackPopReadRow() {
             MicroOp m;
             m.ctl.mem_read = true;
             m.ctl.mem_addr_sp = true;
@@ -107,7 +105,7 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp pcFromMemRow() {      // PC <- MDR (the popped return address)
+        MicroOp pcFromMemRow() {
             MicroOp m;
             m.ctl.pc_write = true;
             m.ctl.pc_src_mem = true;
@@ -120,7 +118,13 @@ namespace risc201 {
             return m;
         }
 
-        // fetch -> execute -> writeback.
+        MicroOp trapRow() {
+            MicroOp m;
+            m.ctl.trap = true;
+            m.ctl.halt = true;
+            return m;
+        }
+
         std::vector<MicroOp> aluRoutine(Opcode fn) {
             return { fetchRow(), aluRow(fn), writebackRow() };
         }
@@ -175,6 +179,7 @@ namespace risc201 {
             add(w.mem_data_pc,  "mem_data_pc");
             add(w.pc_src_mem,   "pc_src_mem");
             add(w.stack_check,  "stack_check");
+            add(w.trap,         "trap");
             add(w.halt,         "halt");
             return s.empty() ? "(idle)" : s;
         }
@@ -194,9 +199,6 @@ namespace risc201 {
     void ControlUnit::buildHorizontalRom() {
         illegal_entry_ = appendRaw({ haltRow() });
 
-        // R-type arithmetic / logic — same three-row shape, but each opcode gets
-        // its own copy so the execute row carries that opcode's ALU function.
-
         Opcode logicInstruction[] = {
             Opcode::ADD,
             Opcode::SUB,
@@ -213,58 +215,44 @@ namespace risc201 {
             appendRoutine(op, aluRoutine(op));
         }
 
-        // LOAD: rs1 + imm
         appendRoutine(Opcode::LOAD,
             { fetchRow(), aluImmRow(Opcode::ADD), memReadRow(),
              writebackMemRow() });
 
-        // STORE: same address calc, then write. No writeback.
         appendRoutine(Opcode::STORE,
             { fetchRow(), aluImmRow(Opcode::ADD), memWriteRow() });
 
-        // J-type unconditional transfer. The target is latched from the decoded
-        // instruction, so there is no fetch row — pc_write replaces pc_inc.
         appendRoutine(Opcode::JMP, { jumpRow() });
         appendRoutine(Opcode::HALT, { haltRow() });
-        // NOP still fetches the next word — only the datapath does nothing.
         appendRoutine(Opcode::NOP, { fetchRow() });
 
-        // BEQ: conditional micro-branch on Z.
-        //   Z set   -> taken row     (PC <- target)
-        //   Z clear -> not-taken row (PC <- PC + 1)
         appendBranchRoutine(Opcode::BEQ, BranchCond::Zero, jumpRow(), fetchRow());
 
-        // MOV rd, rs  /  MOV rd, imm: fetch -> ALU pass-through -> writeback.
-        // Appended after BEQ so every existing routine keeps its address.
         appendRoutine(Opcode::MOV, { fetchRow(), movRow(), writebackRow() });
 
-        // CALL target (full-descending stack). Each step is its own micro-cycle so the
-        // stack and the PC always change in a safe order:
-        //   1. pc_inc            PC now holds the return address (next instruction)
-        //   2. sp_dec            SP <- SP - 1                 (room for the return address)
-        //   3. MEM[SP] <- PC     stack_check validates SP *before* the write commits
-        //   4. pc_write          PC <- target — only after the return address is safely stored
-        // If step 3 faults (stack overflow) the PC has not jumped, so the machine halts at the call site.
         appendRoutine(Opcode::CALL,
             { fetchRow(), spDecRow(), stackPushWriteRow(), jumpRow() });
 
-        // RET (mirror image of CALL):
-        //   1. MDR <- MEM[SP]    stack_check validates SP *before* the read (underflow detection)
-        //   2. PC <- MDR         jump back to the saved return address
-        //   3. sp_inc            SP <- SP + 1 — only after the slot was successfully read
-        // No fetch row: PC is overwritten by step 2, exactly like JMP.
         appendRoutine(Opcode::RET,
             { stackPopReadRow(), pcFromMemRow(), spIncRow() });
 
-        // PUSH: make room, then write the selected register to the stack.
         appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
 
-        // POP: read the stack word, write it back, then release the slot.
         appendRoutine(Opcode::POP,
             { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
+
+        appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
+        appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
+        appendRoutine(Opcode::MUL, aluRoutine(Opcode::MUL));
+
+        appendRoutine(Opcode::CMP, { fetchRow(), aluRow(Opcode::CMP) });
+
+        trap_entry_ = appendRaw({ trapRow() });
+
+        appendRoutine(Opcode::DIV, aluRoutine(Opcode::DIV));
+        appendRoutine(Opcode::REM, aluRoutine(Opcode::REM));
     }
 
-    // Appends `routine` contiguously at the end of CM and returns its base address, rewriting each row's `next` to chain through the block.
     int ControlUnit::appendRaw(std::vector<MicroOp> routine) {
         const int base = static_cast<int>(cm_.size());
 
@@ -283,18 +271,14 @@ namespace risc201 {
 
     void ControlUnit::appendBranchRoutine(Opcode op, BranchCond cond,
                                           MicroOp taken_row, MicroOp not_taken_row) {
-        MicroOp test;              // decision row: no datapath signals, only the test
+        MicroOp test;
         test.cond = cond;
 
         const int base = appendRaw({ test, not_taken_row, taken_row });
 
-        // appendRaw chained the rows linearly; rewire them as a diamond:
-        //   base --(cond false)--> base+1 (not taken) --> END
-        //   base --(cond true )--> base+2 (taken)     --> END
         cm_[base].next          = base + 1;
         cm_[base].branch_target = base + 2;
         cm_[base + 1].next      = kMicroEnd;
-        // cm_[base + 2].next is already kMicroEnd (last row of the block).
 
         entries_[static_cast<uint8_t>(op)] = base;
     }
@@ -304,15 +288,19 @@ namespace risc201 {
         return it == entries_.end() ? illegal_entry_ : it->second;
     }
 
-    void ControlUnit::reset() {
+    void ControlUnit::restart() {
         micro_pc_ = 0;
         done_ = false;
         latched_ = false;
     }
 
-    ControlWord ControlUnit::step(Opcode op, const Flags& flags) {
+    void ControlUnit::reset() {
+        restart();
+        pending_exception_ = ExceptionCode::NONE;
+    }
+
+    ControlWord ControlUnit::step(Opcode op, const Flags& flags, ExceptionCode alu_fault) {
         if (cm_.empty()) {
-            // Vertical ROM not built yet
             done_ = true;
             ControlWord w;
             w.halt = true;
@@ -320,9 +308,7 @@ namespace risc201 {
         }
 
         if (done_) {
-            // Caller did not reset() between macro instructions. Start a fresh
-            // routine rather than re-emitting the previous terminal row forever.
-            reset();
+            restart();
         }
 
         if (!latched_) {
@@ -331,10 +317,17 @@ namespace risc201 {
         }
 
         const MicroOp& cur = cm_[micro_pc_];
-        const ControlWord out = cur.ctl;
+        ControlWord out = cur.ctl;
 
-        // Micro-sequencing: a branch row picks its successor from FLAGS,
-        // every other row just follows `next`.
+        if (alu_fault != ExceptionCode::NONE && cur.ctl.alu_enable) {
+            pending_exception_ = alu_fault;
+
+            out = ControlWord{};
+
+            micro_pc_ = static_cast<uint32_t>(trap_entry_);
+            return out;
+        }
+
         const int32_t successor =
             (cur.cond != BranchCond::None && condHolds(cur.cond, flags))
                 ? cur.branch_target
@@ -350,13 +343,6 @@ namespace risc201 {
         return out;
     }
 
-    // Horizontal microword layout (40 bits, LSB first):
-    //   [0] alu_enable   [1] mem_read   [2] mem_write  [3] reg_write
-    //   [4] pc_write     [5] pc_inc     [6] alu_src_imm [7] mem_to_reg
-    //   [8] sp_dec       [9] sp_inc     [10] flag_update [11] halt
-    //   [12] mem_addr_sp [13] mem_data_pc [14] pc_src_mem [15] stack_check
-    //   [20:16] alu_op   [23:21] cond   [31:24] next    [39:32] branch_target
-    // Address fields hold 0xFF for "end of routine".
     uint64_t ControlUnit::packHorizontal(const MicroOp& row) {
         const ControlWord& c = row.ctl;
         uint64_t w = 0;
@@ -380,13 +366,16 @@ namespace risc201 {
         w |= (static_cast<uint64_t>(row.cond) & 0x7u) << 21;
         w |= static_cast<uint64_t>(addrField(row.next))          << 24;
         w |= static_cast<uint64_t>(addrField(row.branch_target)) << 32;
+        w |= static_cast<uint64_t>(c.trap)        << 40;
         return w;
     }
 
     std::string ControlUnit::dumpControlMemory() const {
-        // Label the first row of each routine with its mnemonic.
         std::map<int, std::string> labels;
-        if (!cm_.empty()) labels[illegal_entry_] = "ILLEGAL";
+        if (!cm_.empty()) {
+            labels[illegal_entry_] = "ILLEGAL";
+            labels[trap_entry_]    = "TRAP";
+        }
         for (const auto& [opc, addr] : entries_) {
             labels[addr] = opcodeName(static_cast<Opcode>(opc));
         }
@@ -409,7 +398,7 @@ namespace risc201 {
             else os << std::setw(5) << r.branch_target;
 
             os << "  0x" << std::right << std::hex << std::uppercase
-               << std::setfill('0') << std::setw(10) << packHorizontal(r)
+               << std::setfill('0') << std::setw(11) << packHorizontal(r)
                << std::dec << std::setfill(' ') << std::left << "     "
                << signalList(r.ctl) << "\n";
         }
