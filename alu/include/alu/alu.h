@@ -31,8 +31,7 @@ namespace risc201 {
         static uint32_t floatAdd(uint32_t a, uint32_t b);
         static uint32_t floatMul(uint32_t a, uint32_t b);
         static uint32_t floatDiv(uint32_t a, uint32_t b);
-        
-        // Newton-Raphson reciprocal (1/D)
+        static Result floatCmp(uint32_t a, uint32_t b);
         static uint32_t reciprocalNR(uint32_t D_fp);
     };
 
