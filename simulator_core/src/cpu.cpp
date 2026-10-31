@@ -62,6 +62,17 @@ namespace risc201 {
         resetPipeline();
     }
 
+    void Cpu::reconfigure(PipelineVariant variant, MicrocodeEncoding encoding) {
+        variant_ = variant;
+        encoding_ = encoding;
+        control_unit_ = ControlUnit(MicrocodeEncoding::Horizontal);
+        controls_ = encoding == MicrocodeEncoding::Vertical
+                        ? buildStageControls(VerticalControlUnit{})
+                        : buildStageControls(control_unit_);
+        memory_.assign(memory_.size(), 0);
+        loadWords(code_);
+    }
+
     bool Cpu::pipelineEmpty() const {
         for (const Latch& l : regs_) {
             if (l.valid) return false;

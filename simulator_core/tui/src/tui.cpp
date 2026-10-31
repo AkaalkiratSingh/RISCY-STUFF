@@ -830,6 +830,34 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         asm_scroll_ = 0;
         auto_scroll_ = true;
         feedback_message_ = "CPU reset to initial state.";
+    } else if (action == "config") {
+        std::string what;
+        std::string value;
+        iss >> what >> value;
+        feedback_is_error_ = false;
+        if (what.empty()) {
+            feedback_message_ = "config: " + variantName(cpu_.variant()) + ", " +
+                                (cpu_.forwarding() ? "forwarding" : "no-forwarding") + ", " +
+                                (cpu_.encoding() == MicrocodeEncoding::Vertical ? "vertical" : "horizontal") +
+                                " ROM";
+        } else if (what == "stage" && (value == "4" || value == "6")) {
+            const PipelineVariant chosen = value == "6" ? PipelineVariant::SixStage
+                                                        : PipelineVariant::FourStage;
+            cpu_.reconfigure(chosen, cpu_.encoding());
+            feedback_message_ = "config: " + variantName(chosen) + " pipeline - run reset.";
+        } else if (what == "rom" && (value == "horiz" || value == "vert")) {
+            const MicrocodeEncoding chosen = value == "vert" ? MicrocodeEncoding::Vertical
+                                                             : MicrocodeEncoding::Horizontal;
+            cpu_.reconfigure(cpu_.variant(), chosen);
+            feedback_message_ = std::string("config: ") + (value == "vert" ? "vertical" : "horizontal") +
+                                " ROM - run reset.";
+        } else if (what == "forward" && (value == "on" || value == "off")) {
+            cpu_.setForwarding(value == "on");
+            feedback_message_ = "config: forwarding " + value;
+        } else {
+            feedback_message_ = "Usage: :config [stage 4|6] [rom horiz|vert] [forward on|off]";
+            feedback_is_error_ = true;
+        }
     } else if (action == "trace") {
         show_trace_ = !show_trace_;
         trace_scroll_ = 0;
@@ -862,7 +890,7 @@ void Tui::executeCommand(const std::string& raw_cmd) {
             loadProgram(path);
         }
     } else if (action == "h" || action == "help" || action == "?") {
-        feedback_message_ = "Commands: :load <path>, :step [n], :clock [n], :run, :break <pc>, :clearbreak, :reset, :mem <s:c>, :trace, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), T (hazard timeline), [ ] (scroll timeline), q (quit)";
+        feedback_message_ = "Commands: :load <path>, :step [n], :clock [n], :run, :break <pc>, :clearbreak, :reset, :mem <s:c>, :config [stage 4|6] [rom horiz|vert] [forward on|off], :trace, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), T (hazard timeline), [ ] (scroll timeline), q (quit)";
     } else {
         feedback_message_ = "Unknown command '" + action + "'. Type ':help' for available commands.";
         feedback_is_error_ = true;

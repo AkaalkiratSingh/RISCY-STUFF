@@ -297,6 +297,32 @@ int main() {
         CHECK(under.state().pending_exception.has_value());
     }
 
+    section("Pipeline: reconfigure matches a freshly constructed Cpu");
+    {
+        const std::vector<std::string> prog = {"ADD R1, R0, 5", "SUB R1, R1, 1", "HALT"};
+        const std::vector<uint32_t> words = assembleWords(prog);
+
+        Cpu reused(PipelineVariant::FourStage, kDefaultMemoryWords,
+                   MicrocodeEncoding::Horizontal);
+        reused.setTracing(true);
+        reused.loadWords(words);
+        reused.run();
+        reused.reconfigure(PipelineVariant::SixStage, MicrocodeEncoding::Vertical);
+        reused.run();
+
+        Cpu fresh(PipelineVariant::SixStage, kDefaultMemoryWords,
+                  MicrocodeEncoding::Vertical);
+        fresh.setTracing(true);
+        fresh.loadWords(words);
+        fresh.run();
+
+        CHECK_EQ(reused.cycles(), fresh.cycles());
+        CHECK_EQ(reused.retired(), fresh.retired());
+        CHECK_EQ(reused.state().registers[1], fresh.state().registers[1]);
+        CHECK_EQ(reused.trace().flushes, fresh.trace().flushes);
+        CHECK_EQ(reused.trace().stalls, fresh.trace().stalls);
+    }
+
     if (failures == 0) {
         std::cout << "\npipeline_test: all checks passed\n";
         return 0;
