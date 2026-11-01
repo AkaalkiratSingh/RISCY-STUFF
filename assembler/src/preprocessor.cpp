@@ -12,7 +12,6 @@ constexpr int kMaxExpansionDepth = 16;
 constexpr size_t kMaxOutputLines = 100000;
 constexpr size_t kMaxMacroParams = 64;
 
-// "ADD R1, R2" -> first = "ADD", rest = "R1, R2"
 void splitFirstToken(const std::string& line, std::string& first, std::string& rest) {
     size_t sp = line.find_first_of(" \t");
     if (sp == std::string::npos) {
@@ -26,7 +25,6 @@ void splitFirstToken(const std::string& line, std::string& first, std::string& r
     else rest = line.substr(start);
 }
 
-// Splits on commas and trims each piece. Empty pieces are kept so the caller can report them.
 std::vector<std::string> splitOperands(const std::string& rest) {
     std::vector<std::string> out;
     if (rest.empty()) return out;
@@ -51,7 +49,6 @@ bool isIdentifier(const std::string& s) {
     return true;
 }
 
-// R0, R15, R99, r3 ... and SP. Parameters named like this would be confusing.
 bool looksLikeRegister(const std::string& s) {
     std::string u = toUpper(s);
     if (u == "SP") return true;
@@ -66,7 +63,6 @@ bool isTokenChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '@' || c == '.';
 }
 
-// Replaces whole tokens only: parameter "a" never rewrites part of "data" or "R1a".
 std::string substituteTokens(const std::string& text, const std::vector<std::string>& params, const std::vector<std::string>& args) {
     std::string out;
     size_t i = 0;
@@ -93,7 +89,42 @@ std::string substituteTokens(const std::string& text, const std::vector<std::str
     return out;
 }
 
-} // namespace
+std::vector<std::string> localTokens(const std::string& text) {
+    std::vector<std::string> found;
+    size_t i = 0;
+    while (i < text.size()) {
+        if (!isTokenChar(text[i])) {
+            ++i;
+            continue;
+        }
+        size_t j = i;
+        while (j < text.size() && isTokenChar(text[j])) ++j;
+        if (text[i] == '@') found.push_back(text.substr(i, j - i));
+        i = j;
+    }
+    return found;
+}
+
+std::string renameLocalTokens(const std::string& text, const std::string& prefix) {
+    std::string out;
+    size_t i = 0;
+    while (i < text.size()) {
+        if (!isTokenChar(text[i])) {
+            out += text[i++];
+            continue;
+        }
+        size_t j = i;
+        while (j < text.size() && isTokenChar(text[j])) ++j;
+        std::string token = text.substr(i, j - i);
+
+        if (token[0] == '@') out += prefix + token.substr(1);
+        else out += token;
+        i = j;
+    }
+    return out;
+}
+
+}
 
 void Preprocessor::addError(int line_num, std::string msg) {
     errors_.push_back(PreprocessError{line_num, std::move(msg)});
@@ -161,15 +192,14 @@ bool Preprocessor::parseMacroHeader(const std::string& header_rest, int line_num
     return ok;
 }
 
-// Pass over the whole file: pulls every .macro ... .endm block into macros_ and
-// returns the remaining lines. Because this runs before any expansion, a macro
-// can be used above the place where it is defined.
 std::vector<Preprocessor::SourceLine> Preprocessor::collect(const std::vector<std::string>& source_lines) {
     std::vector<SourceLine> stream;
 
     bool in_macro = false;
     bool current_ok = true;
     Macro current;
+    std::vector<std::pair<std::string, int>> local_defs;
+    std::vector<std::pair<std::string, int>> local_uses;
 
     for (size_t i = 0; i < source_lines.size(); ++i) {
         int line_num = static_cast<int>(i) + 1;
@@ -188,6 +218,8 @@ std::vector<Preprocessor::SourceLine> Preprocessor::collect(const std::vector<st
             current = Macro{};
             current.definition_line = line_num;
             current_ok = parseMacroHeader(rest, line_num, current);
+            local_defs.clear();
+            local_uses.clear();
             continue;
         }
 
@@ -197,6 +229,17 @@ std::vector<Preprocessor::SourceLine> Preprocessor::collect(const std::vector<st
                 continue;
             }
             if (!rest.empty()) addError(line_num, "unexpected text after '.endm'");
+
+            for (const auto& use : local_uses) {
+                bool defined = false;
+                for (const auto& def : local_defs) {
+                    if (def.first == use.first) defined = true;
+                }
+                if (!defined) {
+                    addError(use.second, "local label '" + use.first + "' is used but never defined in macro '" + current.name + "'");
+                }
+            }
+
             in_macro = false;
             if (current_ok) macros_[current.name] = std::move(current);
             continue;
@@ -207,9 +250,26 @@ std::vector<Preprocessor::SourceLine> Preprocessor::collect(const std::vector<st
 
             std::string probe = line;
             std::string label;
-            if (extractLabel(probe, label) && label[0] == '.') {
-                addError(line_num, "label '" + label + "' inside macro '" + current.name + "' cannot start with '.'");
+            if (extractLabel(probe, label)) {
+                if (label[0] == '.') {
+                    addError(line_num, "label '" + label + "' inside macro '" + current.name + "' cannot start with '.'");
+                }
+                else if (label[0] == '@') {
+                    bool duplicate = false;
+                    for (const auto& def : local_defs) {
+                        if (def.first == label) duplicate = true;
+                    }
+                    if (!isIdentifier(label.substr(1))) addError(line_num, "invalid local label '" + label + "'");
+                    else if (duplicate) addError(line_num, "local label '" + label + "' is defined twice in macro '" + current.name + "'");
+                    else local_defs.push_back({label, line_num});
+                }
             }
+
+            for (const auto& token : localTokens(probe)) {
+                if (!isIdentifier(token.substr(1))) addError(line_num, "invalid local label '" + token + "'");
+                else local_uses.push_back({token, line_num});
+            }
+
             current.body.push_back(SourceLine{line, line_num});
             continue;
         }
@@ -235,13 +295,19 @@ void Preprocessor::emit(PreprocessResult& out, const std::string& text, int orig
     out.origin_line.push_back(origin_line);
 }
 
-// Expands one line. If it calls a macro, the macro body is substituted and each
-// resulting line is expanded again, so macros can call other macros.
 void Preprocessor::expandLine(const std::string& text, int origin_line, int depth, PreprocessResult& out) {
     std::string line = stripCommentandTrim(text);
     if (line.empty()) {
         emit(out, text, origin_line);
         return;
+    }
+
+    if (depth == 0) {
+        std::vector<std::string> stray = localTokens(line);
+        if (!stray.empty()) {
+            addError(origin_line, "local label '" + stray[0] + "' can only be used inside a macro body");
+            return;
+        }
     }
 
     std::string label;
@@ -280,14 +346,15 @@ void Preprocessor::expandLine(const std::string& text, int origin_line, int dept
         return;
     }
 
-    // A label on the call line goes on its own line, in front of the expansion.
     if (has_label) emit(out, label + ":", origin_line);
+    std::string local_prefix = "__" + macro.name + "_" + std::to_string(++expansion_count_) + "_";
 
     for (const auto& body_line : macro.body) {
         std::string body = body_line.text;
 
         std::string body_label;
         bool body_has_label = extractLabel(body, body_label);
+        if (body_has_label && body_label[0] == '@') body_label = local_prefix + body_label.substr(1);
 
         std::string rebuilt;
         if (body_has_label) rebuilt = body_label + ":";
@@ -299,7 +366,7 @@ void Preprocessor::expandLine(const std::string& text, int origin_line, int dept
             if (!rebuilt.empty()) rebuilt += " ";
             rebuilt += body_op;
             if (!body_rest.empty()) {
-                rebuilt += " " + substituteTokens(body_rest, macro.params, args);
+                rebuilt += " " + renameLocalTokens(substituteTokens(body_rest, macro.params, args), local_prefix);
             }
         }
 
@@ -312,6 +379,7 @@ PreprocessResult Preprocessor::expand(const std::vector<std::string>& source_lin
     macros_.clear();
     errors_.clear();
     too_large_ = false;
+    expansion_count_ = 0;
 
     PreprocessResult result;
     std::vector<SourceLine> stream = collect(source_lines);
@@ -326,7 +394,7 @@ PreprocessResult Preprocessor::expand(const std::vector<std::string>& source_lin
             if (extractLabel(probe, label) && label == ".literals") in_literals = true;
         }
 
-        if (in_literals) emit(result, src.text, src.line_number);       // literals are never macro-expanded
+        if (in_literals) emit(result, src.text, src.line_number);
         else expandLine(src.text, src.line_number, 0, result);
     }
 

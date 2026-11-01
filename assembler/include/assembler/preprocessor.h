@@ -37,6 +37,7 @@ private:
     std::unordered_map<std::string, Macro> macros_;
     std::vector<PreprocessError> errors_;
     bool too_large_ = false;
+    int expansion_count_ = 0;
 
     void addError(int line_num, std::string msg);
     std::vector<SourceLine> collect(const std::vector<std::string>& source_lines);
