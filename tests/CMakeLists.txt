@@ -45,3 +45,7 @@ add_test(NAME PipelineTest COMMAND pipeline_test)
 add_executable(literals_test literals_test.cpp)
 target_link_libraries(literals_test PRIVATE assembler_lib)
 add_test(NAME LiteralsTest COMMAND literals_test)
+
+add_executable(preprocessor_test preprocessor_test.cpp)
+target_link_libraries(preprocessor_test PRIVATE assembler_lib)
+add_test(NAME PreprocessorTest COMMAND preprocessor_test)

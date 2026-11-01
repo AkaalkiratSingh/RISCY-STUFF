@@ -20,8 +20,8 @@ namespace risc201 {
             case Opcode::BEQ:   return "BEQ";
             case Opcode::CALL:  return "CALL";
             case Opcode::RET:   return "RET";
-            case Opcode::PUSH:  return "PUSH";
-            case Opcode::POP:   return "POP";
+            // case Opcode::PUSH:  return "PUSH";
+            // case Opcode::POP:   return "POP";
             case Opcode::NOT:   return "NOT";
             case Opcode::SAR:   return "SAR";
             case Opcode::CMP:   return "CMP";

@@ -226,6 +226,7 @@ std::vector<Preprocessor::SourceLine> Preprocessor::collect(const std::vector<st
     std::vector<SourceLine> stream;
 
     bool in_macro = false;
+    bool in_literals = false;
     bool current_ok = true;
     Macro current;
     std::vector<std::pair<std::string, int>> local_defs;
@@ -248,6 +249,10 @@ std::vector<Preprocessor::SourceLine> Preprocessor::collect(const std::vector<st
             current = Macro{};
             current.definition_line = line_num;
             current_ok = parseMacroHeader(rest, line_num, current);
+            if (in_literals) {
+                addError(line_num, "'.macro' is not allowed after '.literals:' (that section holds only literals)");
+                current_ok = false;
+            }
             local_defs.clear();
             local_uses.clear();
             continue;
@@ -302,6 +307,12 @@ std::vector<Preprocessor::SourceLine> Preprocessor::collect(const std::vector<st
 
             current.body.push_back(SourceLine{line, line_num});
             continue;
+        }
+
+        if (!in_literals) {
+            std::string probe = line;
+            std::string label;
+            if (extractLabel(probe, label) && label == ".literals") in_literals = true;
         }
 
         stream.push_back(SourceLine{source_lines[i], line_num});

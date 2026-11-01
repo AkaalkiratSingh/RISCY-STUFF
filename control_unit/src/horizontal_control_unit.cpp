@@ -253,12 +253,12 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { stackPopReadRow(), pcFromMemRow(), spIncRow() });
 
-        // PUSH: make room, then write the selected register to the stack.
-        appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
+        // // PUSH: make room, then write the selected register to the stack.
+        // appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
 
-        // POP: read the stack word, write it back, then release the slot.
-        appendRoutine(Opcode::POP,
-            { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
+        // // POP: read the stack word, write it back, then release the slot.
+        // appendRoutine(Opcode::POP,
+        //     { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
     }
 
     // Appends `routine` contiguously at the end of CM and returns its base address, rewriting each row's `next` to chain through the block.

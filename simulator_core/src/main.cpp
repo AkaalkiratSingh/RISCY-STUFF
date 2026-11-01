@@ -90,9 +90,9 @@ std::string formatInstruction(const risc201::Instruction& in) {
         case Opcode::BEQ:
         case Opcode::CALL:
             return name + " " + std::to_string(in.imm);
-        case Opcode::PUSH:
-        case Opcode::POP:
-            return name + " " + regName(rd);
+        // case Opcode::PUSH:
+        // case Opcode::POP:
+        //     return name + " " + regName(rd);
         case Opcode::LOAD:
         case Opcode::STORE:
             return name + " " + regName(rd) + ", " + std::to_string(in.imm) +

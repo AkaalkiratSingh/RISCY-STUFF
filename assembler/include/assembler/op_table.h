@@ -39,8 +39,8 @@ namespace risc201 {
             {"BEQ",   {Opcode::BEQ,   InstrFormat::J_TYPE,  {OperandKind::LABEL}}},
             {"CALL",  {Opcode::CALL,  InstrFormat::J_TYPE,  {OperandKind::LABEL}}},
             {"RET",   {Opcode::RET,   InstrFormat::RI_TYPE, {}}},
-            {"PUSH",  {Opcode::PUSH,  InstrFormat::RI_TYPE, {OperandKind::REG}}},
-            {"POP",   {Opcode::POP,   InstrFormat::RI_TYPE, {OperandKind::REG}}},
+            // {"PUSH",  {Opcode::PUSH,  InstrFormat::RI_TYPE, {OperandKind::REG}}},
+            // {"POP",   {Opcode::POP,   InstrFormat::RI_TYPE, {OperandKind::REG}}},
             {"HALT",  {Opcode::HALT,  InstrFormat::RI_TYPE, {}}},
         };
 

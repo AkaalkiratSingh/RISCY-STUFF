@@ -209,16 +209,16 @@ int main() {
         CHECK(!ret.pc_inc && !ret.pc_from_target && !ret.mem_write && !ret.reg_write);
         CHECK(!ret.alu_enable);
 
-        // PUSH: same stack write as CALL, but the data is a REGISTER, not the PC.
-        const StageControls push = controlFor(cu, Opcode::PUSH);
-        CHECK(push.pc_inc && push.sp_dec && push.mem_write && push.mem_addr_sp && push.stack_check);
-        CHECK(!push.mem_data_pc && !push.pc_from_target && !push.mem_read);
+        // // PUSH: same stack write as CALL, but the data is a REGISTER, not the PC.
+        // const StageControls push = controlFor(cu, Opcode::PUSH);
+        // CHECK(push.pc_inc && push.sp_dec && push.mem_write && push.mem_addr_sp && push.stack_check);
+        // CHECK(!push.mem_data_pc && !push.pc_from_target && !push.mem_read);
 
-        // POP: read into a register, then release the slot.
-        const StageControls pop = controlFor(cu, Opcode::POP);
-        CHECK(pop.pc_inc && pop.mem_read && pop.mem_addr_sp && pop.stack_check);
-        CHECK(pop.reg_write && pop.mem_to_reg && pop.sp_inc);
-        CHECK(!pop.mem_write && !pop.mem_data_pc && !pop.sp_dec);
+        // // POP: read into a register, then release the slot.
+        // const StageControls pop = controlFor(cu, Opcode::POP);
+        // CHECK(pop.pc_inc && pop.mem_read && pop.mem_addr_sp && pop.stack_check);
+        // CHECK(pop.reg_write && pop.mem_to_reg && pop.sp_inc);
+        // CHECK(!pop.mem_write && !pop.mem_data_pc && !pop.sp_dec);
 
         // Address and move arithmetic must not latch FLAGS.
         for (Opcode op : {Opcode::LOAD, Opcode::STORE, Opcode::MOV}) {
@@ -275,7 +275,7 @@ int main() {
         std::cout << "  " << std::left << std::setw(7) << "op" << "signals\n";
         for (Opcode op : {Opcode::ADD, Opcode::LOAD, Opcode::STORE, Opcode::JMP,
                           Opcode::HALT, Opcode::NOP, Opcode::BEQ, Opcode::MOV,
-                          Opcode::CALL, Opcode::RET, Opcode::PUSH, Opcode::POP}) {
+                          Opcode::CALL, Opcode::RET/*, Opcode::PUSH, Opcode::POP*/}) {
             std::cout << "  " << std::left << std::setw(7) << opcodeName(op)
                       << join(controlsSignals(controlFor(cu, op))) << "\n";
         }
