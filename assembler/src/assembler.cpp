@@ -72,6 +72,14 @@ namespace risc201 {
 
         bool parseRegister(const std::string& token, Register& reg_out) {
             if (token.size() < 2) return false;
+
+            std::string upper = token;
+            for (auto& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            if (upper == "SP") {
+                reg_out = Register::R15;
+                return true;
+            }
+
             char first = static_cast<char>(std::toupper(token[0]));
             if (first != 'R') return false;
 
