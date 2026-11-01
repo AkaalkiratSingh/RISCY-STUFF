@@ -218,7 +218,7 @@ namespace risc201 {
             return true;
        }
 
-       if (out.operands.size() != valid->second.operand_kinds.size()) addError(line_num, "'" + out.op + "' expects " + std::to_string(valid->second.operand_kinds.size()) + " operand(s), got " + std::to_string(out.operands.size()));
+       if (out.operands.size() != writtenOperandCount(valid->second)) addError(line_num, "'" + out.op + "' expects " + std::to_string(writtenOperandCount(valid->second)) + " operand(s), got " + std::to_string(out.operands.size()));
 
        out.emits_word = true;
 
@@ -226,7 +226,7 @@ namespace risc201 {
     }
 
     bool Assembler::resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out) {
-        if (pl.operands.size() != info.operand_kinds.size()) {
+        if (pl.operands.size() != writtenOperandCount(info)) {
             return false;
         }
 
@@ -241,10 +241,17 @@ namespace risc201 {
         size_t reg_slot_idx = 0;
         bool have_imm_or_label = false;
         std::string imm_token;
+        size_t operand_idx = 0;
 
         for (size_t i = 0; i < info.operand_kinds.size(); ++i) {
-            const std::string& token = pl.operands[i];
             OperandKind kind = info.operand_kinds[i];
+
+            if (kind == OperandKind::EMPTY) {
+                ++reg_slot_idx;
+                continue;
+            }
+
+            const std::string& token = pl.operands[operand_idx++];
 
             switch (kind) {
                 case OperandKind::REG: {
@@ -331,6 +338,9 @@ namespace risc201 {
 
                     break;
                 }
+
+                case OperandKind::EMPTY:
+                    break;
             }
         }
 

@@ -333,7 +333,7 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
         case Opcode::AND: res = a & b; break;
         case Opcode::OR:  res = a | b; break;
         case Opcode::XOR: res = a ^ b; break;
-        case Opcode::NOT: res = ~a;    break;
+        case Opcode::NOT: res = ~b;    break;
 
         case Opcode::SHL: {
             uint32_t sh = b & 0x1Fu;
