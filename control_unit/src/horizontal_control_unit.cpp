@@ -22,6 +22,13 @@ namespace risc201 {
             return m;
         }
 
+        MicroOp aluRowKeepFlags(Opcode fn) {   // execute, FLAGS left alone: the ALU produces no
+            MicroOp m;                         // flags for FADD/FSUB/FMUL/FDIV, so latching would
+            m.ctl.alu_enable = true;           // overwrite them with all-false
+            m.ctl.alu_op = fn;
+            return m;
+        }
+
         MicroOp movRow() {
             MicroOp m;
             m.ctl.alu_enable = true;
@@ -266,6 +273,14 @@ namespace risc201 {
         // BGT target: conditional micro-branch on flags.greaterThan (set by CMP), built exactly
         // like BEQ. Appended last so no existing routine moves.
         appendBranchRoutine(Opcode::BGT, BranchCond::GreaterThan, jumpRow(), fetchRow());
+
+        // Floating point (IEEE-754 single, held in the ordinary 32-bit registers; one ALU cycle each).
+        // FADD/FSUB/FMUL/FDIV: fetch -> execute -> writeback, FLAGS untouched (see aluRowKeepFlags).
+        for (Opcode op : { Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV }) {
+            appendRoutine(op, { fetchRow(), aluRowKeepFlags(op), writebackRow() });
+        }
+        // FCMP rs1, rs2: sets zero/equal/greaterThan only, no writeback (like CMP), so BGT/BEQ can follow.
+        appendRoutine(Opcode::FCMP, { fetchRow(), aluRow(Opcode::FCMP) });
     }
 
     int ControlUnit::appendRaw(std::vector<MicroOp> routine) {
