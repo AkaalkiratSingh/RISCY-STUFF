@@ -42,6 +42,11 @@ void testEntryAddresses() {
     CHECK(cu.routineEntry(Opcode::DIV)   == 64);
     CHECK(cu.routineEntry(Opcode::REM)   == 67);
     CHECK(cu.routineEntry(Opcode::BGT)   == 70);
+    CHECK(cu.routineEntry(Opcode::FADD)  == 73);
+    CHECK(cu.routineEntry(Opcode::FSUB)  == 76);
+    CHECK(cu.routineEntry(Opcode::FMUL)  == 79);
+    CHECK(cu.routineEntry(Opcode::FDIV)  == 82);
+    CHECK(cu.routineEntry(Opcode::FCMP)  == 85);
     CHECK(cu.trapEntry() == 63);
     CHECK(cu.routineEntry(Opcode::CMP)   == 61);
     CHECK(cu.routineEntry(static_cast<Opcode>(0x55)) == 0);   // unknown -> illegal row
@@ -52,7 +57,7 @@ void testEveryOpcodeHasARoutine() {
     const Opcode all[] = { Opcode::NOP, Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR, Opcode::XOR,
         Opcode::SHL, Opcode::SHR, Opcode::LOAD, Opcode::STORE, Opcode::JMP, Opcode::BEQ, Opcode::CALL,
         Opcode::RET, Opcode::PUSH, Opcode::POP, Opcode::NOT, Opcode::SAR, Opcode::CMP, Opcode::MOV,
-        Opcode::MUL, Opcode::DIV, Opcode::REM, Opcode::BGT, Opcode::HALT };
+        Opcode::MUL, Opcode::DIV, Opcode::REM, Opcode::BGT, Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV, Opcode::FCMP, Opcode::HALT };
     for (Opcode op : all) CHECK(cu.routineEntry(op) != 0);   // nothing falls to the illegal row
 }
 
@@ -140,6 +145,21 @@ void testBgt() {
     { ControlUnit cu; cu.step(Opcode::BGT, other); CHECK(cu.microPC() == 71); }
     // BEQ is unchanged and ignores greaterThan.
     { ControlUnit cu; cu.step(Opcode::BEQ, gt); CHECK(cu.microPC() == 33); }
+}
+
+// FADD/FSUB/FMUL/FDIV: same three rows as integer ALU ops, but FLAGS are left alone because the
+// ALU returns no flags for them. FCMP: two rows (fetch, execute), flags latched, nothing written.
+void testFloatRoutines() {
+    for (Opcode op : { Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV }) {
+        auto r = runAll(op);
+        CHECK(r.size() == 3 && r[0].pc_inc && !r[0].alu_enable);
+        CHECK(r[1].alu_enable && r[1].alu_op == op && !r[1].flag_update && !r[1].alu_src_imm);
+        CHECK(r[2].reg_write && !r[2].mem_to_reg);
+    }
+    auto c = runAll(Opcode::FCMP);
+    CHECK(c.size() == 2 && c[0].pc_inc);
+    CHECK(c[1].alu_enable && c[1].alu_op == Opcode::FCMP && c[1].flag_update);
+    for (const auto& w : c) CHECK(!w.reg_write && !w.mem_write && !w.mem_read);
 }
 
 void testCallRetRows() {
@@ -258,7 +278,7 @@ void testBackToBackAndIllegal() {
 
 void testControlMemoryWellFormed() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    CHECK(cm.size() == 73);
+    CHECK(cm.size() == 87);
     CHECK(cm.size() <= kMaxControlMemoryRows);
     for (const MicroOp& r : cm) {
         CHECK(r.next == kMicroEnd || (r.next >= 0 && r.next < static_cast<int32_t>(cm.size())));
@@ -533,7 +553,7 @@ void testVerticalIsPlaceholder() {
 int main() {
     RUN(testEntryAddresses); RUN(testEveryOpcodeHasARoutine); RUN(testAddRoutine);
     RUN(testAluOpsCarryTheirOwnFunction); RUN(testCmpSetsFlagsButWritesNothing); RUN(testLoadStore);
-    RUN(testJmpHaltNop); RUN(testMov); RUN(testBeq); RUN(testBgt); RUN(testCallRetRows); RUN(testPushPopRows);
+    RUN(testJmpHaltNop); RUN(testMov); RUN(testBeq); RUN(testBgt); RUN(testFloatRoutines); RUN(testCallRetRows); RUN(testPushPopRows);
     RUN(testCallRetSynchronisation); RUN(testPushPopSynchronisation); RUN(testStackFaultsHappenBeforeDamage);
     RUN(testBackToBackAndIllegal);
     RUN(testAluFaultAbortsRoutineWithoutCommitting); RUN(testFaultIgnoredWhileAluIsIdle);
