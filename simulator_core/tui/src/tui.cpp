@@ -153,11 +153,10 @@ void Tui::render() {
 
     renderRegisters(0, col1_w + col2_w, reg_h, col3_w);
     renderExtraStats(reg_h, col1_w + col2_w, sub_h, stats_w);
-    renderStack(reg_h, col1_w + col2_w + stats_w, sub_h, stack_w);
+    renderMemory(reg_h, col1_w + col2_w + stats_w, sub_h, stack_w);
 
     asm_view_h_ = std::max(0, top_h - 2);
     bin_view_h_ = asm_view_h_;
-    mem_view_h_ = std::max(0, sub_h - 2);
 
     if (trace_h > 0) renderHazardTimeline(top_h, 0, trace_h, total_cols);
 
@@ -421,23 +420,38 @@ void Tui::renderExtraStats(int r, int c, int h, int w) {
     }
 }
 
-void Tui::renderStack(int r, int c, int h, int w) {
-    screen_.drawBox(r, c, h, w, "MEMORY",
-                    Style{Color::White, Color::Default, false},
-                    Style{Color::BrightYellow, Color::Default, true});
-
-    const int inner_h = h - 2;
-    const int inner_w = w - 2;
-    if (inner_h <= 0 || inner_w <= 0) return;
-
+void Tui::renderMemory(int r, int c, int h, int w) {
     const uint32_t sp = cpu_.state().sp;
     const auto& memory = cpu_.memory();
     const uint32_t mem_sz = static_cast<uint32_t>(memory.size());
+    const int inner_h = h - 2;
+    const int inner_w = w - 2;
+    const uint32_t rows = static_cast<uint32_t>(std::max(0, inner_h - 1));
 
-    int start_addr = static_cast<int>(std::min(sp + 1, mem_sz)) - mem_scroll_;
-    if (start_addr < 0) start_addr = 0;
+    uint32_t top = mem_anchor_;
+    if (mem_follow_sp_) {
+        const uint32_t bottom = (top > rows) ? (top - rows) : 0;
+        if (sp < bottom) {
+            top = std::min(sp + rows, mem_sz);
+        } else if (sp > top) {
+            top = std::min(sp, mem_sz);
+        }
+        mem_anchor_ = top;
+    } else {
+        mem_anchor_ = std::min(std::max(mem_anchor_, rows), mem_sz);
+        top = mem_anchor_;
+    }
+
+    std::string title = "MEMORY @ " + std::to_string(top);
+    if (mem_follow_sp_ && static_cast<int>(title.size()) + 5 <= w - 6) title += " (SP)";
+    screen_.drawBox(r, c, h, w, title,
+                    Style{Color::White, Color::Default, false},
+                    Style{Color::BrightYellow, Color::Default, true});
+
+    if (inner_h <= 0 || inner_w <= 0) return;
+
     for (int i = 0; i < inner_h; ++i) {
-        int addr = start_addr - i;
+        const int addr = static_cast<int>(top) - i;
         if (addr < 0) break;
 
         std::ostringstream oss;
@@ -527,9 +541,18 @@ void Tui::renderCommandLine(int r, int c, int h, int w) {
                            "]  type insert | Enter split | Backspace | Arrows | Esc done";
         screen_.drawText(r + 1, c + 2, hint, Style{Color::BrightWhite, Color::Default, true}, w - 4);
     } else {
-        std::string hint = (mode_ == Mode::Inspect)
-            ? "[INSPECT " + paneName() + "]  Tab next pane | j/k scroll | 'e' edit ASM | ':' cmd | Esc normal | 'q' quit"
-            : "[NORMAL MODE]  ':' cmd | 's' step | 'c' clock | 'r' run | Tab inspect | 'T' trace | 'q' quit";
+        std::string hint;
+        if (mode_ == Mode::Inspect) {
+            if (pane_ == Pane::Assembly) {
+                hint = "[INSPECT ASM]  Tab next pane | j/k scroll | 'e' edit | ':' cmd | Esc normal | 'q' quit";
+            } else if (pane_ == Pane::Memory) {
+                hint = "[INSPECT MEM]  Tab next pane | j/k scroll | g/G ends | 'f' follow SP | ':' cmd | Esc normal";
+            } else {
+                hint = "[INSPECT " + paneName() + "]  Tab next pane | j/k scroll | ':' cmd | Esc normal | 'q' quit";
+            }
+        } else {
+            hint = "[NORMAL MODE]  ':' cmd | 's' step | 'c' clock | 'r' run | Tab inspect | 'T' trace | 'q' quit";
+        }
         screen_.drawText(r + 1, c + 2, hint, Style{Color::BrightBlack, Color::Default, false}, w - 4);
     }
 }
@@ -561,8 +584,26 @@ int* Tui::focusedScroll() {
     switch (pane_) {
         case Pane::Assembly: return &asm_scroll_;
         case Pane::Binary:   return &bin_scroll_;
-        case Pane::Memory:   return &mem_scroll_;
         default:             return nullptr;
+    }
+}
+
+uint32_t Tui::memoryTop() const {
+    const uint32_t mem_sz = static_cast<uint32_t>(cpu_.memory().size());
+    return std::min(cpu_.state().sp + 1, mem_sz);
+}
+
+void Tui::scrollFocused(int delta) {
+    if (pane_ == Pane::Memory) {
+        mem_follow_sp_ = false;
+        const int next = static_cast<int>(mem_anchor_) - delta;
+        const int limit = static_cast<int>(cpu_.memory().size());
+        mem_anchor_ = static_cast<uint32_t>(std::max(0, std::min(next, limit)));
+        return;
+    }
+    if (int* scroll = focusedScroll()) {
+        auto_scroll_ = false;
+        *scroll = std::max(0, *scroll + delta);
     }
 }
 
@@ -571,9 +612,7 @@ void Tui::clampFocusedScroll() {
         std::max(0, static_cast<int>(raw_assembly_.size()) - asm_view_h_)));
     bin_scroll_ = std::max(0, std::min(bin_scroll_,
         std::max(0, static_cast<int>(code_words_.size()) - bin_view_h_)));
-    const int top = static_cast<int>(std::min(cpu_.state().sp + 1,
-                                              static_cast<uint32_t>(cpu_.memory().size())));
-    mem_scroll_ = std::max(0, std::min(mem_scroll_, std::max(0, top - mem_view_h_ + 1)));
+    mem_anchor_ = std::min(mem_anchor_, static_cast<uint32_t>(cpu_.memory().size()));
 }
 
 void Tui::cyclePane() {
@@ -810,14 +849,41 @@ void Tui::handleKey(const KeyEvent& ev) {
             return;
         }
         if (ev.key == Key::Char && (ev.ch == 'j' || ev.ch == 'k')) {
-            if (int* scroll = focusedScroll()) {
-                auto_scroll_ = false;
-                *scroll = std::max(0, *scroll + (ev.ch == 'j' ? 1 : -1));
-            }
+            scrollFocused(ev.ch == 'j' ? 1 : -1);
             return;
         }
         if (ev.key == Key::Char && ev.ch == 'g') {
-            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll = 0; }
+            if (pane_ == Pane::Memory) {
+                mem_anchor_ = 0;
+                mem_follow_sp_ = false;
+            } else if (int* scroll = focusedScroll()) {
+                auto_scroll_ = false;
+                *scroll = 0;
+            }
+            return;
+        }
+        if (ev.key == Key::Char && ev.ch == 'G') {
+            if (pane_ == Pane::Memory) {
+                mem_anchor_ = static_cast<uint32_t>(cpu_.memory().size());
+                mem_follow_sp_ = false;
+            } else if (pane_ == Pane::Assembly) {
+                auto_scroll_ = false;
+                asm_scroll_ = static_cast<int>(raw_assembly_.size());
+            } else if (pane_ == Pane::Binary) {
+                auto_scroll_ = false;
+                bin_scroll_ = static_cast<int>(code_words_.size());
+            }
+            return;
+        }
+        if (ev.key == Key::Char && ev.ch == 'f' && pane_ == Pane::Memory) {
+            if (mem_follow_sp_) {
+                mem_follow_sp_ = false;
+                feedback_message_ = "memory: follow SP off";
+            } else {
+                mem_follow_sp_ = true;
+                feedback_message_ = "memory: following SP";
+            }
+            feedback_is_error_ = false;
             return;
         }
     }
@@ -886,16 +952,16 @@ void Tui::handleKey(const KeyEvent& ev) {
             executeCommand("step");
             break;
         case Key::Down:
-            if (int* scroll = focusedScroll()) { auto_scroll_ = false; ++*scroll; }
+            scrollFocused(1);
             break;
         case Key::Up:
-            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll = std::max(0, *scroll - 1); }
+            scrollFocused(-1);
             break;
         case Key::PageDown:
-            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll += 10; }
+            scrollFocused(10);
             break;
         case Key::PageUp:
-            if (int* scroll = focusedScroll()) { auto_scroll_ = false; *scroll = std::max(0, *scroll - 10); }
+            scrollFocused(-10);
             break;
         case Key::Tab:
             if (mode_ == Mode::Normal) {
@@ -1102,11 +1168,9 @@ void Tui::executeCommand(const std::string& raw_cmd) {
             feedback_message_ = "Usage: :mem_focus <address>";
             feedback_is_error_ = true;
         } else {
-            const int top = static_cast<int>(std::min(cpu_.state().sp + 1,
-                                                      static_cast<uint32_t>(cpu_.memory().size())));
-            mem_scroll_ = std::max(0, std::min(top - static_cast<int>(addr),
-                                               std::max(0, top - mem_view_h_ + 1)));
-            feedback_message_ = "memory view at " + std::to_string(addr);
+            mem_follow_sp_ = false;
+            mem_anchor_ = std::min(addr, static_cast<uint32_t>(cpu_.memory().size()));
+            feedback_message_ = "memory view at " + std::to_string(mem_anchor_);
             feedback_is_error_ = false;
         }
     } else if (action == "mem") {
@@ -1122,6 +1186,8 @@ void Tui::executeCommand(const std::string& raw_cmd) {
                 oss << cpu_.memory()[start + i] << " ";
             }
             feedback_message_ = oss.str();
+            mem_follow_sp_ = false;
+            mem_anchor_ = std::min(start, static_cast<uint32_t>(cpu_.memory().size()));
         } else {
             feedback_message_ = "Usage: :mem <start>:<count> (e.g. :mem 4090:5)";
             feedback_is_error_ = true;

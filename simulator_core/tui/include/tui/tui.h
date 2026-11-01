@@ -45,13 +45,15 @@ private:
     void renderDialog();
     bool paneFocused(Pane p) const { return mode_ == Mode::Inspect && pane_ == p; }
     int* focusedScroll();
+    void scrollFocused(int delta);
+    uint32_t memoryTop() const;
     std::string paneName() const;
 
     void renderRawAssembly(int r, int c, int h, int w);
     void renderAssembledBinary(int r, int c, int h, int w);
     void renderRegisters(int r, int c, int h, int w);
     void renderExtraStats(int r, int c, int h, int w);
-    void renderStack(int r, int c, int h, int w);
+    void renderMemory(int r, int c, int h, int w);
     void renderHazardTimeline(int r, int c, int h, int w);
     void renderCommandLine(int r, int c, int h, int w);
     void renderFeedback(int r, int c, int h, int w);
@@ -77,10 +79,10 @@ private:
 
     int asm_scroll_ = 0;
     int bin_scroll_ = 0;
-    int mem_scroll_ = 0;
+    uint32_t mem_anchor_ = 0;
+    bool mem_follow_sp_ = true;
     int asm_view_h_ = 0;
     int bin_view_h_ = 0;
-    int mem_view_h_ = 0;
     bool auto_scroll_ = true;
 
     bool editing_ = false;

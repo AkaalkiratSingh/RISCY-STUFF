@@ -28,6 +28,7 @@ A from-scratch 32-bit processor project: a custom instruction set (**risc201**),
 - **Stack guard:** a full-descending stack with bounds checking on `PUSH`, `POP`, `CALL` and `RET`, raising `STACK_OVERFLOW` / `STACK_UNDERFLOW` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
 - **Simulator CLI** with a decode listing, single-step mode and memory dumps.
+- **Interactive TUI (`risc201-tui`):** live source, binary, register, stats and memory panes; a hazard timeline; a source editor with explicit reassembly; and CPU configuration switching.
 - **Test suite** covering the ALU, control unit, decoder, assembler passes, encoder, memory safety and full-program CPU execution.
 
 ## Quick start
@@ -50,13 +51,14 @@ cmake --build build -j
 ctest --test-dir build
 ```
 
-This produces three executables:
+This produces four executables:
 
 | Binary | Location | Purpose |
 |--------|----------|---------|
 | `risc201-sim` | `build/simulator_core/` | Assemble (if needed) and run a program |
+| `risc201-tui` | `build/simulator_core/tui/` | Interactive terminal debugger and visualization UI |
 | `risc201-asm` | `build/assembler/` | Assemble `.asm` into `.bin` or `.hex` |
-| `risc201-disasm` | `build/assembler/` | Disassembler (placeholder, see roadmap) |
+| `risc201-disasm` | `build/assembler/` | Disassemble `.bin` / `.hex` back into `.asm` |
 
 ## Usage
 
@@ -78,14 +80,53 @@ usage: risc201-sim <program.asm|program.hex|program.bin> [options]
   -m, --mem S:C   dump C data-memory words starting at word index S
       --trace         print the pipeline per clock, with hazard events
       --no-forward stall on every dependency instead of bypassing
+      --horizontal use the horizontal microcode ROM (default)
+      --vertical   use the vertical microcode ROM (same behaviour, narrower words)
   -h, --help      show help
 ```
+
+### Interactive TUI
+
+```bash
+build/simulator_core/tui/risc201-tui examples/recursive_sum.asm
+```
+
+With no path the TUI starts empty — press `Tab` to focus the assembly pane and `e` to write a program from scratch. It accepts the same pipeline options as the simulator CLI: `-4`/`-6`, `--no-forward`, `--horizontal`/`--vertical` and `--trace`.
+
+The screen has panes for raw assembly, assembled binary, registers, extra stats and memory, plus an optional hazard timeline. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
+
+**Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
+
+**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`; `:assemble` applies the buffer and clears it. A failed assembly reports the error and leaves the running program untouched.
+
+Commands (type `:` in normal or inspect mode):
+
+| Command | Effect |
+|---------|--------|
+| `:step [n]`, `:clock [n]`, `:run` | Advance execution |
+| `:load <path>` | Load `.asm`, `.hex` or `.bin` |
+| `:assemble`, `:asm` | Reassemble the editor buffer and reset the run |
+| `:reset` | Reset CPU state and re-run the loaded program |
+| `:break <pc>`, `:clearbreak` | Toggle or clear breakpoints |
+| `:config [stage 4\|6] [rom horiz\|vert] [forward on\|off]` | Change configuration; bare `:config` opens a dialog |
+| `:mem S:C` | Dump `C` words from `S` and jump the memory view |
+| `:mem_focus <addr>` | Jump the memory view |
+| `:trace` | Toggle the hazard timeline |
+| `:help`, `:quit` | Show help / quit |
+
+Stage and ROM changes restart the run (a dialog applies both in one reset); forwarding changes apply live.
 
 ### Assemble to a file
 
 ```bash
 build/assembler/risc201-asm examples/recursive_sum.asm -o sum.hex
 build/simulator_core/risc201-sim sum.hex
+```
+
+### Disassemble
+
+```bash
+build/assembler/risc201-disasm sum.hex -o sum.asm   # add -l to synthesise labels
 ```
 
 ### Example program
@@ -186,9 +227,10 @@ RISCY-STUFF/
 ├── memory_safety/    # stack guard and ASCII stack visualizer
 ├── assembler/        # two-pass assembler, op table, CLI tools
 ├── simulator_core/   # Cpu, decoder, debugger skeleton, CLI, simulator main
+│   └── tui/          # risc201-tui: panes, source editor, config dialog, hazard timeline
 ├── utils/            # shared helpers
 ├── tests/            # unit and integration tests (CTest)
-├── examples/         # 17 sample .asm programs
+├── examples/         # 13 sample .asm programs
 ├── demo.sh           # build + run every example with decode listing
 └── CMakeLists.txt
 ```
@@ -202,14 +244,17 @@ ctest --test-dir build --output-on-failure
 | Test | Covers |
 |------|--------|
 | `AluTest` | ALU operations, flags, multiplication |
-| `ControlUnitTest` | Microcode routines and control words |
+| `HorizontalControlUnitTest`, `VerticalControlUnitTest` | Microcode routines and control words |
 | `ControlDecodeTest` | Collapsing each micro-routine into one action-tagged control bundle |
 | `DecodeTest` | Instruction decoding |
 | `Pass1Test`, `Pass2Test` | Assembler label pass and resolve/encode pass |
 | `EncoderTest` | Instruction word encoding |
+| `DisassemblerTest` | Instruction text formatting |
 | `MemorySafetyTest` | Stack guard bounds and exceptions |
 | `CpuIntegrationTest` | End-to-end program execution |
 | `PipelineTest` | Variant equivalence, cycle accounting and hazard counters |
+
+The two control-unit tests currently fail on the known `trap`-bit control-word mismatch. The TUI is exercised manually and is not covered by CTest.
 
 ## Status and roadmap
 
@@ -223,14 +268,15 @@ ctest --test-dir build --output-on-failure
 - [x] Pipelined datapath: 4-stage (`IF/ID/OF → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
 - [x] Operand forwarding (bypassing), with `--no-forward` as a stall-everything comparison mode
 - [x] Per-cycle pipeline trace and hazard counters (`--trace`), reconciling `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`
+- [x] Terminal UI (`risc201-tui`): pane focus, source editor with explicit `:assemble` and a stale-buffer indicator, memory navigation with SP-follow, configuration dialog and wrapped feedback
+- [x] Vertical microcode encoding, selectable at runtime alongside the horizontal ROM
 
 **In progress / planned**
-- [ ] Debugger: breakpoints and watchpoints are stubbed, not yet wired up (`stepInstruction` works; `continueExecution`, `reset` and `printMemory` are TODO)
+- [ ] Debugger class: breakpoints and watchpoints are stubbed in `simulator_core` (`stepInstruction` works; `continueExecution`, `reset` and `printMemory` are TODO). The TUI implements its own breakpoints.
 - [ ] Control-unit display: `--trace` shows the pipeline slot by slot, but the microPC, the packed control word and the signal bundle are not shown
 - [ ] Wire the stack visualizer into the simulator output
 - [ ] Complete the ISA, with end to end implementation
-- [ ] Vertical microcode encoding 
-- [ ] Disassembler and assembler preprocessor/macros
+- [ ] Assembler preprocessor/macros
 - [ ] Floating-point (IEEE 754) extension
 
 ## Team
