@@ -25,6 +25,7 @@ namespace risc201 {
             case Opcode::CMP:   return "CMP";
             case Opcode::MOV:   return "MOV";
             case Opcode::MUL:   return "MUL";
+            case Opcode::BGT:   return "BGT";
             case Opcode::HALT:  return "HALT";
         }
         return "?";
