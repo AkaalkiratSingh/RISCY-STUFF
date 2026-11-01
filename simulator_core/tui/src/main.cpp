@@ -1,10 +1,7 @@
-#include "assembler/assembler.h"
 #include "simulator_core/cpu.h"
-#include "simulator_core/decoder.h"
+#include "tui/program_loader.h"
 #include "tui/tui.h"
-#include "utils/utils.h"
 
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -25,59 +22,6 @@ void printUsage(const char* prog) {
         << "      --vertical   use the vertical microcode ROM (same behaviour, narrower words)\n"
         << "      --trace      open the hazard timeline panel at startup\n"
         << "  -h, --help      show this message\n";
-}
-
-bool hasSuffix(const std::string& path, const std::string& suffix) {
-    return path.size() >= suffix.size() &&
-           path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-std::string trim(const std::string& s) {
-    const size_t a = s.find_first_not_of(" \t\r\n");
-    if (a == std::string::npos) return "";
-    const size_t b = s.find_last_not_of(" \t\r\n");
-    return s.substr(a, b - a + 1);
-}
-
-bool readHexWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path);
-    if (!in) return false;
-
-    std::string line;
-    while (std::getline(in, line)) {
-        std::string token = trim(line);
-        if (token.empty()) continue;
-        if (token.rfind("0x", 0) == 0 || token.rfind("0X", 0) == 0) {
-            token = token.substr(2);
-        }
-        try {
-            size_t consumed = 0;
-            const unsigned long value = std::stoul(token, &consumed, 16);
-            if (consumed != token.size() || value > 0xFFFFFFFFul) return false;
-            out.push_back(static_cast<uint32_t>(value));
-        } catch (...) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
-
-    unsigned char bytes[4];
-    while (true) {
-        in.read(reinterpret_cast<char*>(bytes), 4);
-        const std::streamsize got = in.gcount();
-        if (got == 0) break;
-        if (got != 4) return false;
-        out.push_back((static_cast<uint32_t>(bytes[0]) << 24) |
-                      (static_cast<uint32_t>(bytes[1]) << 16) |
-                      (static_cast<uint32_t>(bytes[2]) << 8) |
-                      static_cast<uint32_t>(bytes[3]));
-    }
-    return true;
 }
 
 } // namespace
@@ -125,50 +69,24 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> words;
 
     if (!input_path.empty()) {
-        if (hasSuffix(input_path, ".hex")) {
-            if (!readHexWords(input_path, words)) {
-                std::cerr << "error: failed to read hex file " << input_path << "\n";
-                return 1;
-            }
-            for (size_t i = 0; i < words.size(); ++i) {
-                risc201::Instruction instr = risc201::decodeInstruction(words[i]);
-                raw_lines.push_back(risc201::opcodeName(instr.opcode));
-            }
-        } else if (hasSuffix(input_path, ".bin")) {
-            if (!readBinaryWords(input_path, words)) {
-                std::cerr << "error: failed to read binary file " << input_path << "\n";
-                return 1;
-            }
-            for (size_t i = 0; i < words.size(); ++i) {
-                risc201::Instruction instr = risc201::decodeInstruction(words[i]);
-                raw_lines.push_back(risc201::opcodeName(instr.opcode));
-            }
-        } else {
-            std::ifstream file(input_path);
-            if (!file) {
-                std::cerr << "error: cannot open " << input_path << "\n";
-                return 1;
-            }
-            std::string line;
-            while (std::getline(file, line)) {
-                raw_lines.push_back(line);
-            }
-
-            risc201::Assembler assembler;
-            assembler.assemblePass1(raw_lines);
-            const std::vector<risc201::Instruction> program = assembler.assemblePass2();
-
-            if (!assembler.errors().empty()) {
-                for (const auto& err : assembler.errors()) {
+        risc201::ProgramFile file = risc201::readProgramFile(input_path);
+        if (!file.error.empty()) {
+            std::cerr << "error: " << file.error << "\n";
+            return 1;
+        }
+        raw_lines = std::move(file.lines);
+        if (file.kind == risc201::SourceKind::Assembly) {
+            risc201::AssemblyResult assembled = risc201::assembleLines(raw_lines);
+            if (!assembled.errors.empty()) {
+                for (const auto& err : assembled.errors) {
                     std::cerr << input_path << ":" << err.line_number
                               << ": error: " << err.message << "\n";
                 }
                 return 1;
             }
-
-            for (const auto& instr : program) {
-                words.push_back(assembler.encodeInstruction(instr));
-            }
+            words = std::move(assembled.words);
+        } else {
+            words = std::move(file.words);
         }
     }
 

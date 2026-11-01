@@ -1,13 +1,11 @@
 #include "tui/tui.h"
 
-#include "assembler/assembler.h"
 #include "simulator_core/decoder.h"
-#include "utils/utils.h"
+#include "tui/program_loader.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <thread>
@@ -16,61 +14,22 @@ namespace risc201 {
 
 namespace {
 
-bool hasSuffix(const std::string& path, const std::string& suffix) {
-    return path.size() >= suffix.size() &&
-           path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-std::string trim(const std::string& s) {
-    const size_t a = s.find_first_not_of(" \t\r\n");
-    if (a == std::string::npos) return "";
-    const size_t b = s.find_last_not_of(" \t\r\n");
-    return s.substr(a, b - a + 1);
-}
-
-bool readHexWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path);
-    if (!in) return false;
-
-    std::string line;
-    while (std::getline(in, line)) {
-        std::string token = trim(line);
-        if (token.empty()) continue;
-        if (token.rfind("0x", 0) == 0 || token.rfind("0X", 0) == 0) {
-            token = token.substr(2);
+std::vector<std::string> wrapText(const std::string& text, int width) {
+    if (width <= 0) width = 1;
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = std::min(text.size(), start + static_cast<size_t>(width));
+        if (end < text.size()) {
+            const size_t space = text.rfind(' ', end);
+            if (space != std::string::npos && space > start) end = space;
         }
-        try {
-            size_t consumed = 0;
-            const unsigned long value = std::stoul(token, &consumed, 16);
-            if (consumed != token.size() || value > 0xFFFFFFFFul) return false;
-            out.push_back(static_cast<uint32_t>(value));
-        } catch (...) {
-            return false;
-        }
+        lines.push_back(text.substr(start, end - start));
+        start = end;
+        while (start < text.size() && text[start] == ' ') ++start;
     }
-    return true;
-}
-
-bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
-
-    unsigned char bytes[4];
-    while (true) {
-        in.read(reinterpret_cast<char*>(bytes), 4);
-        const std::streamsize got = in.gcount();
-        if (got == 0) break;
-        if (got != 4) return false;
-        out.push_back((static_cast<uint32_t>(bytes[0]) << 24) |
-                      (static_cast<uint32_t>(bytes[1]) << 16) |
-                      (static_cast<uint32_t>(bytes[2]) << 8) |
-                      static_cast<uint32_t>(bytes[3]));
-    }
-    return true;
-}
-
-std::string formatReg(int r) {
-    return "R" + std::to_string(r);
+    if (lines.empty()) lines.push_back("");
+    return lines;
 }
 
 const char* exceptionName(ExceptionCode code) {
@@ -99,35 +58,6 @@ Tui::Tui(Cpu& cpu,
       filename_(filename),
       show_trace_(show_trace) {
     cpu_.setTracing(true);
-}
-
-std::string Tui::formatInstr(const Instruction& in) const {
-    const std::string name = opcodeName(in.opcode);
-    const int rd  = static_cast<int>(in.rd);
-    const int rs1 = static_cast<int>(in.rs1);
-    const int rs2 = static_cast<int>(in.rs2);
-
-    switch (in.opcode) {
-        case Opcode::NOP:
-        case Opcode::RET:
-        case Opcode::HALT:
-            return name;
-        case Opcode::JMP:
-        case Opcode::BEQ:
-        case Opcode::CALL:
-            return name + " " + std::to_string(in.imm);
-        case Opcode::PUSH:
-        case Opcode::POP:
-            return name + " " + formatReg(rd);
-        case Opcode::LOAD:
-        case Opcode::STORE:
-            return name + " " + formatReg(rd) + ", " + std::to_string(in.imm) +
-                   "[" + formatReg(rs1) + "]";
-        default: {
-            const std::string third = in.I ? std::to_string(in.imm) : formatReg(rs2);
-            return name + " " + formatReg(rd) + ", " + formatReg(rs1) + ", " + third;
-        }
-    }
 }
 
 std::string Tui::formatActiveStage(uint32_t pc) const {
@@ -182,11 +112,12 @@ void Tui::render() {
     const int total_rows = screen_.rows();
     const int total_cols = screen_.cols();
 
-    // Heights:
-    // Bottom: Command Line (height 3) + Command Feedback (height 3) = 6 rows
-    const int bottom_h = (total_rows >= 20) ? 6 : 4;
     const int cmd_h = 3;
-    const int fb_h = std::max(2, bottom_h - cmd_h);
+    int fb_h = 2;
+    if (total_rows >= 20) {
+        const int fb_inner_w = std::max(1, total_cols - 4);
+        fb_h = std::max(3, std::min(static_cast<int>(wrapText(feedback_message_, fb_inner_w).size()) + 2, 8));
+    }
     int trace_h = 0;
     if (show_trace_) {
         trace_h = std::min(7, total_rows - (cmd_h + fb_h) - 10);
@@ -213,9 +144,9 @@ void Tui::render() {
     renderRawAssembly(0, 0, top_h, col1_w);
     renderAssembledBinary(0, col1_w, top_h, col2_w);
 
-    // Right column split:
-    // Top: REGISTERS (height: 8 rows fits 4x4 grid + PC/SP/FLAGS)
-    const int reg_h = std::min(top_h - 5, std::max(8, (top_h * 50) / 100));
+    const int reg_cols = (col3_w - 2 >= 36) ? 4 : 2;
+    const int reg_rows = (kNumGPRegisters + reg_cols - 1) / reg_cols;
+    const int reg_h = std::min(reg_rows + 5, top_h - 5);
     const int sub_h = top_h - reg_h;
     const int stats_w = (col3_w * 54) / 100;
     const int stack_w = col3_w - stats_w;
@@ -247,7 +178,9 @@ void Tui::render() {
             case Pane::Memory:    fr = reg_h; fc = col1_w + col2_w + stats_w;       fh = sub_h;  fw = stack_w;   break;
             case Pane::Timeline:  fr = top_h; fc = 0;                               fh = trace_h; fw = total_cols; break;
         }
-        screen_.recolour(fr, fc, fh, fw, 0x00FF00);
+        const bool stale_focus = assembly_dirty_ && pane_ == Pane::Binary;
+        const int focus_rgb = stale_focus ? 0xFF0000 : 0x00FF00;
+        screen_.recolour(fr, fc, fh, fw, focus_rgb);
     }
 
     if (mode_ == Mode::Dialog) renderDialog();
@@ -268,6 +201,14 @@ void Tui::renderRawAssembly(int r, int c, int h, int w) {
     const int inner_w = w - 2;
     if (inner_h <= 0 || inner_w <= 0) return;
 
+    if (editing_) {
+        if (edit_line_ < asm_scroll_) asm_scroll_ = edit_line_;
+        if (edit_line_ >= asm_scroll_ + inner_h) asm_scroll_ = edit_line_ - inner_h + 1;
+    }
+    const int num_w = 4;
+    const int text_w = std::max(1, inner_w - num_w);
+    const int h_offset = (editing_ && edit_col_ >= text_w) ? edit_col_ - text_w + 1 : 0;
+
     for (int i = 0; i < inner_h; ++i) {
         size_t idx = static_cast<size_t>(asm_scroll_ + i);
         if (idx >= raw_assembly_.size()) break;
@@ -287,15 +228,40 @@ void Tui::renderRawAssembly(int r, int c, int h, int w) {
             text_style.bold = true;
         }
 
+        std::string display = line;
+        if (h_offset > 0) {
+            display = static_cast<int>(display.size()) > h_offset
+                          ? display.substr(static_cast<size_t>(h_offset))
+                          : "";
+        }
+
         screen_.drawText(r + 1 + i, c + 1, num_prefix, Style{Color::BrightBlack, Color::Default, false});
-        screen_.drawText(r + 1 + i, c + 1 + static_cast<int>(num_prefix.size()), line, text_style, inner_w - static_cast<int>(num_prefix.size()));
+        screen_.drawText(r + 1 + i, c + 1 + static_cast<int>(num_prefix.size()), display, text_style, text_w);
+
+        if (editing_ && static_cast<int>(idx) == edit_line_) {
+            const int screen_col = c + 1 + num_w + (edit_col_ - h_offset);
+            if (screen_col >= c + 1 + num_w && screen_col < c + 1 + inner_w) {
+                const std::string glyph = (edit_col_ < static_cast<int>(line.size()))
+                                              ? line.substr(static_cast<size_t>(edit_col_), 1)
+                                              : " ";
+                Style cursor_style = text_style;
+                cursor_style.reverse = true;
+                screen_.setCell(r + 1 + i, screen_col, glyph, cursor_style);
+            }
+        }
     }
 }
 
 void Tui::renderAssembledBinary(int r, int c, int h, int w) {
-    screen_.drawBox(r, c, h, w, "ASSEMBLED BINARY",
-                    Style{Color::White, Color::Default, false},
-                    Style{Color::BrightGreen, Color::Default, true});
+    std::string title = "ASSEMBLED BINARY";
+    if (assembly_dirty_) title += " [STALE]";
+    Style border_style{Color::White, Color::Default, false};
+    Style title_style{Color::BrightGreen, Color::Default, true};
+    if (assembly_dirty_) {
+        border_style.fg_rgb = 0xFF0000;
+        title_style.fg_rgb = 0xFF0000;
+    }
+    screen_.drawBox(r, c, h, w, title, border_style, title_style);
 
     const int inner_h = h - 2;
     const int inner_w = w - 2;
@@ -456,7 +422,7 @@ void Tui::renderExtraStats(int r, int c, int h, int w) {
 }
 
 void Tui::renderStack(int r, int c, int h, int w) {
-    screen_.drawBox(r, c, h, w, "STACK",
+    screen_.drawBox(r, c, h, w, "MEMORY",
                     Style{Color::White, Color::Default, false},
                     Style{Color::BrightYellow, Color::Default, true});
 
@@ -556,9 +522,13 @@ void Tui::renderCommandLine(int r, int c, int h, int w) {
         // Render block cursor
         screen_.setCell(r + 1, c + 2 + static_cast<int>(prompt.size()), " ",
                         Style{Color::Default, Color::BrightWhite, false, false, true});
+    } else if (editing_) {
+        std::string hint = "[EDIT " + std::to_string(edit_line_ + 1) + ":" + std::to_string(edit_col_ + 1) +
+                           "]  type insert | Enter split | Backspace | Arrows | Esc done";
+        screen_.drawText(r + 1, c + 2, hint, Style{Color::BrightWhite, Color::Default, true}, w - 4);
     } else {
         std::string hint = (mode_ == Mode::Inspect)
-            ? "[INSPECT " + paneName() + "]  Tab next pane | j/k scroll | ':' cmd | Esc normal | 'q' quit"
+            ? "[INSPECT " + paneName() + "]  Tab next pane | j/k scroll | 'e' edit ASM | ':' cmd | Esc normal | 'q' quit"
             : "[NORMAL MODE]  ':' cmd | 's' step | 'c' clock | 'r' run | Tab inspect | 'T' trace | 'q' quit";
         screen_.drawText(r + 1, c + 2, hint, Style{Color::BrightBlack, Color::Default, false}, w - 4);
     }
@@ -579,7 +549,12 @@ void Tui::renderFeedback(int r, int c, int h, int w) {
         fb_style.fg = Color::BrightGreen;
     }
 
-    screen_.drawText(r + 1, c + 2, feedback_message_, fb_style, w - 4);
+    const int inner_w = std::max(1, w - 4);
+    const std::vector<std::string> lines = wrapText(feedback_message_, inner_w);
+    const int inner_h = h - 2;
+    for (int i = 0; i < inner_h && i < static_cast<int>(lines.size()); ++i) {
+        screen_.drawText(r + 1 + i, c + 2, lines[static_cast<size_t>(i)], fb_style, inner_w);
+    }
 }
 
 int* Tui::focusedScroll() {
@@ -699,6 +674,80 @@ void Tui::renderDialog() {
     screen_.drawText(r + h - 2, c + 2, "stage/ROM changes restart the run", footer_face, w - 4);
 }
 
+void Tui::handleEditorKey(const KeyEvent& ev) {
+    if (raw_assembly_.empty()) {
+        editing_ = false;
+        return;
+    }
+
+    std::string& line = raw_assembly_[static_cast<size_t>(edit_line_)];
+    const int line_len = static_cast<int>(line.size());
+
+    switch (ev.key) {
+        case Key::Escape:
+            editing_ = false;
+            feedback_message_ = "Editor closed - ':assemble' applies the buffer.";
+            feedback_is_error_ = false;
+            return;
+        case Key::Left:
+            if (edit_col_ > 0) --edit_col_;
+            return;
+        case Key::Right:
+            if (edit_col_ < line_len) ++edit_col_;
+            return;
+        case Key::Home:
+            edit_col_ = 0;
+            return;
+        case Key::End:
+            edit_col_ = line_len;
+            return;
+        case Key::Up:
+            if (edit_line_ > 0) {
+                --edit_line_;
+                edit_col_ = std::min(edit_col_, static_cast<int>(raw_assembly_[static_cast<size_t>(edit_line_)].size()));
+            }
+            return;
+        case Key::Down:
+            if (edit_line_ + 1 < static_cast<int>(raw_assembly_.size())) {
+                ++edit_line_;
+                edit_col_ = std::min(edit_col_, static_cast<int>(raw_assembly_[static_cast<size_t>(edit_line_)].size()));
+            }
+            return;
+        case Key::Enter: {
+            std::string tail = line.substr(static_cast<size_t>(edit_col_));
+            line.erase(static_cast<size_t>(edit_col_));
+            raw_assembly_.insert(raw_assembly_.begin() + edit_line_ + 1, std::move(tail));
+            ++edit_line_;
+            edit_col_ = 0;
+            assembly_dirty_ = true;
+            return;
+        }
+        case Key::Backspace:
+            if (edit_col_ > 0) {
+                line.erase(static_cast<size_t>(edit_col_ - 1), 1);
+                --edit_col_;
+                assembly_dirty_ = true;
+            } else if (edit_line_ > 0) {
+                const int prev_len = static_cast<int>(raw_assembly_[static_cast<size_t>(edit_line_ - 1)].size());
+                raw_assembly_[static_cast<size_t>(edit_line_ - 1)] += line;
+                raw_assembly_.erase(raw_assembly_.begin() + edit_line_);
+                --edit_line_;
+                edit_col_ = prev_len;
+                assembly_dirty_ = true;
+            }
+            return;
+        case Key::Char:
+            if (ev.ch >= 32 && ev.ch <= 126) {
+                line.insert(static_cast<size_t>(edit_col_), 1, ev.ch);
+                ++edit_col_;
+                assembly_dirty_ = true;
+            }
+            return;
+        default:
+            return;
+    }
+}
+
 void Tui::handleKey(const KeyEvent& ev) {
     if (mode_ == Mode::Dialog) {
         if (ev.key == Key::Escape) {
@@ -738,10 +787,25 @@ void Tui::handleKey(const KeyEvent& ev) {
     }
 
     if (mode_ == Mode::Inspect) {
+        if (editing_) { handleEditorKey(ev); return; }
         if (ev.key == Key::Tab) { cyclePane(); return; }
         if (ev.key == Key::Escape) {
             mode_ = Mode::Normal;
             feedback_message_ = "NORMAL MODE";
+            feedback_is_error_ = false;
+            return;
+        }
+        if (ev.key == Key::Char && ev.ch == 'e' && pane_ == Pane::Assembly) {
+            if (raw_assembly_.empty()) {
+                raw_assembly_.push_back("");
+                edit_line_ = 0;
+                edit_col_ = 0;
+            } else {
+                edit_line_ = std::max(0, std::min(edit_line_, static_cast<int>(raw_assembly_.size()) - 1));
+                edit_col_ = std::min(edit_col_, static_cast<int>(raw_assembly_[static_cast<size_t>(edit_line_)].size()));
+            }
+            editing_ = true;
+            feedback_message_ = "EDIT - type to insert, Enter splits, Esc closes, ':assemble' applies.";
             feedback_is_error_ = false;
             return;
         }
@@ -1071,74 +1135,60 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         } else {
             loadProgram(path);
         }
+    } else if (action == "assemble" || action == "asm") {
+        AssemblyResult assembled = assembleLines(raw_assembly_);
+        if (!assembled.errors.empty()) {
+            const auto& err = assembled.errors.front();
+            feedback_message_ = "Assembly error (line " + std::to_string(err.line_number) + "): " + err.message;
+            feedback_is_error_ = true;
+        } else if (assembled.words.empty()) {
+            feedback_message_ = "Assemble failed: produced 0 instructions";
+            feedback_is_error_ = true;
+        } else {
+            installProgram(std::move(assembled.words));
+            assembly_dirty_ = false;
+            feedback_message_ = "Assembled " + std::to_string(code_words_.size()) + " instructions.";
+            feedback_is_error_ = false;
+        }
     } else if (action == "h" || action == "help" || action == "?") {
-        feedback_message_ = "Commands: :load <path>, :step [n], :clock [n], :run, :break <pc>, :clearbreak, :reset, :mem <s:c>, :config [stage 4|6] [rom horiz|vert] [forward on|off], :trace, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), T (hazard timeline), [ ] (scroll timeline), q (quit)";
+        feedback_message_ = "Commands: :load <path>, :assemble (:asm), :step [n], :clock [n], :run, :break <pc>, :clearbreak, :reset, :mem <s:c>, :config [stage 4|6] [rom horiz|vert] [forward on|off], :trace, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), T (hazard timeline), [ ] (scroll timeline), q (quit)";
     } else {
         feedback_message_ = "Unknown command '" + action + "'. Type ':help' for available commands.";
         feedback_is_error_ = true;
     }
 }
 
+void Tui::installProgram(std::vector<uint32_t> words) {
+    std::fill(cpu_.memory().begin(), cpu_.memory().end(), 0);
+    cpu_.loadWords(words);
+    code_words_ = std::move(words);
+    original_words_ = code_words_;
+    breakpoints_.clear();
+    bin_scroll_ = 0;
+    asm_scroll_ = 0;
+    auto_scroll_ = true;
+}
+
 bool Tui::loadProgram(const std::string& raw_path) {
-    std::string path = trim(raw_path);
-    if (!path.empty() && (path.front() == '"' || path.front() == '\'') && path.front() == path.back()) {
-        path = path.substr(1, path.size() - 2);
-    }
-    if (path.empty()) {
-        feedback_message_ = "Error: empty file path";
+    ProgramFile file = readProgramFile(raw_path);
+    if (!file.error.empty()) {
+        feedback_message_ = "Error: " + file.error;
         feedback_is_error_ = true;
         return false;
     }
 
-    std::vector<std::string> new_raw_lines;
     std::vector<uint32_t> new_words;
-
-    if (hasSuffix(path, ".hex")) {
-        if (!readHexWords(path, new_words)) {
-            feedback_message_ = "Error: failed to read hex file " + path;
-            feedback_is_error_ = true;
-            return false;
-        }
-        for (uint32_t w : new_words) {
-            Instruction instr = decodeInstruction(w);
-            new_raw_lines.push_back(formatInstr(instr));
-        }
-    } else if (hasSuffix(path, ".bin")) {
-        if (!readBinaryWords(path, new_words)) {
-            feedback_message_ = "Error: failed to read binary file " + path;
-            feedback_is_error_ = true;
-            return false;
-        }
-        for (uint32_t w : new_words) {
-            Instruction instr = decodeInstruction(w);
-            new_raw_lines.push_back(formatInstr(instr));
-        }
-    } else {
-        std::ifstream file(path);
-        if (!file) {
-            feedback_message_ = "Error: cannot open file " + path;
-            feedback_is_error_ = true;
-            return false;
-        }
-        std::string line;
-        while (std::getline(file, line)) {
-            new_raw_lines.push_back(line);
-        }
-
-        Assembler assembler;
-        assembler.assemblePass1(new_raw_lines);
-        const std::vector<Instruction> program = assembler.assemblePass2();
-
-        if (!assembler.errors().empty()) {
-            const auto& err = assembler.errors().front();
+    if (file.kind == SourceKind::Assembly) {
+        AssemblyResult assembled = assembleLines(file.lines);
+        if (!assembled.errors.empty()) {
+            const auto& err = assembled.errors.front();
             feedback_message_ = "Assembly error (line " + std::to_string(err.line_number) + "): " + err.message;
             feedback_is_error_ = true;
             return false;
         }
-
-        for (const auto& instr : program) {
-            new_words.push_back(assembler.encodeInstruction(instr));
-        }
+        new_words = std::move(assembled.words);
+    } else {
+        new_words = std::move(file.words);
     }
 
     if (new_words.empty()) {
@@ -1148,20 +1198,12 @@ bool Tui::loadProgram(const std::string& raw_path) {
     }
 
     // Apply new program
-    std::fill(cpu_.memory().begin(), cpu_.memory().end(), 0);
-    cpu_.loadWords(new_words);
+    raw_assembly_ = std::move(file.lines);
+    filename_ = file.path;
+    assembly_dirty_ = false;
+    installProgram(std::move(new_words));
 
-    raw_assembly_ = std::move(new_raw_lines);
-    code_words_ = std::move(new_words);
-    original_words_ = code_words_;
-    filename_ = path;
-
-    breakpoints_.clear();
-    bin_scroll_ = 0;
-    asm_scroll_ = 0;
-    auto_scroll_ = true;
-
-    feedback_message_ = "Loaded and compiled " + std::to_string(code_words_.size()) + " instructions from " + path;
+    feedback_message_ = "Loaded and compiled " + std::to_string(code_words_.size()) + " instructions from " + file.path;
     feedback_is_error_ = false;
     return true;
 }

@@ -1,6 +1,7 @@
 add_library(tui_lib STATIC
     src/terminal.cpp
     src/screen.cpp
+    src/program_loader.cpp
     src/tui.cpp
 )
 

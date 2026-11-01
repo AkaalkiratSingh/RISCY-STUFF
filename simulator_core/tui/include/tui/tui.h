@@ -37,6 +37,8 @@ private:
 
     void cyclePane();
     void clampFocusedScroll();
+    void installProgram(std::vector<uint32_t> words);
+    void handleEditorKey(const KeyEvent& ev);
     void openConfigDialog();
     void applyDialog();
     void cycleDialogValue();
@@ -54,7 +56,6 @@ private:
     void renderCommandLine(int r, int c, int h, int w);
     void renderFeedback(int r, int c, int h, int w);
 
-    std::string formatInstr(const Instruction& in) const;
     std::string formatActiveStage(uint32_t pc) const;
 
     Cpu& cpu_;
@@ -62,6 +63,7 @@ private:
     std::vector<uint32_t> code_words_;
     std::vector<uint32_t> original_words_;
     std::string filename_;
+    bool assembly_dirty_ = false;
 
     Terminal terminal_;
     Screen screen_;
@@ -80,6 +82,10 @@ private:
     int bin_view_h_ = 0;
     int mem_view_h_ = 0;
     bool auto_scroll_ = true;
+
+    bool editing_ = false;
+    int edit_line_ = 0;
+    int edit_col_ = 0;
 
     bool show_trace_ = false;
     int trace_scroll_ = 0;
