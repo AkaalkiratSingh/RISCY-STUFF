@@ -112,7 +112,7 @@ uint32_t Alu::floatAdd(uint32_t a, uint32_t b) {
     if (sign_a == sign_b) {
         result_mant = carryLookaheadAdder(mant_a, mant_b, false, carry_out);
         result_sign = sign_a;
-        if (carry_out) {
+        if (result_mant & 0x01000000) {
             result_mant >>= 1;
             exp_a++;
         }

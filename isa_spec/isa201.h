@@ -9,6 +9,8 @@ constexpr int kWordSizeBits         = 32;
 constexpr int kNumGPRegisters       = 16;
 constexpr int kInstructionBits      = 32;
 constexpr int kDefaultMemoryWords   = 4096; // TODO: confirm final size w/ Core Engine + Memory leads
+constexpr uint32_t kLiteralsMarker  = 0xFFFFFFFFu;
+constexpr int32_t  kMicroEnd        = -1;
 
 enum class Register : uint8_t {
     R0 = 0, R1, R2, R3, R4, R5, R6, R7,

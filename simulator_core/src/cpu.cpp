@@ -56,13 +56,30 @@ namespace risc201 {
     }
 
     void Cpu::loadWords(const std::vector<uint32_t>& words) {
-        code_ = words;
+        source_words_ = words;
+        code_.clear();
+
+        std::vector<uint32_t> literals;
+        bool in_literals = false;
+        for (uint32_t word : words) {
+            if (!in_literals && word == kLiteralsMarker) {
+                in_literals = true;
+                continue;
+            }
+            if (in_literals) literals.push_back(word);
+            else code_.push_back(word);
+        }
+
         state_ = CpuState{};
         state_.sp = static_cast<uint32_t>(memory_.size());
         state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         cycles_ = 0;
         retired_ = 0;
         resetPipeline();
+
+        for (size_t i = 0; i < literals.size() && i < memory_.size(); ++i) {
+            memory_[i] = static_cast<int32_t>(literals[i]);
+        }
     }
 
     void Cpu::reconfigure(PipelineVariant variant, MicrocodeEncoding encoding) {
@@ -73,7 +90,7 @@ namespace risc201 {
                         ? buildStageControls(VerticalControlUnit{})
                         : buildStageControls(control_unit_);
         memory_.assign(memory_.size(), 0);
-        loadWords(code_);
+        loadWords(source_words_);
     }
 
     bool Cpu::pipelineEmpty() const {

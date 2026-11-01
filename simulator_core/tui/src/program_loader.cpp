@@ -141,6 +141,9 @@ AssemblyResult assembleLines(const std::vector<std::string>& lines) {
         for (const auto& instr : program) {
             result.words.push_back(assembler.encodeInstruction(instr));
         }
+        for (uint32_t word : assembler.literalSection()) {
+            result.words.push_back(word);
+        }
     }
     return result;
 }
@@ -179,6 +182,7 @@ ProgramFile readProgramFile(const std::string& raw_path) {
 
     file.kind = SourceKind::Words;
     for (uint32_t word : file.words) {
+        if (word == kLiteralsMarker) break;
         file.lines.push_back(formatInstr(decodeInstruction(word)));
     }
     return file;

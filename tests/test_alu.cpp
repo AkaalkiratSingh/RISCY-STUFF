@@ -57,6 +57,12 @@ int main() {
     float f_add = bitsToFloat(alu.execute(Opcode::FADD, floatToBits(2.5f), floatToBits(1.25f)).value);
     assert(isClose(f_add, 3.75f));
 
+    // FADD: same-sign sums that carry out of the 24-bit mantissa
+    float f_add_carry = bitsToFloat(alu.execute(Opcode::FADD, floatToBits(5.0f), floatToBits(3.0f)).value);
+    assert(isClose(f_add_carry, 8.0f));
+    float f_add_neg = bitsToFloat(alu.execute(Opcode::FADD, floatToBits(-5.0f), floatToBits(-3.0f)).value);
+    assert(isClose(f_add_neg, -8.0f));
+
     // FSUB: 5.0 - 3.25 = 1.75
     float f_sub = bitsToFloat(alu.execute(Opcode::FSUB, floatToBits(5.0f), floatToBits(3.25f)).value);
     assert(isClose(f_sub, 1.75f));

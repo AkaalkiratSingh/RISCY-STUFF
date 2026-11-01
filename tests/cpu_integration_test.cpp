@@ -58,6 +58,7 @@ std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
     for (const auto& instr : asmblr.assemblePass2()) {
         words.push_back(asmblr.encodeInstruction(instr));
     }
+    for (uint32_t word : asmblr.literalSection()) words.push_back(word);
     if (!words.empty()) words.erase(words.begin());
     return words;
 }
@@ -215,6 +216,25 @@ int main() {
               ExceptionCode::INVALID_MEMORY_ACCESS);
     }
     
+    section("Cpu: literal section is loaded into data memory before execution");
+    {
+        const Cpu cpu = runProgram({
+            "LOAD R1, 0[R0]",
+            "LOAD R2, 1[R0]",
+            "HALT",
+            ".literals:",
+            "pi: 3.14f",
+            "half: 0.5f",
+        });
+
+        CHECK(cpu.state().halted);
+        CHECK(!cpu.state().pending_exception.has_value());
+        CHECK_EQ(cpu.memory()[0], static_cast<int32_t>(0x4048F5C3u));
+        CHECK_EQ(cpu.memory()[1], static_cast<int32_t>(0x3F000000u));
+        CHECK_EQ(reg(cpu, Register::R1), static_cast<int32_t>(0x4048F5C3u));
+        CHECK_EQ(reg(cpu, Register::R2), static_cast<int32_t>(0x3F000000u));
+    }
+
     section("Cpu: PUSH then POP round-trips a value through the stack");
     {
         const Cpu cpu = runProgram({

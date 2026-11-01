@@ -45,8 +45,6 @@ namespace risc201 {
         Opcode  alu_op = Opcode::NOP;
     };
 
-    inline constexpr int32_t kMicroEnd = -1;
-
     inline constexpr int kMicroAddrBits = 8;
     inline constexpr uint32_t kMicroEndField = 0xFF;
     inline constexpr size_t kMaxControlMemoryRows = 255;

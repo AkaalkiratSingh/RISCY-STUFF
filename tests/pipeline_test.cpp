@@ -58,6 +58,7 @@ std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
     for (const auto& instr : asmblr.assemblePass2()) {
         words.push_back(asmblr.encodeInstruction(instr));
     }
+    for (uint32_t word : asmblr.literalSection()) words.push_back(word);
     if (!words.empty()) words.erase(words.begin());
     return words;
 }

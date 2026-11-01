@@ -42,6 +42,11 @@ void testEntryAddresses() {
     CHECK(cu.routineEntry(Opcode::BGT)   == 63);
     CHECK(cu.trapEntry() == 56);
     CHECK(cu.routineEntry(Opcode::CMP)   == 54);
+    CHECK(cu.routineEntry(Opcode::FADD)  == 66);
+    CHECK(cu.routineEntry(Opcode::FSUB)  == 69);
+    CHECK(cu.routineEntry(Opcode::FMUL)  == 72);
+    CHECK(cu.routineEntry(Opcode::FDIV)  == 75);
+    CHECK(cu.routineEntry(Opcode::FCMP)  == 78);
     CHECK(cu.routineEntry(static_cast<Opcode>(0x55)) == 0);   // unknown -> illegal row
 }
 
@@ -50,7 +55,9 @@ void testEveryOpcodeHasARoutine() {
     const Opcode all[] = { Opcode::NOP, Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR, Opcode::XOR,
         Opcode::SHL, Opcode::SHR, Opcode::LOAD, Opcode::STORE, Opcode::JMP, Opcode::BEQ, Opcode::CALL,
         Opcode::RET, Opcode::NOT, Opcode::SAR, Opcode::CMP, Opcode::MOV,
-        Opcode::MUL, Opcode::DIV, Opcode::REM, Opcode::BGT, Opcode::HALT };
+        Opcode::MUL, Opcode::DIV, Opcode::REM, Opcode::BGT,
+        Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV, Opcode::FCMP,
+        Opcode::HALT };
     for (Opcode op : all) CHECK(cu.routineEntry(op) != 0);   // nothing falls to the illegal row
 }
 
@@ -74,6 +81,19 @@ void testAluOpsCarryTheirOwnFunction() {
         CHECK(r[1].alu_enable && r[1].alu_op == op && r[1].flag_update);
         CHECK(r[2].reg_write && !r[2].mem_to_reg);
     }
+}
+
+void testFloatRoutines() {
+    for (Opcode op : {Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV}) {
+        auto r = runAll(op);
+        CHECK(r.size() == 3 && r[0].pc_inc);
+        CHECK(r[1].alu_enable && r[1].alu_op == op && !r[1].flag_update);
+        CHECK(r[2].reg_write && !r[2].mem_to_reg);
+    }
+    auto c = runAll(Opcode::FCMP);
+    CHECK(c.size() == 2 && c[0].pc_inc);
+    CHECK(c[1].alu_enable && c[1].alu_op == Opcode::FCMP && c[1].flag_update);
+    for (const auto& w : c) CHECK(!w.reg_write && !w.mem_write && !w.mem_read);
 }
 
 void testCmpSetsFlagsButWritesNothing() {
@@ -227,7 +247,7 @@ void testBackToBackAndIllegal() {
 
 void testControlMemoryWellFormed() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    CHECK(cm.size() == 66);
+    CHECK(cm.size() == 80);
     CHECK(cm.size() <= kMaxControlMemoryRows);
     for (const MicroOp& r : cm) {
         CHECK(r.next == kMicroEnd || (r.next >= 0 && r.next < static_cast<int32_t>(cm.size())));
@@ -498,7 +518,7 @@ void testVerticalIsPlaceholder() {
 
 int main() {
     RUN(testEntryAddresses); RUN(testEveryOpcodeHasARoutine); RUN(testAddRoutine);
-    RUN(testAluOpsCarryTheirOwnFunction); RUN(testCmpSetsFlagsButWritesNothing); RUN(testLoadStore);
+    RUN(testAluOpsCarryTheirOwnFunction); RUN(testFloatRoutines); RUN(testCmpSetsFlagsButWritesNothing); RUN(testLoadStore);
     RUN(testJmpHaltNop); RUN(testMov); RUN(testBeq); RUN(testBgt); RUN(testCallRetRows);
     RUN(testCallRetSynchronisation); RUN(testStackFaultsHappenBeforeDamage);
     RUN(testBackToBackAndIllegal);

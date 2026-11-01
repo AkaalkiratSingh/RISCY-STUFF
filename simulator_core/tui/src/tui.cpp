@@ -48,13 +48,13 @@ const char* exceptionName(ExceptionCode code) {
 
 Tui::Tui(Cpu& cpu,
          std::vector<std::string> raw_assembly,
-         std::vector<uint32_t> code_words,
+         std::vector<uint32_t> program_words,
          const std::string& filename,
          bool show_trace)
     : cpu_(cpu),
       raw_assembly_(std::move(raw_assembly)),
-      code_words_(std::move(code_words)),
-      original_words_(code_words_),
+      code_words_(cpu_.codeWords()),
+      original_words_(std::move(program_words)),
       filename_(filename),
       show_trace_(show_trace) {
     cpu_.setTracing(true);
@@ -1227,8 +1227,8 @@ void Tui::executeCommand(const std::string& raw_cmd) {
 void Tui::installProgram(std::vector<uint32_t> words) {
     std::fill(cpu_.memory().begin(), cpu_.memory().end(), 0);
     cpu_.loadWords(words);
-    code_words_ = std::move(words);
-    original_words_ = code_words_;
+    code_words_ = cpu_.codeWords();
+    original_words_ = std::move(words);
     breakpoints_.clear();
     bin_scroll_ = 0;
     asm_scroll_ = 0;
