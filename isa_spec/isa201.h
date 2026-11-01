@@ -56,7 +56,8 @@ enum class Opcode : uint8_t {
     FADD = 0x17,  
     FSUB = 0x18,  
     FMUL = 0x19,  
-    FDIV = 0x1A,  
+    FDIV = 0x1A,
+    FCMP = 0x1B,  
     HALT = 0x1F,
 };
 

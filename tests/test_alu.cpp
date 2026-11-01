@@ -77,9 +77,34 @@ int main() {
     float f_div3 = bitsToFloat(alu.execute(Opcode::FDIV, floatToBits(-15.0f), floatToBits(3.0f)).value);
     assert(isClose(f_div3, -5.0f));
 
+        // --- FCMP Tests ---
+    // 3.5 > 2.1
+    Alu::Result fcmp1 = alu.execute(Opcode::FCMP, floatToBits(3.5f), floatToBits(2.1f));
+    assert(fcmp1.flags.greaterThan == true);
+    assert(fcmp1.flags.equal == false);
+
+    // 1.0 == 1.0
+    Alu::Result fcmp2 = alu.execute(Opcode::FCMP, floatToBits(1.0f), floatToBits(1.0f));
+    assert(fcmp2.flags.greaterThan == false);
+    assert(fcmp2.flags.equal == true);
+    assert(fcmp2.flags.zero == true);
+
+    // -5.0 < -2.0 (Tricky! Both negative)
+    Alu::Result fcmp3 = alu.execute(Opcode::FCMP, floatToBits(-5.0f), floatToBits(-2.0f));
+    assert(fcmp3.flags.greaterThan == false);
+    assert(fcmp3.flags.equal == false);
+
+    // -2.0 > -5.0 (Negative vs Negative)
+    Alu::Result fcmp4 = alu.execute(Opcode::FCMP, floatToBits(-2.0f), floatToBits(-5.0f));
+    assert(fcmp4.flags.greaterThan == true);
+
+    // 0.0 > -1.0 (Different signs)
+    Alu::Result fcmp5 = alu.execute(Opcode::FCMP, floatToBits(0.0f), floatToBits(-1.0f));
+    assert(fcmp5.flags.greaterThan == true);
+
     std::cout << "All tests passed successfully!\n";
     std::cout << " - Integer ALU (ADD, SUB, MUL, DIV, REM) OK\n";
-    std::cout << " - Float ALU (FADD, FSUB, FMUL, FDIV via Newton-Raphson) OK\n";
+    std::cout << " - Float ALU (FADD, FSUB, FMUL, FDIV via Newton-Raphson,FCMP) OK\n";
     
     return 0;
 }
