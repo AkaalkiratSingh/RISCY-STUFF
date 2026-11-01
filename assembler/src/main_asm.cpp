@@ -47,6 +47,13 @@ int main(int argc, char** argv) {
         return n;
     };
 
+    auto contextOf = [&](int n) -> std::string {
+        if (n >= 1 && n <= static_cast<int>(expanded.origin_context.size()) && !expanded.origin_context[n - 1].empty()) {
+            return " (" + expanded.origin_context[n - 1] + ")";
+        }
+        return "";
+    };
+
     risc201::Assembler assembler;
 
     assembler.assemblePass1(expanded.lines);
@@ -54,12 +61,12 @@ int main(int argc, char** argv) {
     std::vector<risc201::Instruction> program = assembler.assemblePass2();
 
     for (const auto& warn : assembler.warnings()) {
-        std::cerr << input_path << ":" << originalLine(warn.line_number) << ": warning: " << warn.message << "\n";
+        std::cerr << input_path << ":" << originalLine(warn.line_number) << ": warning: " << warn.message << contextOf(warn.line_number) << "\n";
     }
 
     if (!assembler.errors().empty()) {
         for (const auto& err : assembler.errors()) {
-            std::cerr << input_path << ":" << originalLine(err.line_number) << ": error: " << err.message << "\n";
+            std::cerr << input_path << ":" << originalLine(err.line_number) << ": error: " << err.message << contextOf(err.line_number) << "\n";
         }
         return 1;
     }

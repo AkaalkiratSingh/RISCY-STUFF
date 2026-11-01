@@ -12,6 +12,17 @@ constexpr int kMaxExpansionDepth = 16;
 constexpr size_t kMaxOutputLines = 100000;
 constexpr size_t kMaxMacroParams = 64;
 
+const char* const kBuiltinMacros[] = {
+    ".macro PUSH reg",
+    "    SUB sp, sp, 1",
+    "    STORE reg, 0[sp]",
+    ".endm",
+    ".macro POP reg",
+    "    LOAD reg, 0[sp]",
+    "    ADD sp, sp, 1",
+    ".endm",
+};
+
 void splitFirstToken(const std::string& line, std::string& first, std::string& rest) {
     size_t sp = line.find_first_of(" \t");
     if (sp == std::string::npos) {
@@ -126,7 +137,25 @@ std::string renameLocalTokens(const std::string& text, const std::string& prefix
 
 }
 
+void Preprocessor::loadBuiltins() {
+    std::vector<std::string> lines(std::begin(kBuiltinMacros), std::end(kBuiltinMacros));
+    collect(lines);
+    for (auto& entry : macros_) entry.second.builtin = true;
+}
+
+std::string Preprocessor::context() const {
+    if (macro_stack_.empty()) return "";
+
+    std::string text = "in expansion of '" + macro_stack_.back() + "'";
+    for (int i = static_cast<int>(macro_stack_.size()) - 2; i >= 0; --i) {
+        text += ", called from '" + macro_stack_[i] + "'";
+    }
+    return text;
+}
+
 void Preprocessor::addError(int line_num, std::string msg) {
+    std::string where = context();
+    if (!where.empty()) msg += " (" + where + ")";
     errors_.push_back(PreprocessError{line_num, std::move(msg)});
 }
 
@@ -153,7 +182,8 @@ bool Preprocessor::parseMacroHeader(const std::string& header_rest, int line_num
     else {
         auto existing = macros_.find(out.name);
         if (existing != macros_.end()) {
-            addError(line_num, "macro '" + out.name + "' is already defined on line " + std::to_string(existing->second.definition_line));
+            if (existing->second.builtin) addError(line_num, "macro '" + out.name + "' is built in and cannot be redefined");
+            else addError(line_num, "macro '" + out.name + "' is already defined on line " + std::to_string(existing->second.definition_line));
             ok = false;
         }
     }
@@ -293,6 +323,7 @@ void Preprocessor::emit(PreprocessResult& out, const std::string& text, int orig
     }
     out.lines.push_back(text);
     out.origin_line.push_back(origin_line);
+    out.origin_context.push_back(context());
 }
 
 void Preprocessor::expandLine(const std::string& text, int origin_line, int depth, PreprocessResult& out) {
@@ -349,6 +380,8 @@ void Preprocessor::expandLine(const std::string& text, int origin_line, int dept
     if (has_label) emit(out, label + ":", origin_line);
     std::string local_prefix = "__" + macro.name + "_" + std::to_string(++expansion_count_) + "_";
 
+    macro_stack_.push_back(macro.name);
+
     for (const auto& body_line : macro.body) {
         std::string body = body_line.text;
 
@@ -371,15 +404,19 @@ void Preprocessor::expandLine(const std::string& text, int origin_line, int dept
         }
 
         expandLine(rebuilt, origin_line, depth + 1, out);
-        if (too_large_) return;
+        if (too_large_) break;
     }
+    macro_stack_.pop_back();
 }
 
 PreprocessResult Preprocessor::expand(const std::vector<std::string>& source_lines) {
     macros_.clear();
     errors_.clear();
+    macro_stack_.clear();
     too_large_ = false;
     expansion_count_ = 0;
+
+    loadBuiltins();
 
     PreprocessResult result;
     std::vector<SourceLine> stream = collect(source_lines);
