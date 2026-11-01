@@ -37,23 +37,17 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp memReadRow() {
+        MicroOp memReadRow() {        // MDR <- MEM[ALU result]; bounds-checked before the read
             MicroOp m;
             m.ctl.mem_read = true;
+            m.ctl.addr_check = true;
             return m;
         }
 
-        MicroOp memWriteRow() {
+        MicroOp memWriteRow() {       // MEM[ALU result] <- rd; bounds-checked before the write
             MicroOp m;
             m.ctl.mem_write = true;
-            return m;
-        }
-
-        MicroOp pushWriteRow() {
-            MicroOp m;
-            m.ctl.mem_write = true;
-            m.ctl.mem_addr_sp = true;
-            m.ctl.stack_check = true;
+            m.ctl.addr_check = true;
             return m;
         }
 
@@ -137,6 +131,7 @@ namespace risc201 {
                 case BranchCond::Negative: return f.negative;
                 case BranchCond::Carry:    return f.carry;
                 case BranchCond::Overflow: return f.overflow;
+                case BranchCond::GreaterThan: return f.greaterThan;
             }
             return false;
         }
@@ -149,6 +144,7 @@ namespace risc201 {
                 case BranchCond::Negative: return "N";
                 case BranchCond::Carry:    return "C";
                 case BranchCond::Overflow: return "V";
+                case BranchCond::GreaterThan: return "GT";
             }
             return "?";
         }
@@ -179,9 +175,27 @@ namespace risc201 {
             add(w.mem_data_pc,  "mem_data_pc");
             add(w.pc_src_mem,   "pc_src_mem");
             add(w.stack_check,  "stack_check");
+            add(w.addr_check,   "addr_check");
             add(w.trap,         "trap");
             add(w.halt,         "halt");
             return s.empty() ? "(idle)" : s;
+        }
+
+        // A fault is only meaningful in a cycle where the unit that reports it is checking:
+        //   DIVIDE_BY_ZERO        -> ALU enabled
+        //   INVALID_MEMORY_ACCESS -> memory guard (addr_check) or stack guard (stack_check) active
+        //   STACK_OVERFLOW/UNDERFLOW -> stack guard (stack_check) active
+        // The simulator may therefore keep the fault wires at their current level every cycle.
+        bool faultApplies(const ControlWord& c, ExceptionCode e) {
+            switch (e) {
+                case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
+                case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check || c.stack_check;
+                case ExceptionCode::STACK_OVERFLOW:
+                case ExceptionCode::STACK_UNDERFLOW:       return c.stack_check;
+                case ExceptionCode::NONE:
+                case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
+            }
+            return false;
         }
 
         uint32_t addrField(int32_t a) {
@@ -203,9 +217,6 @@ namespace risc201 {
             Opcode::ADD,
             Opcode::SUB,
             Opcode::AND,
-            Opcode::MUL,
-            Opcode::DIV,
-            Opcode::REM,
             Opcode::OR,
             Opcode::XOR,
             Opcode::SHL,
@@ -251,6 +262,10 @@ namespace risc201 {
 
         appendRoutine(Opcode::DIV, aluRoutine(Opcode::DIV));
         appendRoutine(Opcode::REM, aluRoutine(Opcode::REM));
+
+        // BGT target: conditional micro-branch on flags.greaterThan (set by CMP), built exactly
+        // like BEQ. Appended last so no existing routine moves.
+        appendBranchRoutine(Opcode::BGT, BranchCond::GreaterThan, jumpRow(), fetchRow());
     }
 
     int ControlUnit::appendRaw(std::vector<MicroOp> routine) {
@@ -299,7 +314,7 @@ namespace risc201 {
         pending_exception_ = ExceptionCode::NONE;
     }
 
-    ControlWord ControlUnit::step(Opcode op, const Flags& flags, ExceptionCode alu_fault) {
+    ControlWord ControlUnit::step(Opcode op, const Flags& flags, ExceptionCode fault) {
         if (cm_.empty()) {
             done_ = true;
             ControlWord w;
@@ -319,8 +334,8 @@ namespace risc201 {
         const MicroOp& cur = cm_[micro_pc_];
         ControlWord out = cur.ctl;
 
-        if (alu_fault != ExceptionCode::NONE && cur.ctl.alu_enable) {
-            pending_exception_ = alu_fault;
+        if (faultApplies(cur.ctl, fault)) {
+            pending_exception_ = fault;
 
             out = ControlWord{};
 
@@ -367,6 +382,7 @@ namespace risc201 {
         w |= static_cast<uint64_t>(addrField(row.next))          << 24;
         w |= static_cast<uint64_t>(addrField(row.branch_target)) << 32;
         w |= static_cast<uint64_t>(c.trap)        << 40;
+        w |= static_cast<uint64_t>(c.addr_check)  << 41;
         return w;
     }
 

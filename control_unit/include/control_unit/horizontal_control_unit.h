@@ -17,6 +17,7 @@ namespace risc201 {
         Negative,
         Carry,
         Overflow,
+        GreaterThan,   // flags.greaterThan (BGT)
     };
 
     struct ControlWord {
@@ -38,6 +39,8 @@ namespace risc201 {
         bool  mem_data_pc = false;
         bool   pc_src_mem = false;
         bool  stack_check = false;
+        bool  addr_check = false;    // memory guard validates the ALU-computed address THIS cycle,
+                                     // before the LOAD/STORE access commits (out of bounds -> trap)
 
         Opcode  alu_op = Opcode::NOP;
     };
@@ -59,8 +62,14 @@ namespace risc201 {
     public:
         explicit ControlUnit(MicrocodeEncoding encoding = MicrocodeEncoding::Horizontal);
 
+        // `fault` is the exception wire of whichever unit checks this cycle: the ALU
+        // (DIVIDE_BY_ZERO, honoured on alu_enable rows), the memory guard (INVALID_MEMORY_ACCESS,
+        // addr_check rows) or the stack guard (STACK_OVERFLOW / STACK_UNDERFLOW / INVALID_MEMORY_ACCESS,
+        // stack_check rows). A fault is honoured only in a cycle where its own checker is active,
+        // so the caller may leave it at its current level every cycle. When honoured it deletes
+        // that cycle's signals and sends the machine to the TRAP row.
         ControlWord step(Opcode op, const Flags& flags,
-                         ExceptionCode alu_fault = ExceptionCode::NONE);
+                         ExceptionCode fault = ExceptionCode::NONE);
 
         ExceptionCode pendingException() const { return pending_exception_; }
         void clearException() { pending_exception_ = ExceptionCode::NONE; }

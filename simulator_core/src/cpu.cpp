@@ -16,6 +16,7 @@ namespace risc201 {
             case BranchCond::Negative: return f.negative;
             case BranchCond::Carry:    return f.carry;
             case BranchCond::Overflow: return f.overflow;
+            case BranchCond::GreaterThan: return f.greaterThan;
             }
             return false;
         }

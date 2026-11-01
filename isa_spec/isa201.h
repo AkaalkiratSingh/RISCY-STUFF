@@ -58,6 +58,7 @@ enum class Opcode : uint8_t {
     FMUL = 0x19,  
     FDIV = 0x1A,
     FCMP = 0x1B,  
+    BGT  = 0x1C,
     HALT = 0x1F,
 };
 

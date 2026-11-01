@@ -176,7 +176,7 @@ int main() {
     CHECK_EQ(word(Opcode::CALL, 2), 0x3800);       
     CHECK_EQ(word(Opcode::RET, 1), 0x2800);        
     CHECK_EQ(word(Opcode::HALT, 0), 0x4001);       
-    CHECK_EQ(word(Opcode::BEQ, 0), 0x92B0);        
+    CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
     CHECK_EQ(word(Opcode::BEQ, 1), 0x0401);        
     CHECK_EQ(word(Opcode::BEQ, 2), 0x2401);        
     CHECK_EQ(packVertical(MicroOp{}, 0), 0x0001);   
@@ -293,16 +293,16 @@ int main() {
             const MicroOp m = unpackVertical(static_cast<uint16_t>(code << 10), 9);
             CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
         }
-        for (unsigned cond : {0u, 6u, 7u}) {                 
+        for (unsigned cond : {0u, 7u}) {                 
             const MicroOp m = unpackVertical(static_cast<uint16_t>(0x8000u | (cond << 12)), 9);
             CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
         }
     }
 
     // -----------------------------------------------------------------------
-    section("Encoder: branch rows (all five conditions, END and explicit targets)");
+    section("Encoder: branch rows (all six conditions, END and explicit targets)");
     for (BranchCond c : {BranchCond::Zero, BranchCond::NotZero, BranchCond::Negative,
-                         BranchCond::Carry, BranchCond::Overflow}) {
+                         BranchCond::Carry, BranchCond::Overflow, BranchCond::GreaterThan}) {
         for (int32_t next : {int32_t{8}, kMicroEnd}) {       
             for (int32_t target : {int32_t{0}, int32_t{34}, int32_t{254}, kMicroEnd}) {
                 const MicroOp in = branchRow(c, next, target);
@@ -353,7 +353,7 @@ int main() {
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 255), 0));   
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 300), 0));
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, -2), 0));
-        CHECK(!canPackVertical(branchRow(static_cast<BranchCond>(6), 1, 0), 0));
+        CHECK(!canPackVertical(branchRow(static_cast<BranchCond>(7), 1, 0), 0));
 
         MicroOp skips;
         skips.next = 9;                                      

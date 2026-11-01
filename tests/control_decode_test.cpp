@@ -48,6 +48,7 @@ const char* condName(BranchCond c) {
         case BranchCond::Negative: return "N";
         case BranchCond::Carry:    return "C";
         case BranchCond::Overflow: return "V";
+        case BranchCond::GreaterThan: return "GT";
     }
     return "?";
 }
