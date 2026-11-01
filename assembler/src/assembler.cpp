@@ -16,36 +16,6 @@ namespace risc201 {
         constexpr int32_t kOffset27Min = -(1 << 26);
         constexpr int32_t kOffset27Max = (1 << 26) - 1;
 
-        std::string stripCommentandTrim(const std::string raw) {
-            std::string s = raw;
-            auto comment_start = s.find_first_of(";#");
-            if (comment_start != std::string::npos) s = s.substr(0, comment_start);
-
-            size_t start = s.find_first_not_of(" \t\r\n");
-            if (start == std::string::npos) return "";
-            size_t end = s.find_last_not_of(" \t\r\n");
-
-            return s.substr(start, end - start + 1);
-        }
-
-        bool extractLabel(std::string& line, std::string& label_out) {
-            auto colon = line.find(':');
-            if (colon == std::string::npos) return false;
-
-            std::string candidate = line.substr(0, colon);
-            if (candidate.empty()) return false;
-            if (candidate.find_first_of(" \t") != std::string::npos) return false;
-            
-            label_out = candidate;
-            
-            line = line.substr(colon + 1);
-            size_t start = line.find_first_not_of(" \t");
-            if (start == std::string::npos) line = "";
-            else line = line.substr(start);
-
-            return true;
-        }
-
         void tokenizeInstruction(const std::string& line, std::string& op_out, std::vector<std::string>& operands_out) {
             if (line.empty()) return;
 
@@ -53,7 +23,7 @@ namespace risc201 {
             if (sp == std::string::npos) op_out = line;
             else op_out = line.substr(0, sp);
             
-            for (auto& c : op_out) c = static_cast<char>(std::toupper(c));
+            op_out = toUpper(op_out);
 
             if (sp == std::string::npos) return;
 
@@ -62,9 +32,8 @@ namespace risc201 {
             std::string tok;
 
             while (std::getline(ss, tok, ',')) {
-                size_t start = tok.find_first_not_of(" \t");
-                size_t end = tok.find_last_not_of(" \t");
-                if (start != std::string::npos) operands_out.push_back(tok.substr(start, end - start + 1));
+                std::string trimmed = trim(tok);
+                if (!trimmed.empty()) operands_out.push_back(trimmed);
             }
 
             return;
@@ -73,9 +42,7 @@ namespace risc201 {
         bool parseRegister(const std::string& token, Register& reg_out) {
             if (token.size() < 2) return false;
 
-            std::string upper = token;
-            for (auto& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-            if (upper == "SP") {
+            if (toUpper(token) == "SP") {
                 reg_out = Register::R15;
                 return true;
             }

@@ -1,4 +1,5 @@
 #include <assembler/assembler.h>
+#include <assembler/preprocessor.h>
 
 #include <iostream>
 #include <fstream>
@@ -31,19 +32,34 @@ int main(int argc, char** argv) {
     std::string line;
     while (std::getline(file, line)) lines.push_back(line);
 
+    risc201::Preprocessor preprocessor;
+    risc201::PreprocessResult expanded = preprocessor.expand(lines);
+
+    if (!expanded.errors.empty()) {
+        for (const auto& err : expanded.errors) {
+            std::cerr << input_path << ":" << err.line_number << ": error: " << err.message << "\n";
+        }
+        return 1;
+    }
+
+    auto originalLine = [&](int n) {
+        if (n >= 1 && n <= static_cast<int>(expanded.origin_line.size())) return expanded.origin_line[n - 1];
+        return n;
+    };
+
     risc201::Assembler assembler;
 
-    assembler.assemblePass1(lines);
+    assembler.assemblePass1(expanded.lines);
 
     std::vector<risc201::Instruction> program = assembler.assemblePass2();
 
     for (const auto& warn : assembler.warnings()) {
-        std::cerr << input_path << ":" << warn.line_number << ": warning: " << warn.message << "\n";
+        std::cerr << input_path << ":" << originalLine(warn.line_number) << ": warning: " << warn.message << "\n";
     }
 
     if (!assembler.errors().empty()) {
         for (const auto& err : assembler.errors()) {
-            std::cerr << input_path << ":" << err.line_number << ": error: " << err.message << "\n";
+            std::cerr << input_path << ":" << originalLine(err.line_number) << ": error: " << err.message << "\n";
         }
         return 1;
     }

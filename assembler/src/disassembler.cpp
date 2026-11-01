@@ -355,10 +355,7 @@ namespace risc201 {
         words_out.clear();
         std::string line;
         while (std::getline(in, line)) {
-            size_t start = line.find_first_not_of(" \t\r\n");
-            if (start == std::string::npos) continue;
-            size_t end = line.find_last_not_of(" \t\r\n");
-            std::string trimmed = line.substr(start, end - start + 1);
+            std::string trimmed = trim(line);
             if (trimmed.empty()) continue;
 
             try {
