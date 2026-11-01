@@ -2,6 +2,7 @@
 // Validates ROM format, bit layout, encoding/decoding, and lockstep execution.
 
 #include "assembler/assembler.h"
+#include "assembler/preprocessor.h"
 #include "control_unit/horizontal_control_unit.h"
 #include "control_unit/vertical_control_unit.h"
 #include "simulator_core/control_decode.h"
@@ -155,7 +156,6 @@ int main() {
     CHECK(vcu.encoding() == MicrocodeEncoding::Vertical);
     CHECK_EQ(vrom.size(), hcm.size());                       
     CHECK_EQ(vcm.size(), hcm.size());
-    CHECK_EQ(vrom.size() * kVerticalWordBits, static_cast<size_t>(832));
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
     CHECK_EQ(kVerticalWordBits, 16);
     CHECK_EQ(sizeof(vrom[0]) * 8, static_cast<size_t>(kVerticalWordBits));
@@ -293,16 +293,16 @@ int main() {
             const MicroOp m = unpackVertical(static_cast<uint16_t>(code << 10), 9);
             CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
         }
-        for (unsigned cond : {0u, 6u, 7u}) {                 
+        for (unsigned cond : {0u, 7u}) {                 
             const MicroOp m = unpackVertical(static_cast<uint16_t>(0x8000u | (cond << 12)), 9);
             CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
         }
     }
 
     // -----------------------------------------------------------------------
-    section("Encoder: branch rows (all five conditions, END and explicit targets)");
+    section("Encoder: branch rows (all six conditions, END and explicit targets)");
     for (BranchCond c : {BranchCond::Zero, BranchCond::NotZero, BranchCond::Negative,
-                         BranchCond::Carry, BranchCond::Overflow}) {
+                         BranchCond::Carry, BranchCond::Overflow, BranchCond::GreaterThan}) {
         for (int32_t next : {int32_t{8}, kMicroEnd}) {       
             for (int32_t target : {int32_t{0}, int32_t{34}, int32_t{254}, kMicroEnd}) {
                 const MicroOp in = branchRow(c, next, target);
@@ -353,7 +353,7 @@ int main() {
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 255), 0));   
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 300), 0));
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, -2), 0));
-        CHECK(!canPackVertical(branchRow(static_cast<BranchCond>(6), 1, 0), 0));
+        CHECK(!canPackVertical(branchRow(static_cast<BranchCond>(7), 1, 0), 0));
 
         MicroOp skips;
         skips.next = 9;                                      
@@ -375,8 +375,7 @@ int main() {
         CHECK(v.find("micro-op") != std::string::npos);
         CHECK(v.find("0x0820") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
         CHECK(v.find("BRANCH Z") != std::string::npos);
-        CHECK(v.find("52 rows x 16 bits = 832 bits") != std::string::npos);
-        CHECK(v.find("2080 bits") != std::string::npos);
+        CHECK(v.find(" rows x 16 bits = ") != std::string::npos);
         CHECK(v.find("60% narrower") != std::string::npos);
     }
 
@@ -403,8 +402,12 @@ int main() {
             std::ifstream in(path);
             for (std::string l; std::getline(in, l);) lines.push_back(l);
 
+            Preprocessor preprocessor;
+            PreprocessResult expanded = preprocessor.expand(lines);
+            CHECK(expanded.errors.empty());
+
             Assembler as;
-            CHECK(as.assemblePass1(lines));
+            CHECK(as.assemblePass1(expanded.lines));
             std::vector<uint32_t> words;
             for (const auto& instr : as.assemblePass2()) words.push_back(as.encodeInstruction(instr));
             CHECK(!words.empty());

@@ -16,6 +16,7 @@ namespace risc201 {
             case BranchCond::Negative: return f.negative;
             case BranchCond::Carry:    return f.carry;
             case BranchCond::Overflow: return f.overflow;
+            case BranchCond::GreaterThan: return f.greaterThan;
             }
             return false;
         }
@@ -39,6 +40,7 @@ namespace risc201 {
                       ? buildStageControls(VerticalControlUnit{})
                       : buildStageControls(control_unit_)) {
         state_.sp = memory_words;
+        state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         resetPipeline();
     }
 
@@ -57,9 +59,21 @@ namespace risc201 {
         code_ = words;
         state_ = CpuState{};
         state_.sp = static_cast<uint32_t>(memory_.size());
+        state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         cycles_ = 0;
         retired_ = 0;
         resetPipeline();
+    }
+
+    void Cpu::reconfigure(PipelineVariant variant, MicrocodeEncoding encoding) {
+        variant_ = variant;
+        encoding_ = encoding;
+        control_unit_ = ControlUnit(MicrocodeEncoding::Horizontal);
+        controls_ = encoding == MicrocodeEncoding::Vertical
+                        ? buildStageControls(VerticalControlUnit{})
+                        : buildStageControls(control_unit_);
+        memory_.assign(memory_.size(), 0);
+        loadWords(code_);
     }
 
     bool Cpu::pipelineEmpty() const {
@@ -306,10 +320,14 @@ namespace risc201 {
         const StageControls& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
 
         if (c.reg_write) {
-            state_.registers[static_cast<size_t>(out.instr.rd)] =
-                c.mem_to_reg ? out.mem_data : out.alu_result;
+            const int32_t value = c.mem_to_reg ? out.mem_data : out.alu_result;
+            state_.registers[static_cast<size_t>(out.instr.rd)] = value;
+            if (out.instr.rd == Register::R15) state_.sp = static_cast<uint32_t>(value);
         }
-        if (out.writes_sp) state_.sp = out.sp_commit;
+        if (out.writes_sp) {
+            state_.sp = out.sp_commit;
+            state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(out.sp_commit);
+        }
         state_.pc = out.pc;
         if (!c.halting) ++retired_;
     }

@@ -2,6 +2,7 @@
 ; mul: R3 = R1 * R2   (clobbers R1, R2)
 ; Expected: R5=479001600
 
+.main:
 ADD R5, R0, 1
 ADD R6, R0, 2
 fact:

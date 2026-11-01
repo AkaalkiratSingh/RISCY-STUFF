@@ -58,14 +58,6 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp pushWriteRow() {
-            MicroOp m;
-            m.ctl.mem_write = true;
-            m.ctl.mem_addr_sp = true;
-            m.ctl.stack_check = true;
-            return m;
-        }
-
         MicroOp writebackRow() {
             MicroOp m;
             m.ctl.reg_write = true;
@@ -262,10 +254,10 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { stackPopReadRow(), pcFromMemRow(), spIncRow() });
 
-        appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
+        // appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
 
-        appendRoutine(Opcode::POP,
-            { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
+        // appendRoutine(Opcode::POP,
+        //     { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
 
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));

@@ -1,9 +1,11 @@
 #include "assembler/assembler.h"
+#include "utils/utils.h"
 
 #include <sstream>
 #include <cctype>
 #include <fstream>
 #include <iomanip>
+#include <cmath>
 
 namespace risc201 {
 
@@ -14,36 +16,6 @@ namespace risc201 {
         constexpr int32_t kOffset27Min = -(1 << 26);
         constexpr int32_t kOffset27Max = (1 << 26) - 1;
 
-        std::string stripCommentandTrim(const std::string raw) {
-            std::string s = raw;
-            auto comment_start = s.find_first_of(";#");
-            if (comment_start != std::string::npos) s = s.substr(0, comment_start);
-
-            size_t start = s.find_first_not_of(" \t\r\n");
-            if (start == std::string::npos) return "";
-            size_t end = s.find_last_not_of(" \t\r\n");
-
-            return s.substr(start, end - start + 1);
-        }
-
-        bool extractLabel(std::string& line, std::string& label_out) {
-            auto colon = line.find(':');
-            if (colon == std::string::npos) return false;
-
-            std::string candidate = line.substr(0, colon);
-            if (candidate.empty()) return false;
-            if (candidate.find_first_of(" \t") != std::string::npos) return false;
-            
-            label_out = candidate;
-            
-            line = line.substr(colon + 1);
-            size_t start = line.find_first_not_of(" \t");
-            if (start == std::string::npos) line = "";
-            else line = line.substr(start);
-
-            return true;
-        }
-
         void tokenizeInstruction(const std::string& line, std::string& op_out, std::vector<std::string>& operands_out) {
             if (line.empty()) return;
 
@@ -51,7 +23,7 @@ namespace risc201 {
             if (sp == std::string::npos) op_out = line;
             else op_out = line.substr(0, sp);
             
-            for (auto& c : op_out) c = static_cast<char>(std::toupper(c));
+            op_out = toUpper(op_out);
 
             if (sp == std::string::npos) return;
 
@@ -60,9 +32,8 @@ namespace risc201 {
             std::string tok;
 
             while (std::getline(ss, tok, ',')) {
-                size_t start = tok.find_first_not_of(" \t");
-                size_t end = tok.find_last_not_of(" \t");
-                if (start != std::string::npos) operands_out.push_back(tok.substr(start, end - start + 1));
+                std::string trimmed = trim(tok);
+                if (!trimmed.empty()) operands_out.push_back(trimmed);
             }
 
             return;
@@ -70,6 +41,12 @@ namespace risc201 {
 
         bool parseRegister(const std::string& token, Register& reg_out) {
             if (token.size() < 2) return false;
+
+            if (toUpper(token) == "SP") {
+                reg_out = Register::R15;
+                return true;
+            }
+
             char first = static_cast<char>(std::toupper(token[0]));
             if (first != 'R') return false;
 
@@ -138,6 +115,26 @@ namespace risc201 {
             return true;
         }
 
+        bool parseFloatLiteral(const std::string& token, uint32_t& bits_out) {
+            if (token.size() < 2) return false;
+            char suffix = token.back();
+            if (suffix != 'f' && suffix != 'F') return false;
+
+            std::string body = token.substr(0, token.size() - 1);
+
+            try {
+                size_t pos;
+                float value = std::stof(body, &pos);
+                if (pos != body.size() || !std::isfinite(value)) return false;
+
+                bits_out = floatToBits(value);
+                return true;
+            }
+            catch (...) {
+                return false;
+            }
+        }
+
         bool inRange(int32_t value, int32_t lo, int32_t hi) {
             return (value >= lo && value <= hi);
         }
@@ -188,6 +185,24 @@ namespace risc201 {
         out.line_number = line_num;
         out.label = label;
         out.address = location_counter_;
+
+        if (has_label && label == ".literals") {
+            in_literals_ = true;
+            out.emits_word = false;
+            if (!line.empty()) addError(line_num, "unexpected text after '.literals:'");
+            return true;
+        }
+
+        if (in_literals_) {
+            out.is_literal = true;
+            out.emits_word = true;
+            uint32_t bits = 0;
+            if (!has_label) addError(line_num, "literal needs a name, expected 'name: 1.0f'");
+            else if (line.empty()) addError(line_num, "literal '" + label + "' has no value");
+            else if (!parseFloatLiteral(line, bits)) addError(line_num, "invalid float literal '" + line + "' (expected e.g. 3.14f)");
+            literal_words_.push_back(bits);
+            return true;
+        }
 
        if (line.empty()) {
             out.emits_word = false;
@@ -348,6 +363,8 @@ namespace risc201 {
         symbol_table_.clear();
         errors_.clear();
         parsed_lines_.clear();
+        literal_words_.clear();
+        in_literals_ = false;
         location_counter_ = 0;
 
         int main_count = 0;
@@ -394,6 +411,7 @@ namespace risc201 {
 
         for (const auto& pl : parsed_lines_) {
             if (!pl.emits_word) continue;
+            if (pl.is_literal) continue;
 
             auto valid = opTable().find(pl.op);
             if (valid == opTable().end()) {
@@ -409,6 +427,15 @@ namespace risc201 {
 
         if (errors_.empty()) return program;
         else return std::vector<Instruction>{};
+    }
+
+    std::vector<uint32_t> Assembler::literalSection() const {
+        std::vector<uint32_t> section;
+        if (literal_words_.empty()) return section;
+
+        section.push_back(kLiteralsMarker);
+        section.insert(section.end(), literal_words_.begin(), literal_words_.end());
+        return section;
     }
 
     uint32_t Assembler::encodeInstruction(const Instruction& instr) {

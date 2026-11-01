@@ -1,6 +1,7 @@
 ; CRC-32 (reflected, poly 0xEDB88320) of the ASCII string "123456789".
 ; The standard check value is 0xCBF43926 (= -873187034 as a signed word).
 ; Expected: R1=-873187034
+.main:
 ADD R3, R0, 0
 ADD R4, R0, 0x31
 init:

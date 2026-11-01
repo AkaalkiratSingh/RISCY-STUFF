@@ -1,4 +1,5 @@
 #include "assembler/assembler.h"
+#include "assembler/preprocessor.h"
 #include "simulator_core/cpu.h"
 
 #include <cstdint>
@@ -35,15 +36,29 @@ void section(const char* name) { std::cout << name << "\n"; }
 using namespace risc201;
 
 std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
+    std::vector<std::string> source_lines = source;
+    source_lines.insert(source_lines.begin(), ".main:");
+
+    Preprocessor preprocessor;
+    PreprocessResult expanded = preprocessor.expand(source_lines);
+    for (const auto& err : expanded.errors) {
+        std::cerr << "  FAIL: preprocess line " << err.line_number << ": " << err.message << "\n";
+        ++failures;
+    }
+
     Assembler asmblr;
-    if (!asmblr.assemblePass1(source)) {
+    if (!asmblr.assemblePass1(expanded.lines)) {
         std::cerr << "  FAIL: assembly (pass 1) failed\n";
+        for (const auto& e : asmblr.errors()) {
+            std::cerr << "    line " << e.line_number << ": " << e.message << "\n";
+        }
         ++failures;
     }
     std::vector<uint32_t> words;
     for (const auto& instr : asmblr.assemblePass2()) {
         words.push_back(asmblr.encodeInstruction(instr));
     }
+    if (!words.empty()) words.erase(words.begin());
     return words;
 }
 
@@ -292,6 +307,32 @@ int main() {
         CHECK_EQ(under.trace().faults, 1u);
         CHECK_EQ(under.trace().flushes, 0u);
         CHECK(under.state().pending_exception.has_value());
+    }
+
+    section("Pipeline: reconfigure matches a freshly constructed Cpu");
+    {
+        const std::vector<std::string> prog = {"ADD R1, R0, 5", "SUB R1, R1, 1", "HALT"};
+        const std::vector<uint32_t> words = assembleWords(prog);
+
+        Cpu reused(PipelineVariant::FourStage, kDefaultMemoryWords,
+                   MicrocodeEncoding::Horizontal);
+        reused.setTracing(true);
+        reused.loadWords(words);
+        reused.run();
+        reused.reconfigure(PipelineVariant::SixStage, MicrocodeEncoding::Vertical);
+        reused.run();
+
+        Cpu fresh(PipelineVariant::SixStage, kDefaultMemoryWords,
+                  MicrocodeEncoding::Vertical);
+        fresh.setTracing(true);
+        fresh.loadWords(words);
+        fresh.run();
+
+        CHECK_EQ(reused.cycles(), fresh.cycles());
+        CHECK_EQ(reused.retired(), fresh.retired());
+        CHECK_EQ(reused.state().registers[1], fresh.state().registers[1]);
+        CHECK_EQ(reused.trace().flushes, fresh.trace().flushes);
+        CHECK_EQ(reused.trace().stalls, fresh.trace().stalls);
     }
 
     if (failures == 0) {

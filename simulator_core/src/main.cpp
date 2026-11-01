@@ -1,4 +1,5 @@
 #include "assembler/assembler.h"
+#include "assembler/preprocessor.h"
 #include "simulator_core/cpu.h"
 #include "simulator_core/decoder.h"
 #include "utils/utils.h"
@@ -92,9 +93,9 @@ std::string formatInstruction(const risc201::Instruction& in) {
         case Opcode::BEQ:
         case Opcode::CALL:
             return name + " " + std::to_string(in.imm);
-        case Opcode::PUSH:
-        case Opcode::POP:
-            return name + " " + regName(rd);
+        // case Opcode::PUSH:
+        // case Opcode::POP:
+        //     return name + " " + regName(rd);
         case Opcode::LOAD:
         case Opcode::STORE:
             return name + " " + regName(rd) + ", " + std::to_string(in.imm) +
@@ -288,18 +289,41 @@ int main(int argc, char** argv) {
         std::string line;
         while (std::getline(file, line)) lines.push_back(line);
 
+        risc201::Preprocessor preprocessor;
+        risc201::PreprocessResult expanded = preprocessor.expand(lines);
+
+        auto originalLine = [&](int n) {
+            if (n >= 1 && n <= static_cast<int>(expanded.origin_line.size())) {
+                return expanded.origin_line[static_cast<size_t>(n - 1)];
+            }
+            return n;
+        };
+        auto contextOf = [&](int n) -> std::string {
+            if (n >= 1 && n <= static_cast<int>(expanded.origin_context.size()) &&
+                !expanded.origin_context[static_cast<size_t>(n - 1)].empty()) {
+                return " (" + expanded.origin_context[static_cast<size_t>(n - 1)] + ")";
+            }
+            return "";
+        };
+
+        for (const auto& err : expanded.errors) {
+            std::cerr << input_path << ":" << err.line_number
+                      << ": error: " << err.message << "\n";
+        }
+        if (!expanded.errors.empty()) return 1;
+
         risc201::Assembler assembler;
-        assembler.assemblePass1(lines);
+        assembler.assemblePass1(expanded.lines);
         const std::vector<risc201::Instruction> program = assembler.assemblePass2();
 
         for (const auto& warn : assembler.warnings()) {
-            std::cerr << input_path << ":" << warn.line_number
-                      << ": warning: " << warn.message << "\n";
+            std::cerr << input_path << ":" << originalLine(warn.line_number)
+                      << ": warning: " << warn.message << contextOf(warn.line_number) << "\n";
         }
         if (!assembler.errors().empty()) {
             for (const auto& err : assembler.errors()) {
-                std::cerr << input_path << ":" << err.line_number
-                          << ": error: " << err.message << "\n";
+                std::cerr << input_path << ":" << originalLine(err.line_number)
+                          << ": error: " << err.message << contextOf(err.line_number) << "\n";
             }
             return 1;
         }
