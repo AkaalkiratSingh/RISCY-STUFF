@@ -236,10 +236,10 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { stackPopReadRow(), pcFromMemRow(), spIncRow() });
 
-        appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
+        // appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
 
-        appendRoutine(Opcode::POP,
-            { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
+        // appendRoutine(Opcode::POP,
+        //     { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
 
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));

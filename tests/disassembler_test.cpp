@@ -274,17 +274,14 @@ void testDisassembleProgram() {
 
 std::vector<Instruction> assembleProgram(const std::vector<std::string>& source,
                                          Assembler& asmblr) {
-    std::vector<std::string> source_lines = source;
-    source_lines.insert(source_lines.begin(), ".main:");
-    asmblr.assemblePass1(source_lines);
-    auto program = asmblr.assemblePass2();
-    if (!program.empty()) program.erase(program.begin());
-    return program;
+    asmblr.assemblePass1(source);
+    return asmblr.assemblePass2();
 }
 
 void testFullPipelineRoundtrip() {
     Assembler asmblr;
     std::vector<std::string> src = {
+        ".main:",
         "ADD R1, R2, R3",
         "ADD R4, R5, 10",
         "LOAD R6, 8[R7]",
@@ -301,6 +298,8 @@ void testFullPipelineRoundtrip() {
 
     assert(disasm.decodeErrors().empty());
     assert(decoded.size() == program.size());
+    assert(program.size() == 4);                 // JMP .main + 3 user instructions
+    assert(decoded[0].opcode == Opcode::JMP);    // auto-inserted entry jump survives the roundtrip
 
     for (size_t i = 0; i < program.size(); ++i) {
         assert(decoded[i].opcode == program[i].opcode);
@@ -315,8 +314,9 @@ void testFullPipelineRoundtrip() {
 
 void testFileRoundtripBinary() {
     Assembler asmblr;
-    std::vector<std::string> src = { "ADD R1, R2, R3", "HALT" };
-    auto program = assembleProgram(src, asmblr);
+    std::vector<std::string> src = { ".main:", "ADD R1, R2, R3", "HALT" };
+    asmblr.assemblePass1(src);
+    auto program = asmblr.assemblePass2();
     assert(asmblr.errors().empty());
 
     std::vector<uint32_t> words;
@@ -335,8 +335,9 @@ void testFileRoundtripBinary() {
 
 void testFileRoundtripHex() {
     Assembler asmblr;
-    std::vector<std::string> src = { "ADD R1, R2, R3", "HALT" };
-    auto program = assembleProgram(src, asmblr);
+    std::vector<std::string> src = { ".main:", "ADD R1, R2, R3", "HALT" };
+    asmblr.assemblePass1(src);
+    auto program = asmblr.assemblePass2();
     assert(asmblr.errors().empty());
 
     std::vector<uint32_t> words;

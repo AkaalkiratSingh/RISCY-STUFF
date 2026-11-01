@@ -1,5 +1,6 @@
 #include "tui/program_loader.h"
 
+#include "assembler/preprocessor.h"
 #include "simulator_core/decoder.h"
 #include "utils/utils.h"
 
@@ -91,9 +92,6 @@ std::string formatInstr(const Instruction& in) {
         case Opcode::BEQ:
         case Opcode::CALL:
             return name + " " + std::to_string(in.imm);
-        case Opcode::PUSH:
-        case Opcode::POP:
-            return name + " " + formatReg(rd);
         case Opcode::LOAD:
         case Opcode::STORE:
             return name + " " + formatReg(rd) + ", " + std::to_string(in.imm) +
@@ -106,12 +104,39 @@ std::string formatInstr(const Instruction& in) {
 }
 
 AssemblyResult assembleLines(const std::vector<std::string>& lines) {
-    Assembler assembler;
-    assembler.assemblePass1(lines);
-    const std::vector<Instruction> program = assembler.assemblePass2();
+    Preprocessor preprocessor;
+    const PreprocessResult expanded = preprocessor.expand(lines);
 
     AssemblyResult result;
-    result.errors = assembler.errors();
+    if (!expanded.errors.empty()) {
+        for (const auto& err : expanded.errors) {
+            result.errors.push_back(AssemblyError{err.line_number, err.message});
+        }
+        return result;
+    }
+
+    auto originalLine = [&](int n) {
+        if (n >= 1 && n <= static_cast<int>(expanded.origin_line.size())) {
+            return expanded.origin_line[static_cast<size_t>(n - 1)];
+        }
+        return n;
+    };
+    auto contextOf = [&](int n) -> std::string {
+        if (n >= 1 && n <= static_cast<int>(expanded.origin_context.size()) &&
+            !expanded.origin_context[static_cast<size_t>(n - 1)].empty()) {
+            return " (" + expanded.origin_context[static_cast<size_t>(n - 1)] + ")";
+        }
+        return "";
+    };
+
+    Assembler assembler;
+    assembler.assemblePass1(expanded.lines);
+    const std::vector<Instruction> program = assembler.assemblePass2();
+
+    for (const auto& err : assembler.errors()) {
+        result.errors.push_back(
+            AssemblyError{originalLine(err.line_number), err.message + contextOf(err.line_number)});
+    }
     if (result.errors.empty()) {
         for (const auto& instr : program) {
             result.words.push_back(assembler.encodeInstruction(instr));

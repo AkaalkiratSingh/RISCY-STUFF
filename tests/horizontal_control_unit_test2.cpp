@@ -26,7 +26,6 @@ void testEntryAddresses() {
     assert(cu.routineEntry(Opcode::CALL)  == 38);
     assert(cu.routineEntry(Opcode::RET)   == 42);
     // Opcodes with no routine yet fall back to the illegal-instruction (halt) row.
-    assert(cu.routineEntry(Opcode::PUSH) == 0);
     assert(cu.routineEntry(static_cast<Opcode>(0x55)) == 0);
     std::cout << "testEntryAddresses passed\n";
 }

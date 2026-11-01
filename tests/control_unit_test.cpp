@@ -115,10 +115,102 @@ int main() {
                {"........H"});
     checkTrace("NOP   fetch only (advances PC)", runRoutine(cu, Opcode::NOP),
                {"f........"});
-    checkTrace("PUSH  fetch/write", runRoutine(cu, Opcode::PUSH),
-               {"f........", ".....w..."});
-    checkTrace("POP   fetch/read/wb", runRoutine(cu, Opcode::POP),
-               {"f........", "....r.RM."});
+    // checkTrace("PUSH  fetch/dec/write", runRoutine(cu, Opcode::PUSH),
+    //            {"f........", ".........", ".....w..."});
+    // checkTrace("POP   fetch/read/wb/inc", runRoutine(cu, Opcode::POP),
+    //            {"f........", "....r....", "......RM.", "........."});
+    checkTrace("MOV   fetch/exe/wb", runRoutine(cu, Opcode::MOV),
+               {"f........", "..A......", "......R.."});
+    checkTrace("CALL  fetch/sp/write/jump", runRoutine(cu, Opcode::CALL),
+               {"f........", ".........", ".....w...", ".J......."});
+    checkTrace("RET   pop/pc/sp", runRoutine(cu, Opcode::RET),
+               {"....r....", ".J.......", "........."});
+
+    section("ControlUnit: routine entry addresses pin the CM layout");
+    CHECK_EQ(cu.routineEntry(Opcode::ADD),   1);
+    CHECK_EQ(cu.routineEntry(Opcode::SUB),   4);
+    CHECK_EQ(cu.routineEntry(Opcode::LOAD),  22);
+    CHECK_EQ(cu.routineEntry(Opcode::STORE), 26);
+    CHECK_EQ(cu.routineEntry(Opcode::JMP),   29);
+    CHECK_EQ(cu.routineEntry(Opcode::BEQ),   32);
+    CHECK_EQ(cu.routineEntry(Opcode::MOV),   35);
+    CHECK_EQ(cu.routineEntry(Opcode::CALL),  38);
+    CHECK_EQ(cu.routineEntry(Opcode::RET),   42);
+    // CHECK_EQ(cu.routineEntry(Opcode::PUSH),  45);
+    // CHECK_EQ(cu.routineEntry(Opcode::POP),   48);
+    // An opcode with no routine falls back to the illegal-instruction (halt) row.
+    CHECK_EQ(cu.routineEntry(static_cast<Opcode>(0x55)), 0);
+
+    section("ControlUnit: CALL stores the return address before it jumps");
+    {
+        ControlUnit c;
+        Flags f;
+        ControlWord w = c.step(Opcode::CALL, f);        // 1: PC <- return address
+        CHECK(w.pc_inc && !w.sp_dec && !w.mem_write);
+
+        w = c.step(Opcode::CALL, f);                    // 2: make room on the stack
+        CHECK(w.sp_dec && !w.sp_inc && !w.mem_write && !w.pc_write);
+
+        w = c.step(Opcode::CALL, f);                    // 3: store return address, guarded
+        CHECK(w.mem_write && w.mem_addr_sp && w.mem_data_pc && w.stack_check);
+        CHECK(!w.mem_read && !w.pc_write && !w.sp_dec); // PC has NOT jumped yet
+        CHECK(!c.routineDone());
+
+        w = c.step(Opcode::CALL, f);                    // 4: jump to target
+        CHECK(w.pc_write && !w.pc_src_mem && !w.mem_write);
+        CHECK(c.routineDone());
+    }
+
+    section("ControlUnit: RET reads the slot before releasing it");
+    {
+        ControlUnit c;
+        Flags f;
+        ControlWord w = c.step(Opcode::RET, f);         // 1: read return address, guarded
+        CHECK(w.mem_read && w.mem_addr_sp && w.stack_check);
+        CHECK(!w.pc_write && !w.sp_inc);                // SP not released before the read succeeds
+
+        w = c.step(Opcode::RET, f);                     // 2: PC <- popped word
+        CHECK(w.pc_write && w.pc_src_mem && !w.sp_inc);
+
+        w = c.step(Opcode::RET, f);                     // 3: release the slot
+        CHECK(w.sp_inc && !w.sp_dec && !w.mem_read);
+        CHECK(c.routineDone());
+    }
+
+    // section("ControlUnit: PUSH addresses through SP and guards the write");
+    // {
+    //     ControlUnit c;
+    //     Flags f;
+    //     ControlWord w = c.step(Opcode::PUSH, f);        // 1: fetch
+    //     CHECK(w.pc_inc && !w.sp_dec && !w.mem_write);
+
+    //     w = c.step(Opcode::PUSH, f);                    // 2: make room on the stack
+    //     CHECK(w.sp_dec && !w.sp_inc && !w.mem_write);
+
+    //     w = c.step(Opcode::PUSH, f);                    // 3: write the register, guarded
+    //     CHECK(w.mem_write && w.mem_addr_sp && w.stack_check && !w.mem_data_pc);
+    //     CHECK(!w.mem_read && !w.sp_dec);
+    //     CHECK(c.routineDone());
+    // }
+
+    // section("ControlUnit: POP reads, writes back, then releases the slot");
+    // {
+    //     ControlUnit c;
+    //     Flags f;
+    //     ControlWord w = c.step(Opcode::POP, f);         // 1: fetch
+    //     CHECK(w.pc_inc && !w.mem_read);
+
+    //     w = c.step(Opcode::POP, f);                     // 2: read the stack word, guarded
+    //     CHECK(w.mem_read && w.mem_addr_sp && w.stack_check);
+    //     CHECK(!w.sp_inc && !w.reg_write);
+
+    //     w = c.step(Opcode::POP, f);                     // 3: write it back to the register
+    //     CHECK(w.reg_write && w.mem_to_reg && !w.sp_inc);
+
+    //     w = c.step(Opcode::POP, f);                     // 4: release the slot
+    //     CHECK(w.sp_inc && !w.sp_dec && !w.mem_read);
+    //     CHECK(c.routineDone());
+    // }
 
     section("ControlUnit: BEQ branches on the zero flag");
     checkTrace("BEQ  Z=0 -> not taken (sequential fetch)",
@@ -150,7 +242,8 @@ int main() {
     for (Opcode op : {Opcode::ADD, Opcode::SUB, Opcode::AND, Opcode::OR,
                       Opcode::XOR, Opcode::SHL, Opcode::SHR, Opcode::LOAD,
                       Opcode::STORE, Opcode::JMP, Opcode::HALT, Opcode::NOP,
-                      Opcode::BEQ, Opcode::PUSH, Opcode::POP}) {
+                      Opcode::BEQ, Opcode::MOV, Opcode::CALL, Opcode::RET/*,
+                      Opcode::PUSH, Opcode::POP*/}) {
         const int e = cu.routineEntry(op);
         CHECK(e >= 0);
         CHECK(static_cast<size_t>(e) < cm.size());

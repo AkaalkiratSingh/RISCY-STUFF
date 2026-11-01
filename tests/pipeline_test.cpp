@@ -1,4 +1,5 @@
 #include "assembler/assembler.h"
+#include "assembler/preprocessor.h"
 #include "simulator_core/cpu.h"
 
 #include <cstdint>
@@ -37,9 +38,20 @@ using namespace risc201;
 std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
     std::vector<std::string> source_lines = source;
     source_lines.insert(source_lines.begin(), ".main:");
+
+    Preprocessor preprocessor;
+    PreprocessResult expanded = preprocessor.expand(source_lines);
+    for (const auto& err : expanded.errors) {
+        std::cerr << "  FAIL: preprocess line " << err.line_number << ": " << err.message << "\n";
+        ++failures;
+    }
+
     Assembler asmblr;
-    if (!asmblr.assemblePass1(source_lines)) {
+    if (!asmblr.assemblePass1(expanded.lines)) {
         std::cerr << "  FAIL: assembly (pass 1) failed\n";
+        for (const auto& e : asmblr.errors()) {
+            std::cerr << "    line " << e.line_number << ": " << e.message << "\n";
+        }
         ++failures;
     }
     std::vector<uint32_t> words;

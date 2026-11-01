@@ -2,6 +2,7 @@
 // Validates ROM format, bit layout, encoding/decoding, and lockstep execution.
 
 #include "assembler/assembler.h"
+#include "assembler/preprocessor.h"
 #include "control_unit/horizontal_control_unit.h"
 #include "control_unit/vertical_control_unit.h"
 #include "simulator_core/control_decode.h"
@@ -401,8 +402,12 @@ int main() {
             std::ifstream in(path);
             for (std::string l; std::getline(in, l);) lines.push_back(l);
 
+            Preprocessor preprocessor;
+            PreprocessResult expanded = preprocessor.expand(lines);
+            CHECK(expanded.errors.empty());
+
             Assembler as;
-            CHECK(as.assemblePass1(lines));
+            CHECK(as.assemblePass1(expanded.lines));
             std::vector<uint32_t> words;
             for (const auto& instr : as.assemblePass2()) words.push_back(as.encodeInstruction(instr));
             CHECK(!words.empty());
