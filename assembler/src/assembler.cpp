@@ -204,6 +204,7 @@ namespace risc201 {
             if (!has_label) addError(line_num, "literal needs a name, expected 'name: 1.0f'");
             else if (line.empty()) addError(line_num, "literal '" + label + "' has no value");
             else if (!parseFloatLiteral(line, bits)) addError(line_num, "invalid float literal '" + line + "' (expected e.g. 3.14f)");
+            if (has_label && !literal_index_.count(label)) literal_index_[label] = static_cast<uint32_t>(literal_words_.size());
             literal_words_.push_back(bits);
             return true;
         }
@@ -227,6 +228,15 @@ namespace risc201 {
        out.emits_word = true;
 
        return true;
+    }
+
+    bool Assembler::resolveLiteralOperand(const std::string& token, int32_t& imm_out, Register& reg_out) const {
+        auto it = literal_index_.find(token);
+        if (it == literal_index_.end()) return false;
+
+        reg_out = Register::R0;
+        imm_out = static_cast<int32_t>(it->second);
+        return true;
     }
 
     bool Assembler::resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out) {
@@ -315,8 +325,8 @@ namespace risc201 {
                 case OperandKind::MEM: {
                     int32_t mem_imm;
                     Register base_reg;
-                    if (!parseMemOperand(token, mem_imm, base_reg)) {
-                        addError(pl.line_number, "malformed memory operand '" + token + "' (expected imm[reg])");
+                    if (!resolveLiteralOperand(token, mem_imm, base_reg) && !parseMemOperand(token, mem_imm, base_reg)) {
+                        addError(pl.line_number, "malformed memory operand '" + token + "' (expected imm[reg] or a literal name)");
                         return false;
                     }
                     out.rs1 = base_reg;
@@ -383,6 +393,7 @@ namespace risc201 {
         errors_.clear();
         parsed_lines_.clear();
         literal_words_.clear();
+        literal_index_.clear();
         in_literals_ = false;
         location_counter_ = 0;
 
