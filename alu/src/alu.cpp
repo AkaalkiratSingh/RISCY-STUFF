@@ -161,28 +161,16 @@ uint32_t Alu::floatMul(uint32_t a, uint32_t b) {
 
 // Newton-Raphson Reciprocal using Q30 Fixed-Point math
 uint32_t Alu::reciprocalNR(uint32_t D_fp) {
-    // D_fp is in Q31 format (1.0 = 0x80000000)
-    // We use Q30 to prevent overflow during multiplication (1.0 = 0x40000000)
     uint32_t D_q30 = D_fp >> 1;
-    
-    // Initial guess: x0 = 1.5 - 0.5 * D
-    // 1.5 in Q30 is 0x60000000
     uint32_t x = 0x60000000 - (D_q30 >> 1);
     
-    // 5 iterations doubles precision each time (1 -> 2 -> 4 -> 8 -> 16 -> 32)
-    // We need 24 bits of precision, so 5 iterations is perfect.
     for (int i = 0; i < 5; ++i) {
-        // prod = D * x (Q30 * Q30 = Q60, shift right 30 to get Q30)
         uint64_t prod = (uint64_t)D_q30 * x;
         prod >>= 30;
-        
-        // err = 2.0 - prod (2.0 in Q30 is 0x80000000)
         uint32_t err = 0x80000000 - (uint32_t)prod;
-        
-        // x = x * err (Q30 * Q30 = Q60, shift right 30 to get Q30)
         x = (uint32_t)(((uint64_t)x * err) >> 30);
     }
-    return x << 1; // Convert back to Q31
+    return x << 1;
 }
 
 uint32_t Alu::floatDiv(uint32_t a, uint32_t b) {
@@ -191,72 +179,59 @@ uint32_t Alu::floatDiv(uint32_t a, uint32_t b) {
     uint32_t mant_a = (a & 0x007FFFFF) | 0x00800000;
     uint32_t mant_b = (b & 0x007FFFFF) | 0x00800000;
 
-    if (exp_b == 0) return 0x7F800000; // Divide by zero -> Infinity
-    if (exp_a == 0) return 0;          // 0 / anything -> 0
+    if (exp_b == 0) return 0x7F800000;
+    if (exp_a == 0) return 0;
 
     uint32_t result_sign = sign_a ^ sign_b;
     int32_t  result_exp  = exp_a - exp_b + 127;
 
-    // Convert mantissas to Q31 fixed-point
     uint32_t D_fp = mant_b << 8;
     uint32_t N_fp = mant_a << 8;
 
-    // Compute 1/D using Newton-Raphson
     uint32_t inv_D_fp = reciprocalNR(D_fp);
-
-    // Multiply N * (1/D) -> Q31 * Q31 = Q62, shift right 31
     uint64_t q_fp_64 = (uint64_t)N_fp * inv_D_fp;
+    uint32_t Q_fp = (uint32_t)(q_fp_64 >> 31);
     
-       uint32_t Q_fp = (uint32_t)(q_fp_64 >> 31);
-    
-    // Normalize: if the quotient is less than 1.0 (bit 31 is 0),
-    // shift left and decrement the exponent.
     if ((Q_fp & 0x80000000) == 0) {
         Q_fp <<= 1;
         result_exp--;
     }
 
-
-
-    uint32_t result_mant = Q_fp >> 8; // Shift back to 24-bit mantissa
-    
+    uint32_t result_mant = Q_fp >> 8;
     return packFloat(result_sign, result_exp, result_mant);
 }
-    Alu::Result Alu::floatCmp(uint32_t a, uint32_t b) {
-        Result r{};
 
-        // Handle +0.0 and -0.0 (they are equal in value)
-        if ((a & 0x7FFFFFFF) == 0 && (b & 0x7FFFFFFF) == 0) {
-            r.flags.zero = true;
-            r.flags.equal = true;
-            r.flags.greaterThan = false;
-            return r;
-        }
+Alu::Result Alu::floatCmp(uint32_t a, uint32_t b) {
+    Result r{};
 
-        uint32_t sign_a = (a >> 31) & 1;
-        uint32_t sign_b = (b >> 31) & 1;
-
-        if (sign_a != sign_b) {
-            // Different signs: positive is always greater than negative
-            r.flags.greaterThan = (sign_a == 0);
-            r.flags.zero = false;
-            r.flags.equal = false;
-        } else {
-            // Same signs: Compare the raw bit patterns as unsigned integers
-            if (sign_a == 0) {
-                // Both positive: normal unsigned comparison
-                r.flags.greaterThan = (a > b);
-                r.flags.equal = (a == b);
-            } else {
-                // Both negative: inverted comparison (larger bits = smaller value)
-                r.flags.greaterThan = (a < b);
-                r.flags.equal = (a == b);
-            }
-            r.flags.zero = r.flags.equal;
-        }
-
+    if ((a & 0x7FFFFFFF) == 0 && (b & 0x7FFFFFFF) == 0) {
+        r.flags.zero = true;
+        r.flags.equal = true;
+        r.flags.greaterThan = false;
         return r;
     }
+
+    uint32_t sign_a = (a >> 31) & 1;
+    uint32_t sign_b = (b >> 31) & 1;
+
+    if (sign_a != sign_b) {
+        r.flags.greaterThan = (sign_a == 0);
+        r.flags.zero = false;
+        r.flags.equal = false;
+    } else {
+        if (sign_a == 0) {
+            r.flags.greaterThan = (a > b);
+            r.flags.equal = (a == b);
+        } else {
+            r.flags.greaterThan = (a < b);
+            r.flags.equal = (a == b);
+        }
+        r.flags.zero = r.flags.equal;
+    }
+
+    return r;
+}
+
 // ============================================================
 //  EXECUTE
 // ============================================================
@@ -330,6 +305,13 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             return r;
         case Opcode::FCMP: 
             return floatCmp(a, b);
+
+        // --- DATA MOVEMENT ---
+        case Opcode::MOV: {
+            res = a; // Pass the source register through
+            break;
+        }
+
         case Opcode::AND: res = a & b; break;
         case Opcode::OR:  res = a | b; break;
         case Opcode::XOR: res = a ^ b; break;
