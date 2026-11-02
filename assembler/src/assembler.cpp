@@ -46,6 +46,10 @@ namespace risc201 {
                 reg_out = Register::R15;
                 return true;
             }
+            if (toUpper(token) == "RA") {
+                reg_out = Register::R14;
+                return true;
+            }
 
             char first = static_cast<char>(std::toupper(token[0]));
             if (first != 'R') return false;
