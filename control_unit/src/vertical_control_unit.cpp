@@ -39,8 +39,8 @@ namespace risc201 {
                     { MicroOpCode::Alu,          "ALU",      true,  lines({&C::alu_enable, &C::flag_update}) },
                     { MicroOpCode::AluNoFlags,   "ALU.NF",   true,  lines({&C::alu_enable}) },
                     { MicroOpCode::AluImm,       "ALU.IMM",  true,  lines({&C::alu_enable, &C::alu_src_imm}) },
-                    { MicroOpCode::MemRead,      "MEM.RD",   false, lines({&C::mem_read}) },
-                    { MicroOpCode::MemWrite,     "MEM.WR",   false, lines({&C::mem_write}) },
+                    { MicroOpCode::MemRead,      "MEM.RD",   false, lines({&C::mem_read, &C::addr_check}) },
+                    { MicroOpCode::MemWrite,     "MEM.WR",   false, lines({&C::mem_write, &C::addr_check}) },
                     { MicroOpCode::Writeback,    "WB",       false, lines({&C::reg_write}) },
                     { MicroOpCode::WritebackMem, "WB.MEM",   false, lines({&C::reg_write, &C::mem_to_reg}) },
                     { MicroOpCode::Jump,         "JUMP",     false, lines({&C::pc_write}) },
@@ -51,6 +51,7 @@ namespace risc201 {
                     { MicroOpCode::CallWrite,    "CALL.WR",  false, lines({&C::mem_write, &C::mem_addr_sp, &C::mem_data_pc, &C::stack_check}) },
                     { MicroOpCode::PopRead,      "POP.RD",   false, lines({&C::mem_read, &C::mem_addr_sp, &C::stack_check}) },
                     { MicroOpCode::Halt,         "HALT",     false, lines({&C::halt}) },
+                    { MicroOpCode::Trap,         "TRAP",     false, lines({&C::trap, &C::halt}) },
                 }};
                 for (size_t i = 0; i < t.size(); ++i) {
                     if (static_cast<size_t>(t[i].code) != i) {
@@ -64,9 +65,13 @@ namespace risc201 {
 
         // Extracts 16 control bits, leveraging packHorizontal for sync.
         uint16_t lineBits(const ControlWord& c) {
-            MicroOp m;
+            // The control lines of `c` as packHorizontal sees them (alu_op and sequencing
+            // ignored; 0 = no lines). Reusing it covers any line added to ControlWord.
+            uint64_t lineBits(const ControlWord& c) {
+            MicroOp m, idle;
             m.ctl = c;
-            return static_cast<uint16_t>(ControlUnit::packHorizontal(m) & 0xFFFFu);
+            m.ctl.alu_op = Opcode::NOP;
+            return ControlUnit::packHorizontal(m) ^ ControlUnit::packHorizontal(idle);
         }
 
         // ---- listing / sequencing helpers -----------------------------------
@@ -127,12 +132,39 @@ namespace risc201 {
             add(w.mem_data_pc,  "mem_data_pc");
             add(w.pc_src_mem,   "pc_src_mem");
             add(w.stack_check,  "stack_check");
+            add(w.addr_check,   "addr_check");
+            add(w.trap,         "trap");
             add(w.halt,         "halt");
             return s.empty() ? "(idle)" : s;
         }
 
+        // A fault counts only in a cycle where the unit that reports it is checking
+        // (same rule as the horizontal unit).
+        bool faultApplies(const ControlWord& c, ExceptionCode e) {
+            switch (e) {
+                case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
+                case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check || c.stack_check;
+                case ExceptionCode::STACK_OVERFLOW:
+                case ExceptionCode::STACK_UNDERFLOW:       return c.stack_check;
+                case ExceptionCode::NONE:
+                case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
+            }
+            return false;
+        }
+            
         // ---- the encoder ----------------------------------------------------
 
+        // Last line of defence: decoding `word` must give back exactly `row`, so no
+        // control line can be silently dropped. Returns "" if it does.
+        std::string roundTripProblem(const MicroOp& row, int addr, uint16_t word) {
+            if (ControlUnit::packHorizontal(unpackVertical(word, addr)) !=
+                ControlUnit::packHorizontal(row)) {
+                return "decoding its vertical word would not give back the same row "
+                       "(a control line would be lost)";
+            }
+            return {};
+        }
+            
         // Packs row into 16-bit word. Returns error string if invalid.
         std::string packVerticalWord(const MicroOp& row, int addr, uint16_t& word) {
             const bool end = (row.next == kMicroEnd);
@@ -158,14 +190,14 @@ namespace risc201 {
                 word = static_cast<uint16_t>(0x8000u | (cond << 12) |
                                              (addrField(row.branch_target) << 4) |
                                              (end ? 1u : 0u));
-                return {};
+                return roundTripProblem(row, addr, word);
             }
 
             if (row.branch_target != kMicroEnd) {
                 return "it has a branch target but no branch condition";
             }
 
-            const uint16_t want = lineBits(row.ctl);
+            const uint64_t want = lineBits(row.ctl);
             for (const UopDef& u : uopTable()) {
                 if (lineBits(u.ctl) != want) continue;
 
@@ -178,7 +210,7 @@ namespace risc201 {
                 }
                 word = static_cast<uint16_t>((static_cast<uint32_t>(u.code) << 10) |
                                              (func << 5) | (end ? 1u : 0u));
-                return {};
+                return roundTripProblem(row, addr, word);
             }
             return "its control lines match no micro-operation (" + signalList(row.ctl) + ")";
         }
@@ -259,7 +291,8 @@ namespace risc201 {
         for (int op = 0; op < 256; ++op) {
             entries_[static_cast<size_t>(op)] = source.routineEntry(static_cast<Opcode>(op));
         }
-        illegal_entry_ = source.routineEntry(static_cast<Opcode>(0xFF));   
+        illegal_entry_ = source.routineEntry(static_cast<Opcode>(0xFF));  
+        trap_entry_ = source.trapEntry();
 
         vrom_.reserve(rows.size());
         for (size_t a = 0; a < rows.size(); ++a) {
@@ -286,10 +319,15 @@ namespace risc201 {
         return entries_[static_cast<uint8_t>(op)];
     }
 
+    void VerticalControlUnit::restart() {
+         micro_pc_ = 0;
+         done_ = false;
+         latched_ = false;
+     }
+
     void VerticalControlUnit::reset() {
-        micro_pc_ = 0;
-        done_ = false;
-        latched_ = false;
+        restart();
+        pending_exception_ = ExceptionCode::NONE;
     }
 
     // Reads and decodes a ROM word.
@@ -297,7 +335,7 @@ namespace risc201 {
         return unpackVertical(vrom_[addr], static_cast<int>(addr));
     }
 
-    ControlWord VerticalControlUnit::step(Opcode op, const Flags& flags) {
+    ControlWord VerticalControlUnit::step(Opcode op, const Flags& flags, ExceptionCode fault) {
         if (vrom_.empty()) {
             // Defensive check for empty ROM.
             done_ = true;
@@ -307,8 +345,8 @@ namespace risc201 {
         }
 
         if (done_) {
-            // Auto-reset for new macro instruction.
-            reset();
+            // Auto-restart for new macro instruction (a pending exception is kept).
+            restart();
         }
 
         if (!latched_) {
@@ -317,7 +355,15 @@ namespace risc201 {
         }
 
         const MicroOp cur = readRow(micro_pc_);
-        const ControlWord out = cur.ctl;
+        ControlWord out = cur.ctl;
+
+        // A fault deletes this cycle's signals and sends the unit to the TRAP row.
+        if (faultApplies(cur.ctl, fault)) {
+            pending_exception_ = fault;
+            out = ControlWord{};
+            micro_pc_ = static_cast<uint32_t>(trap_entry_);
+            return out;
+        }
 
         // Determine successor address (branch vs fall-through).
         const int32_t successor =
@@ -338,7 +384,10 @@ namespace risc201 {
     std::string VerticalControlUnit::dumpControlMemory() const {
         // Label routine entry points.
         std::map<int, std::string> labels;
-        if (!cm_.empty()) labels[illegal_entry_] = "ILLEGAL";
+        if (!cm_.empty()) {
+            labels[illegal_entry_] = "ILLEGAL";
+            labels[trap_entry_]    = "TRAP";
+        }
         for (int op = 0; op < 256; ++op) {
             const int entry = entries_[static_cast<size_t>(op)];
             if (entry != illegal_entry_) labels[entry] = opcodeName(static_cast<Opcode>(op));
@@ -375,7 +424,8 @@ namespace risc201 {
            << " bits  (horizontal: " << rows << " x " << kHorizontalWordBits << " = " << h_bits
            << " bits, " << (100 - 100 * kVerticalWordBits / kHorizontalWordBits)
            << "% narrower)\n"
-           << "decoder: " << kNumMicroOpCodes << " micro-ops -> 16 control lines\n";
+           << "decoder: " << kNumMicroOpCodes << " micro-ops -> " << kNumControlLines
+           << " control lines\n";
         return os.str();
     }
 
