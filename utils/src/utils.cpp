@@ -17,6 +17,7 @@ namespace risc201 {
             case Opcode::FSUB:  return "FSUB";
             case Opcode::FMUL:  return "FMUL";
             case Opcode::FDIV:  return "FDIV";
+            case Opcode::FCMP:  return "FCMP";
             case Opcode::OR:    return "OR";
             case Opcode::XOR:   return "XOR";
             case Opcode::SHL:   return "SHL";
@@ -33,6 +34,8 @@ namespace risc201 {
             case Opcode::SAR:   return "SAR";
             case Opcode::CMP:   return "CMP";
             case Opcode::MOV:   return "MOV";
+            case Opcode::FCMP:  return "FCMP";
+            case Opcode::BGT:   return "BGT";
             case Opcode::HALT:  return "HALT";
         }
         return "?";

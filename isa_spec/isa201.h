@@ -9,6 +9,8 @@ constexpr int kWordSizeBits         = 32;
 constexpr int kNumGPRegisters       = 16;
 constexpr int kInstructionBits      = 32;
 constexpr int kDefaultMemoryWords   = 4096; // TODO: confirm final size w/ Core Engine + Memory leads
+constexpr uint32_t kLiteralsMarker  = 0xFFFFFFFFu;
+constexpr int32_t  kMicroEnd        = -1;
 
 enum class Register : uint8_t {
     R0 = 0, R1, R2, R3, R4, R5, R6, R7,
@@ -42,9 +44,8 @@ enum class Opcode : uint8_t {
     STORE= 0x09,
     JMP  = 0x0A,
     BEQ  = 0x0B,
-    BGT  = 0x0C,
-    CALL = 0x0D,
-    RET  = 0x0E,
+    CALL = 0x0C,
+    RET  = 0x0D,
     // PUSH = 0x0E,
     // POP  = 0x0F,
     NOT  = 0x10, 
@@ -59,6 +60,7 @@ enum class Opcode : uint8_t {
     FMUL = 0x19,  
     FDIV = 0x1A,
     FCMP = 0x1B,  
+    BGT  = 0x1C,
     HALT = 0x1F,
 };
 
@@ -78,8 +80,6 @@ struct Instruction {
 // TODO(Milestone 0 — coordinate with Vaibhav): confirm final exception code set.
 enum class ExceptionCode : uint8_t {
     NONE = 0,
-    STACK_OVERFLOW,
-    STACK_UNDERFLOW,
     INVALID_MEMORY_ACCESS,
     DIVIDE_BY_ZERO,
     ILLEGAL_INSTRUCTION,

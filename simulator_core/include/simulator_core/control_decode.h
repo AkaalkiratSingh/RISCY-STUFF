@@ -24,6 +24,8 @@ namespace risc201 {
         bool       sp_dec = false;
         bool       sp_inc = false;
         bool       pc_from_target = false;
+        bool       pc_from_ra = false;
+        bool       ra_write = false;
 
         bool       mem_read = false;
         bool       mem_write = false;

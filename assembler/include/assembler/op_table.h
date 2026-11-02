@@ -7,8 +7,6 @@
 
 namespace risc201 {
 
-    constexpr uint32_t kLiteralsMarker = 0xFFFFFFFFu;
-
     enum class OperandKind : uint8_t {
         REG,
         IMM,
@@ -72,6 +70,11 @@ namespace risc201 {
             { "SHL",{ Opcode::SHL,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
             { "SHR",{ Opcode::SHR,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
             { "SAR",{ Opcode::SAR,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
+
+            { "FADD",{ Opcode::FADD, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
+            { "FSUB",{ Opcode::FSUB, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
+            { "FMUL",{ Opcode::FMUL, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
+            { "FDIV",{ Opcode::FDIV, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
 
             { "LOAD" ,{ Opcode::LOAD,  InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },
             { "STORE",{ Opcode::STORE, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },

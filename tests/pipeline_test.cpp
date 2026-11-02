@@ -58,6 +58,7 @@ std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
     for (const auto& instr : asmblr.assemblePass2()) {
         words.push_back(asmblr.encodeInstruction(instr));
     }
+    for (uint32_t word : asmblr.literalSection()) words.push_back(word);
     if (!words.empty()) words.erase(words.begin());
     return words;
 }
@@ -117,10 +118,11 @@ int main() {
         mk("call then ret",          {"ADD R1, R0, 7", "CALL sub", "ADD R2, R0, 1", "HALT",
                                       "sub:", "ADD R3, R0, 5", "RET"}),
         mk("recursion sum(5)",       {"ADD R1, R0, 5", "CALL sum", "HALT",
-                                      "sum:", "SUB R2, R1, R0", "BEQ zero", "PUSH R1", "SUB R1, R1, 1",
-                                      "CALL sum", "POP R2", "ADD R1, R1, R2", "RET",
+                                      "sum:", "SUB R2, R1, R0", "BEQ zero",
+                                      "PUSH R14", "PUSH R1", "SUB R1, R1, 1",
+                                      "CALL sum", "POP R2", "POP R14", "ADD R1, R1, R2", "RET",
                                       "zero:", "ADD R1, R0, 0", "RET"}),
-        mk("bare ret underflows",    {"RET", "HALT"}),
+        mk("ret via r14",            {"ADD R14, R0, 4", "RET", "HALT", "NOP", "HALT"}),
         mk("pop from empty",         {"POP R1", "HALT"}),
         mk("stack overflow",         {"PUSH R1", "PUSH R1", "HALT"}, {}, 1),
         mk("runs off the end",       {"ADD R1, R0, R0"}),
@@ -237,8 +239,9 @@ int main() {
             {"countdown", {"ADD R1, R0, 5", "loop:", "SUB R1, R1, 1", "BEQ done",
                            "JMP loop", "done:", "HALT"}},
             {"recursion", {"ADD R1, R0, 5", "CALL sum", "HALT",
-                           "sum:", "SUB R2, R1, R0", "BEQ zero", "PUSH R1", "SUB R1, R1, 1",
-                           "CALL sum", "POP R2", "ADD R1, R1, R2", "RET",
+                           "sum:", "SUB R2, R1, R0", "BEQ zero",
+                           "PUSH R14", "PUSH R1", "SUB R1, R1, 1",
+                           "CALL sum", "POP R2", "POP R14", "ADD R1, R1, R2", "RET",
                            "zero:", "ADD R1, R0, 0", "RET"}},
             {"alu chain", {"ADD R1, R0, 5", "ADD R2, R1, 5", "SUB R3, R2, R1", "HALT"}},
             {"push/pop", {"ADD R1, R0, 42", "PUSH R1", "POP R2", "HALT"}},
@@ -287,7 +290,7 @@ int main() {
         CHECK_EQ(six.trace().stalls, 0u);
     }
 
-    section("Pipeline: RET flushes deeper than a branch");
+    section("Pipeline: CALL and RET flush like a jump");
     {
         const std::vector<std::string> call = {
             "ADD R1, R0, 7", "CALL sub", "HALT", "sub:", "ADD R2, R0, 5", "RET"};
@@ -297,8 +300,8 @@ int main() {
 
         CHECK_EQ(four.trace().flushes, 2u);        // one CALL, one RET
         CHECK_EQ(six.trace().flushes, 2u);
-        CHECK_EQ(four.trace().flush_bubbles, 3u);  // CALL 1 + RET 2
-        CHECK_EQ(six.trace().flush_bubbles, 7u);   // CALL 3 + RET 4
+        CHECK_EQ(four.trace().flush_bubbles, 2u);  // CALL 1 + RET 1
+        CHECK_EQ(six.trace().flush_bubbles, 6u);   // CALL 3 + RET 3
     }
 
     section("Pipeline: a fault is recorded and does not flush");

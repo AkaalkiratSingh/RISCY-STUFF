@@ -49,6 +49,12 @@ int main() {
     assert(alu.execute(Opcode::REM, 10, 3).value == 1);
     assert(alu.execute(Opcode::REM, -10, 3).value == -1); // Remainder takes sign of dividend
 
+    // Divide by zero is reported, not silently swallowed; a valid division raises nothing.
+    assert(alu.execute(Opcode::DIV, 7, 0).fault == ExceptionCode::DIVIDE_BY_ZERO);
+    assert(alu.execute(Opcode::REM, 7, 0).fault == ExceptionCode::DIVIDE_BY_ZERO);
+    assert(alu.execute(Opcode::DIV, 0, 1).fault == ExceptionCode::NONE);
+    assert(alu.execute(Opcode::DIV, 10, 3).fault == ExceptionCode::NONE);
+
     // ==========================================
     // 2. FLOATING POINT TESTS
     // ==========================================
@@ -56,6 +62,12 @@ int main() {
     // FADD: 2.5 + 1.25 = 3.75
     float f_add = bitsToFloat(alu.execute(Opcode::FADD, floatToBits(2.5f), floatToBits(1.25f)).value);
     assert(isClose(f_add, 3.75f));
+
+    // FADD: same-sign sums that carry out of the 24-bit mantissa
+    float f_add_carry = bitsToFloat(alu.execute(Opcode::FADD, floatToBits(5.0f), floatToBits(3.0f)).value);
+    assert(isClose(f_add_carry, 8.0f));
+    float f_add_neg = bitsToFloat(alu.execute(Opcode::FADD, floatToBits(-5.0f), floatToBits(-3.0f)).value);
+    assert(isClose(f_add_neg, -8.0f));
 
     // FSUB: 5.0 - 3.25 = 1.75
     float f_sub = bitsToFloat(alu.execute(Opcode::FSUB, floatToBits(5.0f), floatToBits(3.25f)).value);
@@ -101,6 +113,15 @@ int main() {
     // 0.0 > -1.0 (Different signs)
     Alu::Result fcmp5 = alu.execute(Opcode::FCMP, floatToBits(0.0f), floatToBits(-1.0f));
     assert(fcmp5.flags.greaterThan == true);
+
+    // MOV tests
+    Alu::Result mov1 = alu.execute(Opcode::MOV, 42, 0);
+    assert(mov1.value == 42);
+    assert(mov1.flags.zero == false);
+
+    Alu::Result mov2 = alu.execute(Opcode::MOV, 0, 0);
+    assert(mov2.value == 0);
+    assert(mov2.flags.zero == true); // Moving 0 should set the Zero flag
 
     std::cout << "All tests passed successfully!\n";
     std::cout << " - Integer ALU (ADD, SUB, MUL, DIV, REM) OK\n";

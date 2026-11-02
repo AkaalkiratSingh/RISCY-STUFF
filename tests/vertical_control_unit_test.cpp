@@ -58,6 +58,7 @@ bool sameWord(const ControlWord& a, const ControlWord& b) {
            a.flag_update == b.flag_update && a.halt == b.halt &&
            a.mem_addr_sp == b.mem_addr_sp && a.mem_data_pc == b.mem_data_pc &&
            a.pc_src_mem == b.pc_src_mem && a.stack_check == b.stack_check &&
+           a.trap == b.trap && a.addr_check == b.addr_check &&
            a.alu_op == b.alu_op;
 }
 
@@ -84,6 +85,8 @@ Flags flagsFromBits(int bits) {
     f.negative = bits & 2;
     f.carry    = bits & 4;
     f.overflow = bits & 8;
+    f.equal    = bits & 16;
+    f.greaterThan = bits & 32;
     return f;
 }
 
@@ -156,6 +159,8 @@ int main() {
     CHECK(vcu.encoding() == MicrocodeEncoding::Vertical);
     CHECK_EQ(vrom.size(), hcm.size());                       
     CHECK_EQ(vcm.size(), hcm.size());
+    CHECK_EQ(kHorizontalWordBits, 44);                       // bits 0..43 of packHorizontal
+    CHECK_EQ(kNumControlLines, 20);
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
     CHECK_EQ(kVerticalWordBits, 16);
     CHECK_EQ(sizeof(vrom[0]) * 8, static_cast<size_t>(kVerticalWordBits));
@@ -173,12 +178,21 @@ int main() {
     CHECK_EQ(word(Opcode::LOAD, 1), 0x1020);       
     CHECK_EQ(word(Opcode::LOAD, 3), 0x2001);       
     CHECK_EQ(word(Opcode::MOV, 1), 0x0E60);        
-    CHECK_EQ(word(Opcode::CALL, 2), 0x3800);       
-    CHECK_EQ(word(Opcode::RET, 1), 0x2800);        
+    CHECK_EQ(word(Opcode::CALL, 1), 0x4800);        // RA.WR
+    CHECK_EQ(word(Opcode::CALL, 2), 0x2401);        // JUMP, END
+    CHECK_EQ(word(Opcode::RET, 0), 0x4C01);         // JUMP.RA, END
     CHECK_EQ(word(Opcode::HALT, 0), 0x4001);       
-    CHECK_EQ(word(Opcode::BEQ, 0), 0x92B0);        
+    CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
     CHECK_EQ(word(Opcode::BEQ, 1), 0x0401);        
-    CHECK_EQ(word(Opcode::BEQ, 2), 0x2401);        
+    CHECK_EQ(word(Opcode::BEQ, 2), 0x2401);   
+    CHECK_EQ(word(Opcode::LOAD, 2), 0x1400);        // MEM.RD (+addr_check)
+    CHECK_EQ(word(Opcode::STORE, 2), 0x1801);       // MEM.WR (+addr_check), END
+    CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x4401);   // TRAP, END
+    CHECK_EQ(word(Opcode::BGT, 0), 0xE000 | ((hcu.routineEntry(Opcode::BGT) + 2) << 4));   // cond GT(6)
+    CHECK_EQ(word(Opcode::DIV, 1), 0x0AA0);         // ALU, func DIV(0x15)
+    CHECK_EQ(word(Opcode::FADD, 1), 0x0EE0);        // ALU.NF, func FADD(0x17): flags untouched
+    CHECK_EQ(word(Opcode::FADD, 2), 0x1C01);        // WB, END
+    CHECK_EQ(word(Opcode::FCMP, 1), 0x0B61);        // ALU, func FCMP(0x1B), END: no writeback
     CHECK_EQ(packVertical(MicroOp{}, 0), 0x0001);   
     {
         MicroOp idle;
@@ -229,12 +243,12 @@ int main() {
     }
 
     // -----------------------------------------------------------------------
-    section("Vertical == horizontal: lockstep, every opcode x every flag combination");
+    section("Vertical == horizontal: lockstep, every opcode x every flag combination (all 6 flags)");
     {
         int mismatches = 0;
         for (int opv = 0; opv < 256; ++opv) {
             const Opcode op = static_cast<Opcode>(opv);
-            for (int fl = 0; fl < 16; ++fl) {
+            for (int fl = 0; fl < 64; ++fl) {
                 const Flags f = flagsFromBits(fl);
                 ControlUnit h;
                 VerticalControlUnit v;
@@ -262,7 +276,7 @@ int main() {
         int mismatches = 0;
         for (int i = 0; i < 20000; ++i) {
             const Opcode op = static_cast<Opcode>(next() & 0xFF);
-            const Flags f = flagsFromBits(static_cast<int>(next() & 0xF));
+            const Flags f = flagsFromBits(static_cast<int>(next() & 0x3F));
             if (!sameWord(h.step(op, f), v.step(op, f)) || h.microPC() != v.microPC() ||
                 h.routineDone() != v.routineDone()) {
                 ++mismatches;
@@ -271,17 +285,102 @@ int main() {
         CHECK_EQ(mismatches, 0);
     }
 
+        // -----------------------------------------------------------------------
+    section("Vertical == horizontal: new rows survive (FPU, DIV/REM, BGT, address check, TRAP)");
+    {
+        const int illegal = hcu.routineEntry(static_cast<Opcode>(0xFF));
+        for (Opcode op : {Opcode::DIV, Opcode::REM, Opcode::BGT, Opcode::FADD, Opcode::FSUB,
+                          Opcode::FMUL, Opcode::FDIV, Opcode::FCMP}) {
+            CHECK(hcu.routineEntry(op) != illegal);          // the horizontal ROM has the routine
+            CHECK_EQ(vcu.routineEntry(op), hcu.routineEntry(op));
+        }
+        int trap_rows = 0, check_rows = 0, lost = 0;
+        for (size_t a = 0; a < hcm.size(); ++a) {
+            trap_rows  += hcm[a].ctl.trap;
+            check_rows += hcm[a].ctl.addr_check;
+            lost += (vcm[a].ctl.trap != hcm[a].ctl.trap) +
+                    (vcm[a].ctl.addr_check != hcm[a].ctl.addr_check);
+        }
+        CHECK(trap_rows >= 1);                               // the rows this guards really exist
+        CHECK(check_rows >= 2);
+        CHECK_EQ(lost, 0);                                   // none of those lines was dropped
+        CHECK_EQ(vcu.trapEntry(), hcu.trapEntry());
+        CHECK(vcm[static_cast<size_t>(vcu.trapEntry())].ctl.trap);
+    }
+
+    // -----------------------------------------------------------------------
+    section("Vertical == horizontal: lockstep with faults, every opcode x every fault");
+    {
+        const ExceptionCode faults[] = {
+            ExceptionCode::NONE, ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
+            ExceptionCode::ILLEGAL_INSTRUCTION };
+        int mismatches = 0, trapped = 0;
+        for (int opv = 0; opv < 256; ++opv) {
+            const Opcode op = static_cast<Opcode>(opv);
+            for (ExceptionCode fault : faults) {
+                for (int fl : {0, 1, 63}) {
+                    ControlUnit h;
+                    VerticalControlUnit v;
+                    const Flags f = flagsFromBits(fl);
+                    bool hit = false;
+                    for (int cycle = 0; cycle < 40; ++cycle) {
+                        const ControlWord hw = h.step(op, f, fault);   // fault held at one level,
+                        const ControlWord vw = v.step(op, f, fault);   // as the horizontal unit allows
+                        if (!sameWord(hw, vw) || h.microPC() != v.microPC() ||
+                            h.routineDone() != v.routineDone() ||
+                            h.pendingException() != v.pendingException()) {
+                            ++mismatches;
+                            break;
+                        }
+                        hit = hit || h.pendingException() != ExceptionCode::NONE;
+                        if (h.routineDone()) break;
+                    }
+                    trapped += hit;
+                }
+            }
+        }
+        CHECK_EQ(mismatches, 0);
+        CHECK(trapped > 0);                                  // the TRAP path was really exercised
+    }
+
+    section("Vertical == horizontal: randomised, with faults, reset() and clearException()");
+    {
+        const ExceptionCode faults[] = {
+            ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
+            ExceptionCode::ILLEGAL_INSTRUCTION };
+        ControlUnit h;
+        VerticalControlUnit v;
+        uint32_t seed = 0x9E3779B9u;
+        const auto next = [&seed] { seed = seed * 1664525u + 1013904223u; return seed >> 8; };
+        int mismatches = 0;
+        for (int i = 0; i < 30000; ++i) {
+            const Opcode op = static_cast<Opcode>(next() % 32);          // mostly real opcodes
+            const Flags f = flagsFromBits(static_cast<int>(next() & 0x3F));
+            const ExceptionCode fault = (next() % 4 == 0) ? faults[next() % 5] : ExceptionCode::NONE;
+            const unsigned action = next() % 64;
+            if (action == 0) { h.reset(); v.reset(); }
+            if (action == 1) { h.clearException(); v.clearException(); }
+            if (!sameWord(h.step(op, f, fault), v.step(op, f, fault)) || h.microPC() != v.microPC() ||
+                h.routineDone() != v.routineDone() ||
+                h.pendingException() != v.pendingException()) {
+                ++mismatches;
+            }
+        }
+        CHECK_EQ(mismatches, 0);
+    }
+
+    
     // -----------------------------------------------------------------------
     section("Decoder: micro-op codes");
     {
-        std::set<uint16_t> line_sets;
+        std::set<uint64_t> line_sets;
         for (unsigned code = 0; code < kNumMicroOpCodes; ++code) {
             const MicroOp row = unpackVertical(static_cast<uint16_t>(code << 10), 0);
             CHECK(row.cond == BranchCond::None);
             CHECK(microOpName(static_cast<MicroOpCode>(code))[0] != '?');
             MicroOp lines = row;
             lines.next = kMicroEnd;
-            line_sets.insert(static_cast<uint16_t>(ControlUnit::packHorizontal(lines) & 0xFFFFu));
+            line_sets.insert(ControlUnit::packHorizontal(lines));
         }
         CHECK_EQ(line_sets.size(), kNumMicroOpCodes);        
         CHECK(std::string(microOpName(static_cast<MicroOpCode>(31))) == "?");
@@ -293,16 +392,16 @@ int main() {
             const MicroOp m = unpackVertical(static_cast<uint16_t>(code << 10), 9);
             CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
         }
-        for (unsigned cond : {0u, 6u, 7u}) {                 
+        for (unsigned cond : {0u, 7u}) {                 
             const MicroOp m = unpackVertical(static_cast<uint16_t>(0x8000u | (cond << 12)), 9);
             CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
         }
     }
 
     // -----------------------------------------------------------------------
-    section("Encoder: branch rows (all five conditions, END and explicit targets)");
+    section("Encoder: branch rows (all six conditions, END and explicit targets)");
     for (BranchCond c : {BranchCond::Zero, BranchCond::NotZero, BranchCond::Negative,
-                         BranchCond::Carry, BranchCond::Overflow}) {
+                         BranchCond::Carry, BranchCond::Overflow, BranchCond::GreaterThan}) {
         for (int32_t next : {int32_t{8}, kMicroEnd}) {       
             for (int32_t target : {int32_t{0}, int32_t{34}, int32_t{254}, kMicroEnd}) {
                 const MicroOp in = branchRow(c, next, target);
@@ -353,7 +452,19 @@ int main() {
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 255), 0));   
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 300), 0));
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, -2), 0));
-        CHECK(!canPackVertical(branchRow(static_cast<BranchCond>(6), 1, 0), 0));
+        CHECK(!canPackVertical(branchRow(static_cast<BranchCond>(7), 1, 0), 0));
+        
+        MicroOp lone_trap;                                   // trap without halt: no micro-op for it
+        lone_trap.ctl.trap = true;
+        CHECK(!canPackVertical(lone_trap, 0));
+        
+        MicroOp lone_check;                                  // addr_check on its own: no micro-op
+        lone_check.ctl.addr_check = true;
+        CHECK(!canPackVertical(lone_check, 0));
+        
+        MicroOp fetch_check;
+        fetch_check.ctl.pc_inc = fetch_check.ctl.addr_check = true;
+        CHECK(!canPackVertical(fetch_check, 0));             // a line must never be dropped silently
 
         MicroOp skips;
         skips.next = 9;                                      
@@ -375,8 +486,14 @@ int main() {
         CHECK(v.find("micro-op") != std::string::npos);
         CHECK(v.find("0x0820") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
         CHECK(v.find("BRANCH Z") != std::string::npos);
-        CHECK(v.find(" rows x 16 bits = ") != std::string::npos);
-        CHECK(v.find("60% narrower") != std::string::npos);
+        const size_t rows = hcm.size();
+        CHECK(v.find(std::to_string(rows) + " rows x 16 bits = " + std::to_string(rows * 16) + " bits")
+              != std::string::npos);
+        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 44 = " + std::to_string(rows * 44) + " bits")
+              != std::string::npos);
+        CHECK(v.find("64% narrower") != std::string::npos);
+        CHECK(v.find("20 control lines") != std::string::npos);
+        CHECK(v.find("TRAP") != std::string::npos && v.find("BRANCH GT") != std::string::npos);
     }
 
     // -----------------------------------------------------------------------

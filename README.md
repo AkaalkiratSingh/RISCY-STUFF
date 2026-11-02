@@ -23,9 +23,9 @@ A from-scratch 32-bit processor project: a custom instruction set (**risc201**),
 ## Highlights
 
 - **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 40-bit microword.
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 44-bit microword.
 - **ALU built from gate-level ideas:** a 32-bit carry-lookahead adder (eight chained 4-bit CLA blocks) and a radix-4 Booth multiplier.
-- **Stack guard:** a full-descending stack with bounds checking on `PUSH`, `POP`, `CALL` and `RET`, raising `STACK_OVERFLOW` / `STACK_UNDERFLOW` before the access commits.
+- **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
 - **Simulator CLI** with a decode listing, single-step mode and memory dumps.
 - **Interactive TUI (`risc201-tui`):** live source, binary, register, stats and memory panes; a hazard timeline; a source editor with explicit reassembly; and CPU configuration switching.
@@ -131,7 +131,7 @@ build/assembler/risc201-disasm sum.hex -o sum.asm   # add -l to synthesise label
 
 ### Example program
 
-`examples/recursive_sum.asm` computes `sum(5)` recursively using `CALL`/`RET` and `PUSH`/`POP`:
+`examples/recursive_sum.asm` computes `sum(5)` recursively using `CALL`/`RET` and `PUSH`/`POP`. `CALL` writes the return address into `R14`; nested calls save it with `PUSH R14` / `POP R14`:
 
 ```asm
 ADD R1, R0, 5 ; R1 = 5
@@ -141,10 +141,12 @@ HALT
 sum:
     ADD R2, R1, R0     ; R2 = n, sets Z when n == 0
     BEQ zero
-    PUSH R1            ; save n across the recursive call
+    PUSH R14           ; save the return address across the recursive call
+    PUSH R1            ; save n
     SUB R1, R1, 1
     CALL sum
     POP R1             ; R1 = saved n
+    POP R14            ; restore the return address
     ADD R2, R2, R1     ; R2 = sum(n-1) + n
     RET
 zero:
@@ -154,7 +156,7 @@ zero:
 
 Result: `R2 = 15`, `SP` back at 4096.
 
-The `examples/` folder has 13 programs. Most are real algorithms running from hundreds to tens of thousands of cycles: Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, plus recursion and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `STACK_OVERFLOW` on purpose.
+The `examples/` folder has 14 programs. Most are real algorithms running from hundreds to tens of thousands of cycles: Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, floating-point arithmetic with literals, plus recursion and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `INVALID_MEMORY_ACCESS` on purpose.
 
 Every run prints a `pipeline:` line counting stalls, flushes and flush bubbles, and `--trace` prints the pipeline clock by clock. Those explain the cycle count exactly: `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`.
 
@@ -164,10 +166,10 @@ Every run prints a `pipeline:` line counting stalls, flushes and flush bubbles, 
 |----------|-------|
 | Word size | 32 bits |
 | Instruction width | 32 bits, fixed |
-| Registers | 16 general purpose (`R0` to `R15`) |
+| Registers | 16 general purpose (`R0` to `R15`); `R14` is the link register for `CALL`/`RET`, `R15` is the stack pointer |
 | Data memory | 4096 words by default, word-addressed |
 | Program memory | Held separately from data memory |
-| Stack | Full-descending, `SP` starts at the top of data memory |
+| Stack | Full-descending, `R15`/`SP` starts at the top of data memory |
 | Flags | Zero (`Z`), Negative (`N`), Carry (`C`), Overflow (`V`) |
 | Branching | PC-relative |
 
@@ -184,19 +186,20 @@ When the `I` bit is set, the last operand is an 18-bit immediate. Otherwise it i
 
 | Category | Mnemonics |
 |----------|-----------|
-| Arithmetic | `ADD`, `SUB` |
+| Arithmetic | `ADD`, `SUB`, `MUL`, `DIV`, `REM` |
 | Logic | `AND`, `OR`, `XOR` |
 | Shifts | `SHL`, `SHR` |
+| Floating point | `FADD`, `FSUB`, `FMUL`, `FDIV` |
 | Memory | `LOAD rd, imm[rs1]`, `STORE rd, imm[rs1]` |
-| Control flow | `JMP`, `BEQ`, `CALL`, `RET` |
-| Stack | `PUSH`, `POP` |
+| Control flow | `JMP`, `BEQ`, `CALL` (writes `R14`), `RET` (jumps to `R14`) |
+| Stack macros | `PUSH`, `POP` (expand to `SUB`/`STORE` and `LOAD`/`ADD` on `SP`) |
 | Misc | `NOP`, `HALT` |
 
-`NOT`, `SAR`, `CMP`, `MOV` and `MUL` are reserved in the ISA spec. The ALU already implements `MUL`, but the assembler and control unit do not expose these yet.
+CALL/RET do not touch the stack: software that makes nested calls, or needs `R14` for data, saves it with `PUSH R14` / `POP R14`. `NOT`, `SAR`, `CMP`, `MOV`, `BGT` and `FCMP` exist in the ISA and control unit but are not exposed by the assembler yet.
 
 ### Exceptions
 
-`STACK_OVERFLOW`, `STACK_UNDERFLOW`, `INVALID_MEMORY_ACCESS`, `DIVIDE_BY_ZERO`, `ILLEGAL_INSTRUCTION`
+`INVALID_MEMORY_ACCESS`, `DIVIDE_BY_ZERO`, `ILLEGAL_INSTRUCTION`
 
 An exception halts the CPU and is reported by the simulator.
 
@@ -230,7 +233,7 @@ RISCY-STUFF/
 │   └── tui/          # risc201-tui: panes, source editor, config dialog, hazard timeline
 ├── utils/            # shared helpers
 ├── tests/            # unit and integration tests (CTest)
-├── examples/         # 13 sample .asm programs
+├── examples/         # 14 sample .asm programs
 ├── demo.sh           # build + run every example with decode listing
 └── CMakeLists.txt
 ```
@@ -246,6 +249,7 @@ ctest --test-dir build --output-on-failure
 | `AluTest` | ALU operations, flags, multiplication |
 | `HorizontalControlUnitTest`, `VerticalControlUnitTest` | Microcode routines and control words |
 | `ControlDecodeTest` | Collapsing each micro-routine into one action-tagged control bundle |
+| `ControlUnitAluIntegration` | ALU and control-unit integration |
 | `DecodeTest` | Instruction decoding |
 | `Pass1Test`, `Pass2Test` | Assembler label pass and resolve/encode pass |
 | `EncoderTest` | Instruction word encoding |
@@ -254,7 +258,7 @@ ctest --test-dir build --output-on-failure
 | `CpuIntegrationTest` | End-to-end program execution |
 | `PipelineTest` | Variant equivalence, cycle accounting and hazard counters |
 
-The two control-unit tests currently fail on the known `trap`-bit control-word mismatch. The TUI is exercised manually and is not covered by CTest.
+All CTest targets pass. The TUI is exercised manually and is not covered by CTest.
 
 ## Status and roadmap
 
@@ -262,8 +266,11 @@ The two control-unit tests currently fail on the known `trap`-bit control-word m
 - [x] Shared ISA specification
 - [x] ALU with CLA adder and Booth multiplier
 - [x] Microcoded control unit (horizontal encoding)
-- [x] Stack guard with overflow/underflow detection
+- [x] Stack bounds checks, reported as `INVALID_MEMORY_ACCESS`
 - [x] Two-pass assembler with `.bin` / `.hex` output
+- [x] Macro preprocessor (`.macro`/`.endm`, `@` local labels, built-in `PUSH`/`POP`) and `.literals:` float constants
+- [x] `CALL`/`RET` use `R14` as the link register; software saves it with `PUSH`/`POP` around nested calls
+- [x] Scalar IEEE-754 arithmetic (`FADD`/`FSUB`/`FMUL`/`FDIV`) with float literals
 - [x] Decoder, CPU execution loop and simulator CLI
 - [x] Pipelined datapath: 4-stage (`IF/ID/OF → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
 - [x] Operand forwarding (bypassing), with `--no-forward` as a stall-everything comparison mode
@@ -276,8 +283,8 @@ The two control-unit tests currently fail on the known `trap`-bit control-word m
 - [ ] Control-unit display: `--trace` shows the pipeline slot by slot, but the microPC, the packed control word and the signal bundle are not shown
 - [ ] Wire the stack visualizer into the simulator output
 - [ ] Complete the ISA, with end to end implementation
-- [ ] Assembler preprocessor/macros
-- [ ] Floating-point (IEEE 754) extension
+- [ ] Expose `NOT`, `SAR`, `CMP`, `MOV`, `BGT` and `FCMP` in the assembler
+- [ ] Full IEEE-754 extension (comparison/branch integration, conversion)
 
 ## Team
 

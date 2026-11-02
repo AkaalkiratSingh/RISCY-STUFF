@@ -36,6 +36,7 @@ namespace risc201 {
         const CpuState& state() const { return state_; }
         std::vector<int32_t>& memory() { return memory_; }
         const std::vector<int32_t>& memory() const { return memory_; }
+        const std::vector<uint32_t>& codeWords() const { return code_; }
 
         uint64_t cycles() const { return cycles_; }
         uint64_t retired() const { return retired_; }
@@ -81,6 +82,7 @@ namespace risc201 {
         PipelineVariant variant_;
         MicrocodeEncoding encoding_;
         CpuState state_;
+        std::vector<uint32_t> source_words_;
         std::vector<uint32_t> code_;
         std::vector<int32_t> memory_;
         Alu alu_;
