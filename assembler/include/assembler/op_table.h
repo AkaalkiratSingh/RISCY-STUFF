@@ -22,6 +22,28 @@ namespace risc201 {
         std::vector<OperandKind> operand_kinds;
     };
 
+    inline bool writesDestination(Opcode op) {
+        switch (op) {
+            case Opcode::ADD:
+            case Opcode::SUB:
+            case Opcode::MUL:
+            case Opcode::DIV:
+            case Opcode::REM:
+            case Opcode::AND:
+            case Opcode::OR: 
+            case Opcode::XOR:
+            case Opcode::NOT:
+            case Opcode::SHL:
+            case Opcode::SHR:
+            case Opcode::SAR:
+            case Opcode::MOV:
+            case Opcode::LOAD:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     inline size_t writtenOperandCount(const OpInfo& info) {
         size_t n = 0;
         for (OperandKind k : info.operand_kinds) {
@@ -53,11 +75,12 @@ namespace risc201 {
             { "FSUB",{ Opcode::FSUB, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
             { "FMUL",{ Opcode::FMUL, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
             { "FDIV",{ Opcode::FDIV, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
+            { "FCMP",{ Opcode::FCMP, InstrFormat::RI_TYPE,{ OperandKind::EMPTY, OperandKind::REG, OperandKind::REG } } },
 
             { "LOAD" ,{ Opcode::LOAD,  InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },
             { "STORE",{ Opcode::STORE, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },
 
-            { "CMP",{ Opcode::CMP,    InstrFormat::RI_TYPE,{ OperandKind::EMPTY, OperandKind::REG, OperandKind::REG_OR_IMM } } }, //check
+            { "CMP" ,{ Opcode::CMP,   InstrFormat::RI_TYPE,{ OperandKind::EMPTY, OperandKind::REG, OperandKind::REG_OR_IMM } } }, //check
             { "JMP" ,{ Opcode::JMP,   InstrFormat::J_TYPE,{ OperandKind::LABEL } } },
             { "BEQ" ,{ Opcode::BEQ,   InstrFormat::J_TYPE,{ OperandKind::LABEL } } },
             { "BGT" ,{ Opcode::BGT,   InstrFormat::J_TYPE,{ OperandKind::LABEL } } },

@@ -50,11 +50,13 @@ namespace risc201 {
         std::vector<AssemblyError> errors_;
         std::vector<AssemblyError> warnings_;
         std::vector<uint32_t> literal_words_;
+        std::unordered_map<std::string, uint32_t> literal_index_;
 
         void addError(int line_num, std::string msg);
         void addWarning(int line_num, std::string msg);
         bool parseLine(const std::string& raw, int line_num, ParsedLine& out);
         bool resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out);
+        bool resolveLiteralOperand(const std::string& token, int32_t& imm_out, Register& reg_out) const;
     };
 
     bool readHexWords(const std::string& path, std::vector<uint32_t>& out);
