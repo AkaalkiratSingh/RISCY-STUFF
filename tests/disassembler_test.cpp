@@ -272,15 +272,21 @@ void testDisassembleProgram() {
     std::cout << "testDisassembleProgram passed\n";
 }
 
+std::vector<Instruction> assembleProgram(const std::vector<std::string>& source,
+                                         Assembler& asmblr) {
+    asmblr.assemblePass1(source);
+    return asmblr.assemblePass2();
+}
+
 void testFullPipelineRoundtrip() {
     Assembler asmblr;
     std::vector<std::string> src = {
+        ".main:",
         "ADD R1, R2, R3",
         "ADD R4, R5, 10",
         "LOAD R6, 8[R7]",
     };
-    asmblr.assemblePass1(src);
-    auto program = asmblr.assemblePass2();
+    auto program = assembleProgram(src, asmblr);
     printErrors(asmblr);
     assert(asmblr.errors().empty());
 
@@ -292,6 +298,8 @@ void testFullPipelineRoundtrip() {
 
     assert(disasm.decodeErrors().empty());
     assert(decoded.size() == program.size());
+    assert(program.size() == 4);                 // JMP .main + 3 user instructions
+    assert(decoded[0].opcode == Opcode::JMP);    // auto-inserted entry jump survives the roundtrip
 
     for (size_t i = 0; i < program.size(); ++i) {
         assert(decoded[i].opcode == program[i].opcode);
@@ -306,7 +314,7 @@ void testFullPipelineRoundtrip() {
 
 void testFileRoundtripBinary() {
     Assembler asmblr;
-    std::vector<std::string> src = { "ADD R1, R2, R3", "HALT" };
+    std::vector<std::string> src = { ".main:", "ADD R1, R2, R3", "HALT" };
     asmblr.assemblePass1(src);
     auto program = asmblr.assemblePass2();
     assert(asmblr.errors().empty());
@@ -327,7 +335,7 @@ void testFileRoundtripBinary() {
 
 void testFileRoundtripHex() {
     Assembler asmblr;
-    std::vector<std::string> src = { "ADD R1, R2, R3", "HALT" };
+    std::vector<std::string> src = { ".main:", "ADD R1, R2, R3", "HALT" };
     asmblr.assemblePass1(src);
     auto program = asmblr.assemblePass2();
     assert(asmblr.errors().empty());

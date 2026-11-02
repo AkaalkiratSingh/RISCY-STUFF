@@ -1,6 +1,7 @@
 ; Euclid's algorithm by repeated subtraction: gcd(1071, 462).
 ; Expected: R1=21
 
+.main:
 ADD R1, R0, 1071
 ADD R2, R0, 462
 loop:
