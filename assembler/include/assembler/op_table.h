@@ -24,6 +24,28 @@ namespace risc201 {
         std::vector<OperandKind> operand_kinds;
     };
 
+    inline bool writesDestination(Opcode op) {
+        switch (op) {
+            case Opcode::ADD:
+            case Opcode::SUB:
+            case Opcode::MUL:
+            case Opcode::DIV:
+            case Opcode::REM:
+            case Opcode::AND:
+            case Opcode::OR: 
+            case Opcode::XOR:
+            case Opcode::NOT:
+            case Opcode::SHL:
+            case Opcode::SHR:
+            case Opcode::SAR:
+            case Opcode::MOV:
+            case Opcode::LOAD:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     inline size_t writtenOperandCount(const OpInfo& info) {
         size_t n = 0;
         for (OperandKind k : info.operand_kinds) {

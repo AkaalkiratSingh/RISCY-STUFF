@@ -344,6 +344,11 @@ namespace risc201 {
             }
         }
 
+        if (writesDestination(info.op) && out.rd == Register::R0) {
+            addError(pl.line_number, "'" + pl.op + "' cannot write to R0 (R0 is always zero)");
+            return false;
+        }
+
         if (have_imm_or_label) {
             int no_of_bits;
             int32_t lo;

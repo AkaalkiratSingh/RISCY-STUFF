@@ -454,6 +454,54 @@ void testBgtUndefinedLabel() {
     std::cout << "testBgtUndefinedLabel passed\n";
 }
 
+void testWriteToR0Rejected() {
+    const char* ops[] = { "ADD", "SUB", "MUL", "DIV", "REM", "AND", "OR", "XOR", "SHL", "SHR", "SAR" };
+    for (const char* op : ops) {
+        risc201::Assembler asmblr;
+        std::vector<std::string> src = { ".main:", std::string(op) + " R0, R1, R2" };
+        auto program = assembleSource(asmblr, src);
+        assert(asmblr.errors().size() == 1);
+        assert(asmblr.errors()[0].line_number == 2);
+        assert(asmblr.errors()[0].message == "'" + std::string(op) + "' cannot write to R0 (R0 is always zero)");
+        assert(program.empty());
+    }
+    std::cout << "testWriteToR0Rejected passed\n";
+}
+
+void testWriteToR0RejectedMovNotLoad() {
+    const std::vector<std::string> cases[] = {
+        { ".main:", "MOV R0, R1" },
+        { ".main:", "MOV R0, 5" },
+        { ".main:", "NOT R0, R1" },
+        { ".main:", "LOAD R0, 4[R1]" },
+        { ".main:", "ADD R0, R1, 7" },
+    };
+    for (const auto& src : cases) {
+        risc201::Assembler asmblr;
+        assembleSource(asmblr, src);
+        assert(asmblr.errors().size() == 1);
+    }
+    std::cout << "testWriteToR0RejectedMovNotLoad passed\n";
+}
+
+void testR0AllowedWhereNotADestination() {
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = {
+        ".main:",
+        "STORE R0, 4[R1]",   // R0 is the value being stored, not a destination
+        "CMP R0, 5",          // first slot is empty
+        "ADD R1, R0, R0",     // R0 as a source
+        "LOAD R2, 0[R0]",     // R0 as a base register
+        "NOP",
+    };
+    auto program = assembleSource(asmblr, src);
+    assert(asmblr.errors().empty());
+    assert(program.size() == kUser + 5);
+    assert(program[kUser].opcode == risc201::Opcode::STORE);
+    assert(program[kUser].rd == risc201::Register::R0);
+    std::cout << "testR0AllowedWhereNotADestination passed\n";
+}
+
 int main() {
     testResolveRegisters();
     testResolveRegOrImm();
@@ -487,6 +535,10 @@ int main() {
     testResolveBgtLabel();
     testResolveBgtBackwardLabel();
     testBgtUndefinedLabel();
+
+    testWriteToR0Rejected();
+    testWriteToR0RejectedMovNotLoad();
+    testR0AllowedWhereNotADestination();
 
     std::cout << "All Pass 2 tests passed.\n";
     return 0;
