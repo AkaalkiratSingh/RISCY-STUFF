@@ -75,11 +75,12 @@ namespace risc201 {
             { "FSUB",{ Opcode::FSUB, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
             { "FMUL",{ Opcode::FMUL, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
             { "FDIV",{ Opcode::FDIV, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
+            { "FCMP",{ Opcode::FCMP, InstrFormat::RI_TYPE,{ OperandKind::EMPTY, OperandKind::REG, OperandKind::REG } } },
 
             { "LOAD" ,{ Opcode::LOAD,  InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },
             { "STORE",{ Opcode::STORE, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },
 
-            { "CMP",{ Opcode::CMP,    InstrFormat::RI_TYPE,{ OperandKind::EMPTY, OperandKind::REG, OperandKind::REG_OR_IMM } } }, //check
+            { "CMP" ,{ Opcode::CMP,   InstrFormat::RI_TYPE,{ OperandKind::EMPTY, OperandKind::REG, OperandKind::REG_OR_IMM } } }, //check
             { "JMP" ,{ Opcode::JMP,   InstrFormat::J_TYPE,{ OperandKind::LABEL } } },
             { "BEQ" ,{ Opcode::BEQ,   InstrFormat::J_TYPE,{ OperandKind::LABEL } } },
             { "BGT" ,{ Opcode::BGT,   InstrFormat::J_TYPE,{ OperandKind::LABEL } } },
