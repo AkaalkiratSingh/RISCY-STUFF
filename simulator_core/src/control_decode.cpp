@@ -29,10 +29,12 @@ namespace risc201 {
             sc.reg_write |= c.reg_write;
             sc.mem_to_reg |= c.mem_to_reg;
             sc.halting |= c.halt;
+            sc.ra_write |= c.ra_write;
 
             if (c.pc_write) {
-                if (c.pc_src_mem) sc.pc_from_mem = true;
-                else              sc.pc_from_target = true;
+                if (c.pc_src_mem)      sc.pc_from_mem = true;
+                else if (c.pc_src_ra) sc.pc_from_ra = true;
+                else                  sc.pc_from_target = true;
             }
 
             if (row.cond != BranchCond::None) {
@@ -131,7 +133,7 @@ namespace risc201 {
 
         bool saw_alu = false;
         Opcode alu_fn = Opcode::NOP;
-        bool pc_from_target = false, pc_from_mem = false;
+        bool pc_from_target = false, pc_from_mem = false, pc_from_ra = false;
         bool mem_read = false, mem_write = false;
         bool sp_dec = false, sp_inc = false;
 
@@ -150,8 +152,9 @@ namespace risc201 {
                 return "flag_update on a row that does not enable the ALU";
             }
             if (c.pc_write) {
-                if (c.pc_src_mem) pc_from_mem = true;
-                else              pc_from_target = true;
+                if (c.pc_src_mem)      pc_from_mem = true;
+                else if (c.pc_src_ra) pc_from_ra = true;
+                else                  pc_from_target = true;
             }
             mem_read |= c.mem_read;
             mem_write |= c.mem_write;
@@ -160,7 +163,8 @@ namespace risc201 {
         }
 
         if (rows.empty())                 return "routine reached no control-memory row";
-        if (pc_from_target && pc_from_mem) return "PC written from both a target and memory";
+        const int pc_sources = (pc_from_target ? 1 : 0) + (pc_from_mem ? 1 : 0) + (pc_from_ra ? 1 : 0);
+        if (pc_sources > 1)               return "PC written from more than one source";
         if (mem_read && mem_write)         return "routine both reads and writes memory";
         if (sp_dec && sp_inc)              return "routine both decrements and increments SP";
         return std::string();

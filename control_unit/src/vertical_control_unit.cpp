@@ -52,6 +52,8 @@ namespace risc201 {
                     { MicroOpCode::PopRead,      "POP.RD",   false, lines({ &C::mem_read, &C::mem_addr_sp, &C::stack_check }) },
                     { MicroOpCode::Halt,         "HALT",     false, lines({ &C::halt }) },
                     { MicroOpCode::Trap,         "TRAP",     false, lines({ &C::trap, &C::halt }) },
+                    { MicroOpCode::RaWrite,      "RA.WR",    false, lines({ &C::ra_write }) },
+                    { MicroOpCode::JumpRa,       "JUMP.RA",  false, lines({ &C::pc_write, &C::pc_src_ra }) },
                 } };
                 for (size_t i = 0; i < t.size(); ++i) {
                     if (static_cast<size_t>(t[i].code) != i) {
@@ -129,8 +131,10 @@ namespace risc201 {
             add(w.mem_addr_sp, "mem_addr_sp");
             add(w.mem_data_pc, "mem_data_pc");
             add(w.pc_src_mem, "pc_src_mem");
+            add(w.pc_src_ra, "pc_src_ra");
             add(w.stack_check, "stack_check");
             add(w.addr_check, "addr_check");
+            add(w.ra_write, "ra_write");
             add(w.trap, "trap");
             add(w.halt, "halt");
             return s.empty() ? "(idle)" : s;

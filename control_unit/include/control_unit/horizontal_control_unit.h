@@ -38,9 +38,11 @@ namespace risc201 {
         bool  mem_addr_sp = false;
         bool  mem_data_pc = false;
         bool   pc_src_mem = false;
+        bool   pc_src_ra = false;
         bool  stack_check = false;
         bool  addr_check = false;    // memory guard validates the ALU-computed address THIS cycle,
                                      // before the LOAD/STORE access commits (out of bounds -> trap)
+        bool      ra_write = false;
 
         Opcode  alu_op = Opcode::NOP;
     };

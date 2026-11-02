@@ -77,39 +77,16 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp spDecRow() {
+        MicroOp raWriteRow() {
             MicroOp m;
-            m.ctl.sp_dec = true;
+            m.ctl.ra_write = true;
             return m;
         }
 
-        MicroOp spIncRow() {
-            MicroOp m;
-            m.ctl.sp_inc = true;
-            return m;
-        }
-
-        MicroOp stackPushWriteRow() {
-            MicroOp m;
-            m.ctl.mem_write = true;
-            m.ctl.mem_addr_sp = true;
-            m.ctl.mem_data_pc = true;
-            m.ctl.stack_check = true;
-            return m;
-        }
-
-        MicroOp stackPopReadRow() {
-            MicroOp m;
-            m.ctl.mem_read = true;
-            m.ctl.mem_addr_sp = true;
-            m.ctl.stack_check = true;
-            return m;
-        }
-
-        MicroOp pcFromMemRow() {
+        MicroOp pcFromRARow() {
             MicroOp m;
             m.ctl.pc_write = true;
-            m.ctl.pc_src_mem = true;
+            m.ctl.pc_src_ra = true;
             return m;
         }
 
@@ -181,8 +158,10 @@ namespace risc201 {
             add(w.mem_addr_sp,  "mem_addr_sp");
             add(w.mem_data_pc,  "mem_data_pc");
             add(w.pc_src_mem,   "pc_src_mem");
+            add(w.pc_src_ra,    "pc_src_ra");
             add(w.stack_check,  "stack_check");
             add(w.addr_check,   "addr_check");
+            add(w.ra_write,     "ra_write");
             add(w.trap,         "trap");
             add(w.halt,         "halt");
             return s.empty() ? "(idle)" : s;
@@ -246,10 +225,10 @@ namespace risc201 {
         appendRoutine(Opcode::MOV, { fetchRow(), movRow(), writebackRow() });
 
         appendRoutine(Opcode::CALL,
-            { fetchRow(), spDecRow(), stackPushWriteRow(), jumpRow() });
+            { fetchRow(), raWriteRow(), jumpRow() });
 
         appendRoutine(Opcode::RET,
-            { stackPopReadRow(), pcFromMemRow(), spIncRow() });
+            { pcFromRARow() });
 
         // appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
 
@@ -395,6 +374,8 @@ namespace risc201 {
         w |= static_cast<uint64_t>(addrField(row.branch_target)) << 32;
         w |= static_cast<uint64_t>(c.trap)        << 40;
         w |= static_cast<uint64_t>(c.addr_check)  << 41;
+        w |= static_cast<uint64_t>(c.ra_write)    << 42;
+        w |= static_cast<uint64_t>(c.pc_src_ra)   << 43;
         return w;
     }
 

@@ -33,20 +33,20 @@ void testEntryAddresses() {
     CHECK(cu.routineEntry(Opcode::BEQ)   == 32);
     CHECK(cu.routineEntry(Opcode::MOV)   == 35);
     CHECK(cu.routineEntry(Opcode::CALL)  == 38);
-    CHECK(cu.routineEntry(Opcode::RET)   == 42);
-    CHECK(cu.routineEntry(Opcode::NOT)   == 45);
-    CHECK(cu.routineEntry(Opcode::SAR)   == 48);
-    CHECK(cu.routineEntry(Opcode::MUL)   == 51);
-    CHECK(cu.routineEntry(Opcode::DIV)   == 57);
-    CHECK(cu.routineEntry(Opcode::REM)   == 60);
-    CHECK(cu.routineEntry(Opcode::BGT)   == 63);
-    CHECK(cu.trapEntry() == 56);
-    CHECK(cu.routineEntry(Opcode::CMP)   == 54);
-    CHECK(cu.routineEntry(Opcode::FADD)  == 66);
-    CHECK(cu.routineEntry(Opcode::FSUB)  == 69);
-    CHECK(cu.routineEntry(Opcode::FMUL)  == 72);
-    CHECK(cu.routineEntry(Opcode::FDIV)  == 75);
-    CHECK(cu.routineEntry(Opcode::FCMP)  == 78);
+    CHECK(cu.routineEntry(Opcode::RET)   == 41);
+    CHECK(cu.routineEntry(Opcode::NOT)   == 42);
+    CHECK(cu.routineEntry(Opcode::SAR)   == 45);
+    CHECK(cu.routineEntry(Opcode::MUL)   == 48);
+    CHECK(cu.routineEntry(Opcode::DIV)   == 54);
+    CHECK(cu.routineEntry(Opcode::REM)   == 57);
+    CHECK(cu.routineEntry(Opcode::BGT)   == 60);
+    CHECK(cu.trapEntry() == 53);
+    CHECK(cu.routineEntry(Opcode::CMP)   == 51);
+    CHECK(cu.routineEntry(Opcode::FADD)  == 63);
+    CHECK(cu.routineEntry(Opcode::FSUB)  == 66);
+    CHECK(cu.routineEntry(Opcode::FMUL)  == 69);
+    CHECK(cu.routineEntry(Opcode::FDIV)  == 72);
+    CHECK(cu.routineEntry(Opcode::FCMP)  == 75);
     CHECK(cu.routineEntry(static_cast<Opcode>(0x55)) == 0);   // unknown -> illegal row
 }
 
@@ -145,38 +145,37 @@ void testBgt() {
     Flags gt;  gt.greaterThan = true;
     { ControlUnit cu;
       ControlWord w = cu.step(Opcode::BGT, gt);                    // decision row
-      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 65 && !cu.routineDone());
+      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 62 && !cu.routineDone());
       w = cu.step(Opcode::BGT, gt);                                // taken row
       CHECK(w.pc_write && !w.pc_inc && cu.routineDone()); }
     { ControlUnit cu; Flags ng;
       ControlWord w = cu.step(Opcode::BGT, ng);
-      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 64);
+      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 61);
       w = cu.step(Opcode::BGT, ng);                                // not-taken row
       CHECK(w.pc_inc && !w.pc_write && cu.routineDone()); }
     // BGT looks only at greaterThan: Z, N, C, V alone must not take it.
     Flags other; other.zero = other.negative = other.carry = other.overflow = other.equal = true;
-    { ControlUnit cu; cu.step(Opcode::BGT, other); CHECK(cu.microPC() == 64); }
+    { ControlUnit cu; cu.step(Opcode::BGT, other); CHECK(cu.microPC() == 61); }
     // BEQ is unchanged and ignores greaterThan.
     { ControlUnit cu; cu.step(Opcode::BEQ, gt); CHECK(cu.microPC() == 33); }
 }
 
 void testCallRetRows() {
     auto c = runAll(Opcode::CALL);
-    CHECK(c.size() == 4 && c[0].pc_inc && c[1].sp_dec);
-    CHECK(c[2].mem_write && c[2].mem_addr_sp && c[2].mem_data_pc && c[2].stack_check && !c[2].pc_write);
-    CHECK(c[3].pc_write && !c[3].pc_src_mem);
+    CHECK(c.size() == 3 && c[0].pc_inc);
+    CHECK(c[1].ra_write && !c[1].pc_write);
+    CHECK(c[2].pc_write && !c[2].pc_src_mem && !c[2].pc_src_ra);
     auto r = runAll(Opcode::RET);
-    CHECK(r.size() == 3);
-    CHECK(r[0].mem_read && r[0].mem_addr_sp && r[0].stack_check && !r[0].sp_inc && !r[0].pc_write);
-    CHECK(r[1].pc_write && r[1].pc_src_mem && !r[1].sp_inc);
-    CHECK(r[2].sp_inc);
+    CHECK(r.size() == 1);
+    CHECK(r[0].pc_write && r[0].pc_src_ra);
+    CHECK(!r[0].mem_read && !r[0].sp_inc);
 }
 
 // Toy datapath: applies each ControlWord to PC / SP / one register / stack memory.
 // Every source in a cycle is the OLD state (like real registers).
 struct ToyMachine {
     static constexpr uint32_t kBase = 64, kLimit = 60;   // empty: SP == kBase; room for 4 words
-    uint32_t pc = 0, sp = kBase, mdr = 0, reg = 0;
+    uint32_t pc = 0, sp = kBase, mdr = 0, reg = 0, ra = 0;
     std::vector<uint32_t> mem = std::vector<uint32_t>(128, 0);
     ExceptionCode fault = ExceptionCode::NONE;
 
@@ -187,23 +186,18 @@ struct ToyMachine {
         if (w.mem_write && w.mem_addr_sp) mem[osp] = w.mem_data_pc ? opc : reg;
         if (w.mem_read  && w.mem_addr_sp) mdr = mem[osp];
         if (w.reg_write && w.mem_to_reg)  reg = omdr;
+        if (w.ra_write) ra = pc;
         if (w.pc_inc)   pc = opc + 1;
-        if (w.pc_write) pc = w.pc_src_mem ? omdr : target;
+        if (w.pc_write) pc = w.pc_src_ra ? ra : (w.pc_src_mem ? omdr : target);
         if (w.sp_dec)   sp = osp - 1;
         if (w.sp_inc)   sp = osp + 1;
         return true;
-    }
-    // The stack guard's wire for this instruction, evaluated from the CURRENT SP every cycle.
-    ExceptionCode guardWire(Opcode op) const {
-        if (op == Opcode::CALL && sp < kLimit) return ExceptionCode::INVALID_MEMORY_ACCESS;
-        if (op == Opcode::RET  && sp >= kBase) return ExceptionCode::INVALID_MEMORY_ACCESS;
-        return ExceptionCode::NONE;
     }
     bool run(Opcode op, uint32_t target = 0) {
         ControlUnit cu; Flags f;
         fault = ExceptionCode::NONE;
         for (int guard = 0; guard < 16; ++guard) {
-            const ControlWord w = cu.step(op, f, guardWire(op));
+            const ControlWord w = cu.step(op, f);
             if (!apply(w, target)) { fault = cu.pendingException(); return false; }
             if (cu.routineDone()) return true;
         }
@@ -213,26 +207,18 @@ struct ToyMachine {
 
 void testCallRetSynchronisation() {
     ToyMachine m; m.pc = 100;
-    CHECK(m.run(Opcode::CALL, 200) && m.pc == 200 && m.sp == ToyMachine::kBase - 1 && m.mem[m.sp] == 101);
+    CHECK(m.run(Opcode::CALL, 200));
+    CHECK(m.pc == 200 && m.ra == 101 && m.sp == ToyMachine::kBase);
     CHECK(m.run(Opcode::RET) && m.pc == 101 && m.sp == ToyMachine::kBase);
-    m.pc = 10;  CHECK(m.run(Opcode::CALL, 300));
+
+    m.pc = 10; CHECK(m.run(Opcode::CALL, 300));
+    const uint32_t outer = m.ra;
     m.pc = 301; CHECK(m.run(Opcode::CALL, 400));
-    m.pc = 401; CHECK(m.run(Opcode::CALL, 500));
-    CHECK(m.run(Opcode::RET) && m.pc == 402);
+    CHECK(m.ra == 302);
     CHECK(m.run(Opcode::RET) && m.pc == 302);
-    CHECK(m.run(Opcode::RET) && m.pc == 11 && m.sp == ToyMachine::kBase);
-}
-
-void testStackFaultsHappenBeforeDamage() {
-    ToyMachine m;                                            // overflow via CALL
-    for (int i = 0; i < 4; ++i) { m.pc = 1000 + i; CHECK(m.run(Opcode::CALL, 2000)); }
-    m.pc = 7;
-    CHECK(!m.run(Opcode::CALL, 5000) && m.fault == ExceptionCode::INVALID_MEMORY_ACCESS);
-    CHECK(m.pc != 5000 && m.mem[m.sp] == 0);
-
-    ToyMachine r; r.pc = 55;                                 // underflow via RET
-    CHECK(!r.run(Opcode::RET) && r.fault == ExceptionCode::INVALID_MEMORY_ACCESS);
-    CHECK(r.pc == 55 && r.sp == ToyMachine::kBase);
+    m.ra = outer;
+    CHECK(m.run(Opcode::RET) && m.pc == 11);
+    CHECK(m.sp == ToyMachine::kBase);
 }
 
 void testBackToBackAndIllegal() {
@@ -247,7 +233,7 @@ void testBackToBackAndIllegal() {
 
 void testControlMemoryWellFormed() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    CHECK(cm.size() == 80);
+    CHECK(cm.size() == 77);
     CHECK(cm.size() <= kMaxControlMemoryRows);
     for (const MicroOp& r : cm) {
         CHECK(r.next == kMicroEnd || (r.next >= 0 && r.next < static_cast<int32_t>(cm.size())));
@@ -258,8 +244,10 @@ void testControlMemoryWellFormed() {
         CHECK(!r.ctl.mem_addr_sp || r.ctl.mem_read || r.ctl.mem_write);
         CHECK(!r.ctl.mem_data_pc || r.ctl.mem_write);
         CHECK(!r.ctl.pc_src_mem  || r.ctl.pc_write);
+        CHECK(!r.ctl.pc_src_ra   || r.ctl.pc_write);
+        CHECK(!(r.ctl.pc_src_mem && r.ctl.pc_src_ra));
         CHECK(!r.ctl.stack_check || r.ctl.mem_addr_sp);
-        CHECK((ControlUnit::packHorizontal(r) >> 42) == 0);       // microword is 42 bits
+        CHECK((ControlUnit::packHorizontal(r) >> 44) == 0);       // microword is 44 bits
         CHECK(!r.ctl.addr_check || ((r.ctl.mem_read || r.ctl.mem_write) && !r.ctl.mem_addr_sp));
         CHECK(!(r.ctl.addr_check && r.ctl.stack_check));          // one guard per access
         CHECK(static_cast<unsigned>(r.cond) <= 7u);               // cond field is 3 bits
@@ -275,15 +263,18 @@ void testPackHorizontal() {
     CHECK(ControlUnit::packHorizontal(cm[32]) == ((1ull<<21)|(33ull<<24)|(34ull<<32)));
     // MOV execute row (36): alu_op = MOV in bits 20:16
     CHECK(((ControlUnit::packHorizontal(cm[36]) >> 16) & 0x1F) == static_cast<uint64_t>(Opcode::MOV));
-    // CALL write row (40)
+    // CALL RA row (39): ra_write(42) | next=40 | END
+    CHECK(ControlUnit::packHorizontal(cm[39]) ==
+           ((1ull<<42)|(40ull<<24)|(0xFFull<<32)));
+    // CALL jump row (40): pc_write(4) | next=END | END
     CHECK(ControlUnit::packHorizontal(cm[40]) ==
-           ((1ull<<2)|(1ull<<12)|(1ull<<13)|(1ull<<15)|(41ull<<24)|(0xFFull<<32)));
+           ((1ull<<4)|(0xFFull<<24)|(0xFFull<<32)));
     // LOAD access row (24): mem_read(1) | addr_check(41) | next=25 (writeback)
     CHECK(ControlUnit::packHorizontal(cm[24]) == ((1ull<<1)|(1ull<<41)|(25ull<<24)|(0xFFull<<32)));
-    // BGT test row (63): cond=GreaterThan(6)<<21 | next=64<<24 | taken=65<<32
-    CHECK(ControlUnit::packHorizontal(cm[63]) == ((6ull<<21)|(64ull<<24)|(65ull<<32)));
-    // TRAP row (56): trap(40) | halt(11), next = END
-    CHECK(ControlUnit::packHorizontal(cm[56]) == ((1ull<<40)|(1ull<<11)|(0xFFull<<24)|(0xFFull<<32)));
+    // BGT test row (60): cond=GreaterThan(6)<<21 | next=61<<24 | taken=62<<32
+    CHECK(ControlUnit::packHorizontal(cm[60]) == ((6ull<<21)|(61ull<<24)|(62ull<<32)));
+    // TRAP row (53): trap(40) | halt(11), next = END
+    CHECK(ControlUnit::packHorizontal(cm[53]) == ((1ull<<40)|(1ull<<11)|(0xFFull<<24)|(0xFFull<<32)));
 }
 
 // ---------------------------------------------------------------------------------------
@@ -431,30 +422,14 @@ void testFaultsOnlyCountWhereTheirCheckerIsActive() {
       ControlWord w = cu.step(Opcode::LOAD, f, kDivZero);          // divide-by-zero wire on a memory row
       CHECK(w.mem_read && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::CALL, f);
-      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // sp_dec row: no checker
-      CHECK(w.sp_dec && cu.pendingException() == ExceptionCode::NONE); }
+      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // RA row: no checker
+      CHECK(w.ra_write && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::ADD, f);
       ControlWord w = cu.step(Opcode::ADD, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // ALU row, no checker
       CHECK(w.alu_enable && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::ADD, f);
       ControlWord w = cu.step(Opcode::ADD, f, ExceptionCode::ILLEGAL_INSTRUCTION);
       CHECK(w.alu_enable && cu.pendingException() == ExceptionCode::NONE); }
-}
-
-// Stack-guard faults take the same TRAP path: the faulting access is deleted.
-void testStackFaultsTrapThroughTheControlUnit() {
-    Flags f;
-    { ControlUnit cu; cu.step(Opcode::CALL, f); cu.step(Opcode::CALL, f);
-      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::INVALID_MEMORY_ACCESS);
-      CHECK(!w.mem_write && !w.stack_check && !w.mem_addr_sp);    // the return address is never written
-      CHECK(cu.pendingException() == ExceptionCode::INVALID_MEMORY_ACCESS);
-      w = cu.step(Opcode::CALL, f);                                // TRAP, so the jump row never runs
-      CHECK(w.trap && !w.pc_write && cu.routineDone()); }
-    { ControlUnit cu;
-      ControlWord w = cu.step(Opcode::RET, f, ExceptionCode::INVALID_MEMORY_ACCESS);
-      CHECK(!w.mem_read && !w.sp_inc && !w.pc_write);
-      CHECK(cu.pendingException() == ExceptionCode::INVALID_MEMORY_ACCESS);
-      CHECK(cu.step(Opcode::RET, f).trap); }
 }
 
 // Toy LOAD/STORE datapath with a memory guard: the guard wire is evaluated from the latched
@@ -520,13 +495,13 @@ int main() {
     RUN(testEntryAddresses); RUN(testEveryOpcodeHasARoutine); RUN(testAddRoutine);
     RUN(testAluOpsCarryTheirOwnFunction); RUN(testFloatRoutines); RUN(testCmpSetsFlagsButWritesNothing); RUN(testLoadStore);
     RUN(testJmpHaltNop); RUN(testMov); RUN(testBeq); RUN(testBgt); RUN(testCallRetRows);
-    RUN(testCallRetSynchronisation); RUN(testStackFaultsHappenBeforeDamage);
+    RUN(testCallRetSynchronisation);
     RUN(testBackToBackAndIllegal);
     RUN(testAluFaultAbortsRoutineWithoutCommitting); RUN(testFaultIgnoredWhileAluIsIdle);
     RUN(testFaultOnLastRowOfRoutine); RUN(testFaultLifecycle); RUN(testNormalExecutionIsUnaffected);
     RUN(testFaultLeavesMachineStateUntouched);
     RUN(testLoadOutOfBoundsTraps); RUN(testStoreOutOfBoundsTraps); RUN(testInBoundsAccessIsUnaffected);
-    RUN(testFaultsOnlyCountWhereTheirCheckerIsActive); RUN(testStackFaultsTrapThroughTheControlUnit);
+    RUN(testFaultsOnlyCountWhereTheirCheckerIsActive);
     RUN(testBoundsGuardKeepsMemoryAndRegistersSafe);
     RUN(testControlMemoryWellFormed); RUN(testPackHorizontal); RUN(testVerticalIsPlaceholder);
     if (failures == 0) { std::cout << "\nhorizontal_control_unit_test: all checks passed\n"; return 0; }
