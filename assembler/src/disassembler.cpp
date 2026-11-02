@@ -150,6 +150,10 @@ namespace risc201 {
 
                     break;
                 }
+                case OperandKind::EMPTY: {
+                    ++reg_slot_idx;
+                    break;
+                }
             }
         }
 
@@ -223,6 +227,10 @@ namespace risc201 {
                         operand_strs.push_back(std::to_string(instr.imm));
                     }
 
+                    break;
+                }
+                case OperandKind::EMPTY: {
+                    ++reg_slot_idx;
                     break;
                 }
             }

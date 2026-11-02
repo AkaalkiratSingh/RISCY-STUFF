@@ -86,7 +86,9 @@ std::set<std::string> rowSignals(const MicroOp& row) {
     add(c.reg_write, "reg_write");
     add(c.mem_to_reg, "mem_to_reg");
     add(c.halt, "halt");
-    if (c.pc_write) s.insert(c.pc_src_mem ? "pc_from_mem" : "pc_from_target");
+    add(c.ra_write, "ra_write");
+    if (c.pc_write) s.insert(c.pc_src_mem ? "pc_from_mem"
+                                       : (c.pc_src_ra ? "pc_from_ra" : "pc_from_target"));
     if (row.cond != BranchCond::None) s.insert(std::string("cond=") + condName(row.cond));
     return s;
 }
@@ -110,8 +112,10 @@ std::set<std::string> controlsSignals(const StageControls& sc) {
     add(sc.reg_write, "reg_write");
     add(sc.mem_to_reg, "mem_to_reg");
     add(sc.halting, "halt");
+    add(sc.ra_write, "ra_write");
     add(sc.pc_from_target, "pc_from_target");
     add(sc.pc_from_mem, "pc_from_mem");
+    add(sc.pc_from_ra, "pc_from_ra");
     if (sc.cond != BranchCond::None) s.insert(std::string("cond=") + condName(sc.cond));
     return s;
 }
@@ -198,17 +202,16 @@ int main() {
 
     section("Control decode: stack and control-flow opcodes keep their meaning");
     {
-        // CALL: fetch, make room, write the RETURN ADDRESS (mem_data_pc), then jump.
+        // CALL: fetch, write the RETURN ADDRESS into R14, then jump.
         const StageControls call = controlFor(cu, Opcode::CALL);
-        CHECK(call.pc_inc && call.sp_dec && call.pc_from_target && !call.pc_from_mem);
-        CHECK(call.mem_write && call.mem_addr_sp && call.mem_data_pc && call.stack_check);
-        CHECK(!call.mem_read && !call.reg_write && !call.mem_to_reg);
+        CHECK(call.pc_inc && call.ra_write && call.pc_from_target && !call.pc_from_ra);
+        CHECK(!call.mem_write && !call.mem_read && !call.reg_write && !call.stack_check);
 
-        // RET: read first, then the PC comes from memory, then SP is released.
+        // RET: jump through R14.
         const StageControls ret = controlFor(cu, Opcode::RET);
-        CHECK(ret.mem_read && ret.mem_addr_sp && ret.stack_check && ret.pc_from_mem && ret.sp_inc);
-        CHECK(!ret.pc_inc && !ret.pc_from_target && !ret.mem_write && !ret.reg_write);
-        CHECK(!ret.alu_enable);
+        CHECK(ret.pc_from_ra && !ret.pc_from_target && !ret.pc_from_mem);
+        CHECK(!ret.pc_inc && !ret.mem_write && !ret.mem_read && !ret.reg_write);
+        CHECK(!ret.alu_enable && !ret.sp_inc);
 
         // // PUSH: same stack write as CALL, but the data is a REGISTER, not the PC.
         // const StageControls push = controlFor(cu, Opcode::PUSH);

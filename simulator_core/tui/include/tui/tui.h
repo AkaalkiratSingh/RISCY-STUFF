@@ -23,7 +23,7 @@ class Tui {
 public:
     Tui(Cpu& cpu,
         std::vector<std::string> raw_assembly,
-        std::vector<uint32_t> code_words,
+        std::vector<uint32_t> program_words,
         const std::string& filename = "",
         bool show_trace = false);
 

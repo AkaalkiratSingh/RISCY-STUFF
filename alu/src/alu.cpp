@@ -112,7 +112,7 @@ uint32_t Alu::floatAdd(uint32_t a, uint32_t b) {
     if (sign_a == sign_b) {
         result_mant = carryLookaheadAdder(mant_a, mant_b, false, carry_out);
         result_sign = sign_a;
-        if (carry_out) {
+        if (result_mant & 0x01000000) {
             result_mant >>= 1;
             exp_a++;
         }
@@ -290,7 +290,11 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
         }
         case Opcode::DIV:
         case Opcode::REM: {
-            if (rhs == 0) { res = 0; break; }
+            if (rhs == 0) {
+                res = 0;
+                r.fault = ExceptionCode::DIVIDE_BY_ZERO;
+                break;
+            }
             if (lhs == INT32_MIN && rhs == -1) {
                 res = (op == Opcode::DIV) ? static_cast<uint32_t>(INT32_MIN) : 0;
                 break;
@@ -333,7 +337,7 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
         case Opcode::AND: res = a & b; break;
         case Opcode::OR:  res = a | b; break;
         case Opcode::XOR: res = a ^ b; break;
-        case Opcode::NOT: res = ~a;    break;
+        case Opcode::NOT: res = ~b;    break;
 
         case Opcode::SHL: {
             uint32_t sh = b & 0x1Fu;

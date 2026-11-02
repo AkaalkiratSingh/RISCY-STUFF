@@ -159,8 +159,8 @@ int main() {
     CHECK(vcu.encoding() == MicrocodeEncoding::Vertical);
     CHECK_EQ(vrom.size(), hcm.size());                       
     CHECK_EQ(vcm.size(), hcm.size());
-    CHECK_EQ(kHorizontalWordBits, 42);                       // bits 0..41 of packHorizontal
-    CHECK_EQ(kNumControlLines, 18);
+    CHECK_EQ(kHorizontalWordBits, 44);                       // bits 0..43 of packHorizontal
+    CHECK_EQ(kNumControlLines, 20);
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
     CHECK_EQ(kVerticalWordBits, 16);
     CHECK_EQ(sizeof(vrom[0]) * 8, static_cast<size_t>(kVerticalWordBits));
@@ -178,8 +178,9 @@ int main() {
     CHECK_EQ(word(Opcode::LOAD, 1), 0x1020);       
     CHECK_EQ(word(Opcode::LOAD, 3), 0x2001);       
     CHECK_EQ(word(Opcode::MOV, 1), 0x0E60);        
-    CHECK_EQ(word(Opcode::CALL, 2), 0x3800);       
-    CHECK_EQ(word(Opcode::RET, 1), 0x2800);        
+    CHECK_EQ(word(Opcode::CALL, 1), 0x4800);        // RA.WR
+    CHECK_EQ(word(Opcode::CALL, 2), 0x2401);        // JUMP, END
+    CHECK_EQ(word(Opcode::RET, 0), 0x4C01);         // JUMP.RA, END
     CHECK_EQ(word(Opcode::HALT, 0), 0x4001);       
     CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
     CHECK_EQ(word(Opcode::BEQ, 1), 0x0401);        
@@ -311,8 +312,7 @@ int main() {
     section("Vertical == horizontal: lockstep with faults, every opcode x every fault");
     {
         const ExceptionCode faults[] = {
-            ExceptionCode::NONE, ExceptionCode::STACK_OVERFLOW, ExceptionCode::STACK_UNDERFLOW,
-            ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
+            ExceptionCode::NONE, ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
             ExceptionCode::ILLEGAL_INSTRUCTION };
         int mismatches = 0, trapped = 0;
         for (int opv = 0; opv < 256; ++opv) {
@@ -346,7 +346,6 @@ int main() {
     section("Vertical == horizontal: randomised, with faults, reset() and clearException()");
     {
         const ExceptionCode faults[] = {
-            ExceptionCode::STACK_OVERFLOW, ExceptionCode::STACK_UNDERFLOW,
             ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
             ExceptionCode::ILLEGAL_INSTRUCTION };
         ControlUnit h;
@@ -490,10 +489,10 @@ int main() {
         const size_t rows = hcm.size();
         CHECK(v.find(std::to_string(rows) + " rows x 16 bits = " + std::to_string(rows * 16) + " bits")
               != std::string::npos);
-        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 42 = " + std::to_string(rows * 42) + " bits")
+        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 44 = " + std::to_string(rows * 44) + " bits")
               != std::string::npos);
-        CHECK(v.find("62% narrower") != std::string::npos);
-        CHECK(v.find("18 control lines") != std::string::npos);
+        CHECK(v.find("64% narrower") != std::string::npos);
+        CHECK(v.find("20 control lines") != std::string::npos);
         CHECK(v.find("TRAP") != std::string::npos && v.find("BRANCH GT") != std::string::npos);
     }
 

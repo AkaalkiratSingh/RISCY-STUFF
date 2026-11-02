@@ -56,13 +56,30 @@ namespace risc201 {
     }
 
     void Cpu::loadWords(const std::vector<uint32_t>& words) {
-        code_ = words;
+        source_words_ = words;
+        code_.clear();
+
+        std::vector<uint32_t> literals;
+        bool in_literals = false;
+        for (uint32_t word : words) {
+            if (!in_literals && word == kLiteralsMarker) {
+                in_literals = true;
+                continue;
+            }
+            if (in_literals) literals.push_back(word);
+            else code_.push_back(word);
+        }
+
         state_ = CpuState{};
         state_.sp = static_cast<uint32_t>(memory_.size());
         state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         cycles_ = 0;
         retired_ = 0;
         resetPipeline();
+
+        for (size_t i = 0; i < literals.size() && i < memory_.size(); ++i) {
+            memory_[i] = static_cast<int32_t>(literals[i]);
+        }
     }
 
     void Cpu::reconfigure(PipelineVariant variant, MicrocodeEncoding encoding) {
@@ -73,7 +90,7 @@ namespace risc201 {
                         ? buildStageControls(VerticalControlUnit{})
                         : buildStageControls(control_unit_);
         memory_.assign(memory_.size(), 0);
-        loadWords(code_);
+        loadWords(source_words_);
     }
 
     bool Cpu::pipelineEmpty() const {
@@ -133,9 +150,18 @@ namespace risc201 {
             return true;
         }
 
+        if (o.ra_write &&
+            (c.pc_from_ra ||
+             candidate.instr.rs1 == Register::R14 ||
+             (!c.alu_src_imm && candidate.instr.rs2 == Register::R14) ||
+             candidate.instr.rd == Register::R14)) {
+            return true;
+        }
+
         if (!o.reg_write) return false;
 
         const Register dst = older.instr.rd;
+        if (c.pc_from_ra && dst == Register::R14) return true;
         if (c.alu_enable &&
             (candidate.instr.rs1 == dst || (!c.alu_src_imm && candidate.instr.rs2 == dst))) {
             return true;
@@ -149,6 +175,9 @@ namespace risc201 {
         const Latch& ex_mem = regs_[static_cast<size_t>(ex_slot_)];
         if (ex_mem.valid && ex_mem.decoded) {
             const StageControls& c = controls_[static_cast<uint8_t>(ex_mem.instr.opcode)];
+            if (src == Register::R14 && c.ra_write) {
+                return static_cast<int32_t>(ex_mem.pc + 1);
+            }
             if (c.reg_write && ex_mem.instr.rd == src) {
                 return c.mem_to_reg ? current : ex_mem.alu_result;
             }
@@ -157,6 +186,9 @@ namespace risc201 {
         const Latch& mem_wb = regs_[static_cast<size_t>(ex_slot_ + 1)];
         if (mem_wb.valid && mem_wb.decoded) {
             const StageControls& c = controls_[static_cast<uint8_t>(mem_wb.instr.opcode)];
+            if (src == Register::R14 && c.ra_write) {
+                return static_cast<int32_t>(mem_wb.pc + 1);
+            }
             if (c.reg_write && mem_wb.instr.rd == src) {
                 return c.mem_to_reg ? mem_wb.mem_data : mem_wb.alu_result;
             }
@@ -239,6 +271,11 @@ namespace risc201 {
             if (c.alu_enable) {
                 const int32_t rhs = (c.alu_src_imm || out.instr.I) ? out.instr.imm : out.rs2_val;
                 const Alu::Result r = alu_.execute(c.alu_op, out.rs1_val, rhs);
+                if (r.fault != ExceptionCode::NONE) {
+                    fx.fault = true;
+                    fx.code = r.fault;
+                    return;
+                }
                 out.alu_result = r.value;
                 if (c.flag_update) state_.flags = r.flags;
             }
@@ -255,7 +292,15 @@ namespace risc201 {
                 out.writes_sp = true;
             }
 
-            if (c.pc_from_target && (!c.is_branch || condHolds(c.cond, state_.flags))) {
+            if (c.pc_from_ra) {
+                const int32_t ra = forwarding_
+                    ? bypass(Register::R14, static_cast<int32_t>(state_.registers[static_cast<size_t>(Register::R14)]))
+                    : static_cast<int32_t>(state_.registers[static_cast<size_t>(Register::R14)]);
+                out.redirect = true;
+                out.next_pc = static_cast<uint32_t>(ra);
+                fx.taken = true;
+                fx.target = out.next_pc;
+            } else if (c.pc_from_target && (!c.is_branch || condHolds(c.cond, state_.flags))) {
                 out.redirect = true;
                 out.next_pc = branchTarget(out.pc, out.instr);
                 fx.taken = true;
@@ -327,6 +372,9 @@ namespace risc201 {
         if (out.writes_sp) {
             state_.sp = out.sp_commit;
             state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(out.sp_commit);
+        }
+        if (c.ra_write) {
+            state_.registers[static_cast<size_t>(Register::R14)] = static_cast<int32_t>(out.pc + 1);
         }
         state_.pc = out.pc;
         if (!c.halting) ++retired_;

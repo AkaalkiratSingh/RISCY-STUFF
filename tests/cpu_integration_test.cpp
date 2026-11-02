@@ -58,6 +58,7 @@ std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
     for (const auto& instr : asmblr.assemblePass2()) {
         words.push_back(asmblr.encodeInstruction(instr));
     }
+    for (uint32_t word : asmblr.literalSection()) words.push_back(word);
     if (!words.empty()) words.erase(words.begin());
     return words;
 }
@@ -215,6 +216,25 @@ int main() {
               ExceptionCode::INVALID_MEMORY_ACCESS);
     }
     
+    section("Cpu: literal section is loaded into data memory before execution");
+    {
+        const Cpu cpu = runProgram({
+            "LOAD R1, 0[R0]",
+            "LOAD R2, 1[R0]",
+            "HALT",
+            ".literals:",
+            "pi: 3.14f",
+            "half: 0.5f",
+        });
+
+        CHECK(cpu.state().halted);
+        CHECK(!cpu.state().pending_exception.has_value());
+        CHECK_EQ(cpu.memory()[0], static_cast<int32_t>(0x4048F5C3u));
+        CHECK_EQ(cpu.memory()[1], static_cast<int32_t>(0x3F000000u));
+        CHECK_EQ(reg(cpu, Register::R1), static_cast<int32_t>(0x4048F5C3u));
+        CHECK_EQ(reg(cpu, Register::R2), static_cast<int32_t>(0x3F000000u));
+    }
+
     section("Cpu: PUSH then POP round-trips a value through the stack");
     {
         const Cpu cpu = runProgram({
@@ -232,7 +252,7 @@ int main() {
         CHECK_EQ(cpu.state().sp, static_cast<uint32_t>(cpu.memory().size()));
     }
 
-    section("Cpu: PUSH past the stack limit raises STACK_OVERFLOW");
+    section("Cpu: PUSH past the stack limit raises INVALID_MEMORY_ACCESS");
     {
         Cpu cpu(PipelineVariant::FourStage, 1);
 
@@ -246,10 +266,10 @@ int main() {
 
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
-              ExceptionCode::STACK_OVERFLOW);
+              ExceptionCode::INVALID_MEMORY_ACCESS);
     }
 
-    section("Cpu: POP from an empty stack raises STACK_UNDERFLOW");
+    section("Cpu: POP from an empty stack raises INVALID_MEMORY_ACCESS");
     {
         Cpu cpu(PipelineVariant::FourStage);
 
@@ -262,7 +282,39 @@ int main() {
 
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
-              ExceptionCode::STACK_UNDERFLOW);
+              ExceptionCode::INVALID_MEMORY_ACCESS);
+    }
+
+    section("Cpu: DIV by zero raises DIVIDE_BY_ZERO and halts (both variants)");
+    {
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            const Cpu cpu = runProgram({
+                "SUB R1, R1, R1",
+                "ADD R2, R1, 1",
+                "DIV R3, R1, R2",
+                "DIV R4, R2, R1",
+                "HALT",
+            }, {}, variant);
+            CHECK(cpu.state().halted);
+            CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
+                  ExceptionCode::DIVIDE_BY_ZERO);
+            CHECK_EQ(reg(cpu, Register::R3), 0);          // 0 / 1 is a valid division
+        }
+    }
+
+    section("Cpu: a zero dividend does not trap");
+    {
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            const Cpu cpu = runProgram({
+                "SUB R1, R1, R1",
+                "ADD R2, R1, 1",
+                "DIV R3, R1, R2",
+                "HALT",
+            }, {}, variant);
+            CHECK(cpu.state().halted);
+            CHECK(!cpu.state().pending_exception.has_value());
+            CHECK_EQ(reg(cpu, Register::R3), 0);          // 0 / 1 == 0
+        }
     }
 
     section("Cpu: CALL then RET resumes after the call");
