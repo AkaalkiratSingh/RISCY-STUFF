@@ -34,6 +34,7 @@ namespace risc201 {
             case Opcode::SAR:   return "SAR";
             case Opcode::CMP:   return "CMP";
             case Opcode::MOV:   return "MOV";
+            case Opcode::FCMP:  return "FCMP";
             case Opcode::BGT:   return "BGT";
             case Opcode::HALT:  return "HALT";
         }

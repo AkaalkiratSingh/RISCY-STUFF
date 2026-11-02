@@ -114,6 +114,15 @@ int main() {
     Alu::Result fcmp5 = alu.execute(Opcode::FCMP, floatToBits(0.0f), floatToBits(-1.0f));
     assert(fcmp5.flags.greaterThan == true);
 
+    // MOV tests
+    Alu::Result mov1 = alu.execute(Opcode::MOV, 42, 0);
+    assert(mov1.value == 42);
+    assert(mov1.flags.zero == false);
+
+    Alu::Result mov2 = alu.execute(Opcode::MOV, 0, 0);
+    assert(mov2.value == 0);
+    assert(mov2.flags.zero == true); // Moving 0 should set the Zero flag
+
     std::cout << "All tests passed successfully!\n";
     std::cout << " - Integer ALU (ADD, SUB, MUL, DIV, REM) OK\n";
     std::cout << " - Float ALU (FADD, FSUB, FMUL, FDIV via Newton-Raphson,FCMP) OK\n";
