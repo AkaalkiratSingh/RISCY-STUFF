@@ -27,6 +27,10 @@ add_executable(encoder_test encoder_test.cpp)
 target_link_libraries(encoder_test PRIVATE assembler_lib)
 add_test(NAME EncoderTest COMMAND encoder_test)
 
+add_executable(disassembler_test disassembler_test.cpp)
+target_link_libraries(disassembler_test PRIVATE assembler_lib)
+add_test(NAME DisassemblerTest COMMAND disassembler_test)
+
 add_executable(test_alu test_alu.cpp)
 target_link_libraries(test_alu PRIVATE alu)
 add_test(NAME AluTest COMMAND test_alu)
@@ -42,3 +46,11 @@ add_test(NAME ControlDecodeTest COMMAND control_decode_test)
 add_executable(pipeline_test pipeline_test.cpp)
 target_link_libraries(pipeline_test PRIVATE simulator_core_lib assembler_lib)
 add_test(NAME PipelineTest COMMAND pipeline_test)
+
+add_executable(literals_test literals_test.cpp)
+target_link_libraries(literals_test PRIVATE assembler_lib)
+add_test(NAME LiteralsTest COMMAND literals_test)
+
+add_executable(preprocessor_test preprocessor_test.cpp)
+target_link_libraries(preprocessor_test PRIVATE assembler_lib)
+add_test(NAME PreprocessorTest COMMAND preprocessor_test)

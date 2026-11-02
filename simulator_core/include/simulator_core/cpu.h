@@ -44,6 +44,7 @@ namespace risc201 {
         MicrocodeEncoding encoding() const { return encoding_; }
         void setForwarding(bool on) { forwarding_ = on; }
         bool forwarding() const { return forwarding_; }
+        void reconfigure(PipelineVariant variant, MicrocodeEncoding encoding);
         void setTracing(bool on) { tracing_ = on; }
         bool tracing() const { return tracing_; }
         const PipelineTrace& trace() const { return trace_; }

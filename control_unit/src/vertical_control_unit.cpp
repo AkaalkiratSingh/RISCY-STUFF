@@ -83,6 +83,7 @@ namespace risc201 {
                 case BranchCond::Negative: return f.negative;
                 case BranchCond::Carry:    return f.carry;
                 case BranchCond::Overflow: return f.overflow;
+                case BranchCond::GreaterThan: return f.greaterThan;
             }
             return false;
         }
@@ -95,6 +96,7 @@ namespace risc201 {
                 case BranchCond::Negative: return "N";
                 case BranchCond::Carry:    return "C";
                 case BranchCond::Overflow: return "V";
+                case BranchCond::GreaterThan: return "GT";
             }
             return "?";
         }
@@ -141,7 +143,7 @@ namespace risc201 {
 
             if (row.cond != BranchCond::None) {                    // branch row
                 const uint32_t cond = static_cast<uint32_t>(row.cond);
-                if (cond > static_cast<uint32_t>(BranchCond::Overflow)) {
+                if (cond > static_cast<uint32_t>(BranchCond::GreaterThan)) {
                     return "undefined branch condition";
                 }
                 if (lineBits(row.ctl) != 0 || row.ctl.alu_op != Opcode::NOP) {
@@ -228,7 +230,7 @@ namespace risc201 {
 
         if (word & 0x8000u) {                                      // branch row
             const uint32_t cond = (word >> 12) & 0x7u;
-            if (cond == 0 || cond > static_cast<uint32_t>(BranchCond::Overflow)) return failSafe();
+            if (cond == 0 || cond > static_cast<uint32_t>(BranchCond::GreaterThan)) return failSafe();
             row.cond          = static_cast<BranchCond>(cond);
             row.branch_target = decodeAddr((word >> 4) & 0xFFu);
         } else {                                                   // operate row

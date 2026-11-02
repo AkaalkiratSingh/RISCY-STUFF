@@ -40,8 +40,10 @@ using namespace risc201;
 
 // Assemble one source program and encode it into a program image.
 std::vector<uint32_t> encodeProgram(const std::vector<std::string>& source) {
+    std::vector<std::string> source_lines = source;
+    source_lines.insert(source_lines.begin(), ".main:");
     Assembler assembler;
-    if (!assembler.assemblePass1(source)) {
+    if (!assembler.assemblePass1(source_lines)) {
         std::cerr << "  FAIL: assembly (pass 1) failed\n";
         for (const auto& e : assembler.errors()) {
             std::cerr << "    line " << e.line_number << ": " << e.message << "\n";
@@ -54,6 +56,7 @@ std::vector<uint32_t> encodeProgram(const std::vector<std::string>& source) {
     for (const auto& instr : assembler.assemblePass2()) {
         words.push_back(assembler.encodeInstruction(instr));
     }
+    if (!words.empty()) words.erase(words.begin());
     return words;
 }
 

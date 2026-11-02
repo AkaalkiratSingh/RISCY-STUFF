@@ -5,6 +5,7 @@
 ; so this is a worst case rather than a typical one.
 ; Expected: R1=100  and the flush-bubble count dominates the cycle total
 
+.main:
 ADD R1, R0, 0
 loop:
     JMP b1

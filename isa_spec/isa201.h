@@ -44,15 +44,21 @@ enum class Opcode : uint8_t {
     BEQ  = 0x0B,
     CALL = 0x0C,
     RET  = 0x0D,
-    PUSH = 0x0E,
-    POP  = 0x0F,
+    // PUSH = 0x0E,
+    // POP  = 0x0F,
     NOT  = 0x10, 
     SAR  = 0x11, 
-    CMP  = 0x12, 
-    MOV  = 0x13,
+    CMP  = 0x12,//
+    MOV  = 0x13,//
     MUL  = 0x14,
     DIV  = 0x15,
-    REM  = 0x16, 
+    REM  = 0x16,
+    FADD = 0x17,  
+    FSUB = 0x18,  
+    FMUL = 0x19,  
+    FDIV = 0x1A,
+    FCMP = 0x1B,  
+    BGT  = 0x1C,
     HALT = 0x1F,
 };
 
