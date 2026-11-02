@@ -24,7 +24,6 @@ struct ProgramFile {
     std::string error;
 };
 
-std::string formatInstr(const Instruction& in);
 AssemblyResult assembleLines(const std::vector<std::string>& lines);
 ProgramFile readProgramFile(const std::string& path);
 

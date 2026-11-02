@@ -1,4 +1,5 @@
 #include "assembler/disassembler.h"
+#include "assembler/assembler.h"
 #include "utils/utils.h"
 
 #include <fstream>
@@ -341,41 +342,11 @@ namespace risc201 {
     }
 
     bool Disassembler::readBinaryFile(const std::string& path, std::vector<uint32_t>& words_out) {
-        std::ifstream in(path, std::ios::binary);
-        if (!in) return false;
-
-        words_out.clear();
-        unsigned char bytes[4];
-        while (in.read(reinterpret_cast<char*>(bytes), 4)) {
-            uint32_t word = (static_cast<uint32_t>(bytes[0]) << 24) | (static_cast<uint32_t>(bytes[1]) << 16) | (static_cast<uint32_t>(bytes[2]) << 8) | static_cast<uint32_t>(bytes[3]);
-            words_out.push_back(word);
-        }
-
-        if (!in.eof()) return false;
-
-        return true;
+        return readBinaryWords(path, words_out);
     }
 
     bool Disassembler::readHexFile(const std::string& path, std::vector<uint32_t>& words_out) {
-        std::ifstream in(path);
-        if (!in) return false;
-
-        words_out.clear();
-        std::string line;
-        while (std::getline(in, line)) {
-            std::string trimmed = trim(line);
-            if (trimmed.empty()) continue;
-
-            try {
-                unsigned long word = std::stoul(trimmed, nullptr, 16);
-                words_out.push_back(static_cast<uint32_t>(word));
-            }
-            catch (...) {
-                return false;
-            }
-        }
-
-        return true;
+        return readHexWords(path, words_out);
     }
 
 } // namespace risc201

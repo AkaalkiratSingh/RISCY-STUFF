@@ -235,6 +235,20 @@ int main() {
         CHECK_EQ(reg(cpu, Register::R2), static_cast<int32_t>(0x3F000000u));
     }
 
+    section("Cpu: MOV copies register and immediate sources");
+    {
+        const Cpu cpu = runProgram({
+            "ADD R1, R0, 42",
+            "MOV R2, R1",
+            "MOV R3, 7",
+            "HALT",
+        });
+
+        CHECK(cpu.state().halted);
+        CHECK_EQ(reg(cpu, Register::R2), 42);
+        CHECK_EQ(reg(cpu, Register::R3), 7);
+    }
+
     section("Cpu: PUSH then POP round-trips a value through the stack");
     {
         const Cpu cpu = runProgram({

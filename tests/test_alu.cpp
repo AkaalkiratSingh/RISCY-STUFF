@@ -49,6 +49,10 @@ int main() {
     assert(alu.execute(Opcode::REM, 10, 3).value == 1);
     assert(alu.execute(Opcode::REM, -10, 3).value == -1); // Remainder takes sign of dividend
 
+    // MOV passes the source (rhs) through, whether it is a register or immediate.
+    assert(alu.execute(Opcode::MOV, 0, 42).value == 42);
+    assert(alu.execute(Opcode::MOV, 99, 7).value == 7);
+
     // Divide by zero is reported, not silently swallowed; a valid division raises nothing.
     assert(alu.execute(Opcode::DIV, 7, 0).fault == ExceptionCode::DIVIDE_BY_ZERO);
     assert(alu.execute(Opcode::REM, 7, 0).fault == ExceptionCode::DIVIDE_BY_ZERO);
@@ -114,8 +118,8 @@ int main() {
     Alu::Result fcmp5 = alu.execute(Opcode::FCMP, floatToBits(0.0f), floatToBits(-1.0f));
     assert(fcmp5.flags.greaterThan == true);
 
-    // MOV tests
-    Alu::Result mov1 = alu.execute(Opcode::MOV, 42, 0);
+    // MOV tests: the source is the rhs (register or immediate encoded there).
+    Alu::Result mov1 = alu.execute(Opcode::MOV, 0, 42);
     assert(mov1.value == 42);
     assert(mov1.flags.zero == false);
 

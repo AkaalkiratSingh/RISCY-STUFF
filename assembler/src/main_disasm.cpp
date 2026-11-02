@@ -1,4 +1,5 @@
 #include <assembler/disassembler.h>
+#include <utils/utils.h>
 
 #include <iostream>
 #include <fstream>
@@ -28,7 +29,7 @@ int main(int argc, char** argv) {
     }
     if (output_path.empty()) output_path = "a.asm";
 
-    bool is_hex = input_path.size() >= 4 && (input_path.compare(input_path.size() - 4, 4, ".hex") == 0);
+    bool is_hex = risc201::hasSuffix(input_path, ".hex");
 
     risc201::Disassembler disassembler;
     std::vector<uint32_t> words;

@@ -512,4 +512,47 @@ namespace risc201 {
         return true;
     }
 
+    bool readHexWords(const std::string& path, std::vector<uint32_t>& out) {
+        out.clear();
+        std::ifstream in(path);
+        if (!in) return false;
+
+        std::string line;
+        while (std::getline(in, line)) {
+            std::string token = trim(line);
+            if (token.empty()) continue;
+            if (token.rfind("0x", 0) == 0 || token.rfind("0X", 0) == 0) {
+                token = token.substr(2);
+            }
+            try {
+                size_t consumed = 0;
+                const unsigned long value = std::stoul(token, &consumed, 16);
+                if (consumed != token.size() || value > 0xFFFFFFFFul) return false;
+                out.push_back(static_cast<uint32_t>(value));
+            } catch (...) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out) {
+        out.clear();
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+
+        unsigned char bytes[4];
+        while (true) {
+            in.read(reinterpret_cast<char*>(bytes), 4);
+            const std::streamsize got = in.gcount();
+            if (got == 0) break;
+            if (got != 4) return false;
+            out.push_back((static_cast<uint32_t>(bytes[0]) << 24) |
+                          (static_cast<uint32_t>(bytes[1]) << 16) |
+                          (static_cast<uint32_t>(bytes[2]) << 8) |
+                          static_cast<uint32_t>(bytes[3]));
+        }
+        return true;
+    }
+
 } // namespace risc201

@@ -38,17 +38,6 @@ void printUsage(const char* prog) {
         << "  -h, --help      show this message\n";
 }
 
-const char* exceptionName(risc201::ExceptionCode code) {
-    using risc201::ExceptionCode;
-    switch (code) {
-        case ExceptionCode::NONE:                  return "NONE";
-        case ExceptionCode::INVALID_MEMORY_ACCESS: return "INVALID_MEMORY_ACCESS";
-        case ExceptionCode::DIVIDE_BY_ZERO:        return "DIVIDE_BY_ZERO";
-        case ExceptionCode::ILLEGAL_INSTRUCTION:   return "ILLEGAL_INSTRUCTION";
-    }
-    return "UNKNOWN";
-}
-
 void printRegisters(const risc201::CpuState& st) {
     for (int i = 0; i < risc201::kNumGPRegisters; ++i) {
         std::cout << "R" << std::setw(2) << i << " = " << std::setw(12)
@@ -73,99 +62,12 @@ bool parseRange(const std::string& text, uint32_t& start, uint32_t& count) {
     return true;
 }
 
-std::string regName(int r) { return "R" + std::to_string(r); }
-
-std::string formatInstruction(const risc201::Instruction& in) {
-    using risc201::Opcode;
-    const std::string name = risc201::opcodeName(in.opcode);
-    const int rd  = static_cast<int>(in.rd);
-    const int rs1 = static_cast<int>(in.rs1);
-    const int rs2 = static_cast<int>(in.rs2);
-
-    switch (in.opcode) {
-        case Opcode::NOP:
-        case Opcode::RET:
-        case Opcode::HALT:
-            return name;
-        case Opcode::JMP:
-        case Opcode::BEQ:
-        case Opcode::CALL:
-            return name + " " + std::to_string(in.imm);
-        // case Opcode::PUSH:
-        // case Opcode::POP:
-        //     return name + " " + regName(rd);
-        case Opcode::LOAD:
-        case Opcode::STORE:
-            return name + " " + regName(rd) + ", " + std::to_string(in.imm) +
-                   "[" + regName(rs1) + "]";
-        default: {
-            const std::string third = in.I ? std::to_string(in.imm) : regName(rs2);
-            return name + " " + regName(rd) + ", " + regName(rs1) + ", " + third;
-        }
-    }
-}
-
 enum class InputKind { Assembly, Hex, Binary };
 
-bool hasSuffix(const std::string& path, const std::string& suffix) {
-    return path.size() >= suffix.size() &&
-           path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
 InputKind kindFromPath(const std::string& path) {
-    if (hasSuffix(path, ".hex")) return InputKind::Hex;
-    if (hasSuffix(path, ".bin")) return InputKind::Binary;
+    if (risc201::hasSuffix(path, ".hex")) return InputKind::Hex;
+    if (risc201::hasSuffix(path, ".bin")) return InputKind::Binary;
     return InputKind::Assembly;
-}
-
-std::string trim(const std::string& s) {
-    const size_t a = s.find_first_not_of(" \t\r\n");
-    if (a == std::string::npos) return "";
-    const size_t b = s.find_last_not_of(" \t\r\n");
-    return s.substr(a, b - a + 1);
-}
-
-// One 8-digit hex word per line (Assembler::writeHexFile format); "0x" tolerated.
-bool readHexWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path);
-    if (!in) return false;
-
-    std::string line;
-    while (std::getline(in, line)) {
-        std::string token = trim(line);
-        if (token.empty()) continue;
-        if (token.rfind("0x", 0) == 0 || token.rfind("0X", 0) == 0) {
-            token = token.substr(2);
-        }
-        try {
-            size_t consumed = 0;
-            const unsigned long value = std::stoul(token, &consumed, 16);
-            if (consumed != token.size() || value > 0xFFFFFFFFul) return false;
-            out.push_back(static_cast<uint32_t>(value));
-        } catch (...) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Big-endian 4-byte words (Assembler::writeBinaryFile format).
-bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
-
-    unsigned char bytes[4];
-    while (true) {
-        in.read(reinterpret_cast<char*>(bytes), 4);
-        const std::streamsize got = in.gcount();
-        if (got == 0) break;
-        if (got != 4) return false;  // trailing partial word
-        out.push_back((static_cast<uint32_t>(bytes[0]) << 24) |
-                      (static_cast<uint32_t>(bytes[1]) << 16) |
-                      (static_cast<uint32_t>(bytes[2]) << 8) |
-                      static_cast<uint32_t>(bytes[3]));
-    }
-    return true;
 }
 
 std::string slotText(const risc201::Latch& l) {
@@ -338,8 +240,8 @@ int main(int argc, char** argv) {
         cpu.loadWords(words);
     } else {
         const bool ok = (kind == InputKind::Hex)
-            ? readHexWords(input_path, words)
-            : readBinaryWords(input_path, words);
+            ? risc201::readHexWords(input_path, words)
+            : risc201::readBinaryWords(input_path, words);
         if (!ok) {
             std::cerr << "error: failed to parse encoded image " << input_path << "\n";
             return 1;
@@ -359,7 +261,7 @@ int main(int argc, char** argv) {
             std::cout << "  [" << std::setw(4) << i << "]  0x" << std::hex
                       << std::uppercase << std::setfill('0') << std::setw(8) << code[i]
                       << std::dec << std::setfill(' ')
-                      << "  " << formatInstruction(instr) << "\n";
+                      << "  " << risc201::formatInstruction(instr) << "\n";
         }
     }
 
@@ -410,7 +312,7 @@ int main(int argc, char** argv) {
 
     if (cpu.state().pending_exception) {
         std::cout << "EXCEPTION: "
-                  << exceptionName(*cpu.state().pending_exception) << "\n";
+                  << risc201::exceptionName(*cpu.state().pending_exception) << "\n";
     }
 
     std::cout << "\nFinal register file:\n";

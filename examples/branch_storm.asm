@@ -6,7 +6,7 @@
 ; Expected: R1=100  and the flush-bubble count dominates the cycle total
 
 .main:
-ADD R1, R0, 0
+MOV R1, 0
 loop:
     JMP b1
 b1:
