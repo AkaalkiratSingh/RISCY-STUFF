@@ -34,7 +34,7 @@ namespace risc201 {
         static const std::unordered_map<std::string, OpInfo> table = {
             { "NOP",{ Opcode::NOP,   InstrFormat::RI_TYPE,{} } },
 
-            { "MOV",{ Opcode::MOV,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::EMPTY, OperandKind::REG_OR_IMM } } }, //check
+            { "MOV",{ Opcode::MOV,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::EMPTY, OperandKind::REG_OR_IMM } } },
 
             { "ADD",{ Opcode::ADD,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
             { "SUB",{ Opcode::SUB,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
@@ -44,7 +44,7 @@ namespace risc201 {
             { "AND",{ Opcode::AND,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
             { "OR" ,{ Opcode::OR,    InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
             { "XOR",{ Opcode::XOR,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
-            { "NOT",{ Opcode::NOT,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::EMPTY, OperandKind::REG_OR_IMM } } }, //check
+            { "NOT",{ Opcode::NOT,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::EMPTY, OperandKind::REG_OR_IMM } } },
             { "SHL",{ Opcode::SHL,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
             { "SHR",{ Opcode::SHR,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },
             { "SAR",{ Opcode::SAR,   InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG_OR_IMM } } },

@@ -122,6 +122,19 @@ int main() {
         CHECK_EQ(d.imm, 4);  // target word 2 => byte 8; 8 - (0 + 4) = 4
     }
 
+    section("Decoder: BGT is a J_TYPE branch");
+    {
+        const Instruction d = decodeInstruction(0xE0000008u);
+        CHECK(d.opcode == Opcode::BGT);
+        CHECK(d.format == InstrFormat::J_TYPE);
+        CHECK_EQ(d.imm, 8);
+
+        const Instruction from_source = decodeFirst({"BGT target", "NOP", "target:", "HALT"});
+        CHECK(from_source.opcode == Opcode::BGT);
+        CHECK(from_source.format == InstrFormat::J_TYPE);
+        CHECK_EQ(from_source.imm, 4);
+    }
+
     section("Decoder: no-operand instructions");
     {
         const Instruction halt = decodeFirst({"HALT"});
