@@ -134,7 +134,7 @@ build/assembler/risc201-disasm sum.hex -o sum.asm   # add -l to synthesise label
 `examples/recursive_sum.asm` computes `sum(5)` recursively using `CALL`/`RET` and `PUSH`/`POP`. `CALL` writes the return address into `R14`; nested calls save it with `PUSH R14` / `POP R14`:
 
 ```asm
-ADD R1, R0, 5 ; R1 = 5
+MOV R1, 5 ; R1 = 5
 CALL sum
 HALT
 
@@ -150,7 +150,7 @@ sum:
     ADD R2, R2, R1     ; R2 = sum(n-1) + n
     RET
 zero:
-    ADD R1, R0, 0      ; R1 = 0
+    MOV R1, 0          ; R1 = 0
     RET
 ```
 

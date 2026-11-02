@@ -10,6 +10,12 @@ namespace risc201 {
     // Mnemonic for an opcode; "?" when the value is not a known opcode.
     const char* opcodeName(Opcode op);
 
+    std::string formatInstruction(const Instruction& in);
+
+    const char* exceptionName(ExceptionCode code);
+
+    bool hasSuffix(const std::string& path, const std::string& suffix);
+
     uint32_t floatToBits(float value);
     float bitsToFloat(uint32_t bits);
     std::string trim(const std::string& s);

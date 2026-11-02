@@ -312,7 +312,7 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
 
         // --- DATA MOVEMENT ---
         case Opcode::MOV: {
-            res = a; // Pass the source register through
+            res = b; // Pass the source register/immediate through
             break;
         }
 

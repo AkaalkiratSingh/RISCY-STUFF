@@ -5,7 +5,7 @@
 ; Expected: R1=610 (fib(15))  SP=4096
 
 .main:
-ADD R1, R0, 15
+MOV R1, 15
 CALL fib
 HALT
 
@@ -19,7 +19,7 @@ recurse:
     PUSH R1
     SUB R1, R1, 1
     CALL fib
-    ADD R8, R1, 0
+    MOV R8, R1
     POP R1
     POP R14
     PUSH R14

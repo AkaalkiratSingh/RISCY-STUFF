@@ -57,5 +57,8 @@ namespace risc201 {
         bool resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out);
     };
 
+    bool readHexWords(const std::string& path, std::vector<uint32_t>& out);
+    bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out);
+
 }
 

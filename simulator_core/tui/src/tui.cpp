@@ -2,6 +2,7 @@
 
 #include "simulator_core/decoder.h"
 #include "tui/program_loader.h"
+#include "utils/utils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -30,16 +31,6 @@ std::vector<std::string> wrapText(const std::string& text, int width) {
     }
     if (lines.empty()) lines.push_back("");
     return lines;
-}
-
-const char* exceptionName(ExceptionCode code) {
-    switch (code) {
-        case ExceptionCode::NONE:                  return "NONE";
-        case ExceptionCode::INVALID_MEMORY_ACCESS: return "INVALID_MEMORY_ACCESS";
-        case ExceptionCode::DIVIDE_BY_ZERO:        return "DIVIDE_BY_ZERO";
-        case ExceptionCode::ILLEGAL_INSTRUCTION:   return "ILLEGAL_INSTRUCTION";
-    }
-    return "UNKNOWN";
 }
 
 } // namespace
@@ -279,7 +270,7 @@ void Tui::renderAssembledBinary(int r, int c, int h, int w) {
 
         const uint32_t word = code_words_[pc];
         const Instruction instr = decodeInstruction(word);
-        const std::string mnemonic = formatInstr(instr);
+        const std::string mnemonic = formatInstruction(instr);
         const std::string stage = formatActiveStage(static_cast<uint32_t>(pc));
         const bool is_active_pc = (pc == current_pc);
         const bool has_break = (breakpoints_.find(static_cast<uint32_t>(pc)) != breakpoints_.end());
