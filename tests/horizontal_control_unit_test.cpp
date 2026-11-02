@@ -195,8 +195,8 @@ struct ToyMachine {
     }
     // The stack guard's wire for this instruction, evaluated from the CURRENT SP every cycle.
     ExceptionCode guardWire(Opcode op) const {
-        if (op == Opcode::CALL && sp < kLimit) return ExceptionCode::STACK_OVERFLOW;
-        if (op == Opcode::RET  && sp >= kBase) return ExceptionCode::STACK_UNDERFLOW;
+        if (op == Opcode::CALL && sp < kLimit) return ExceptionCode::INVALID_MEMORY_ACCESS;
+        if (op == Opcode::RET  && sp >= kBase) return ExceptionCode::INVALID_MEMORY_ACCESS;
         return ExceptionCode::NONE;
     }
     bool run(Opcode op, uint32_t target = 0) {
@@ -227,11 +227,11 @@ void testStackFaultsHappenBeforeDamage() {
     ToyMachine m;                                            // overflow via CALL
     for (int i = 0; i < 4; ++i) { m.pc = 1000 + i; CHECK(m.run(Opcode::CALL, 2000)); }
     m.pc = 7;
-    CHECK(!m.run(Opcode::CALL, 5000) && m.fault == ExceptionCode::STACK_OVERFLOW);
+    CHECK(!m.run(Opcode::CALL, 5000) && m.fault == ExceptionCode::INVALID_MEMORY_ACCESS);
     CHECK(m.pc != 5000 && m.mem[m.sp] == 0);
 
     ToyMachine r; r.pc = 55;                                 // underflow via RET
-    CHECK(!r.run(Opcode::RET) && r.fault == ExceptionCode::STACK_UNDERFLOW);
+    CHECK(!r.run(Opcode::RET) && r.fault == ExceptionCode::INVALID_MEMORY_ACCESS);
     CHECK(r.pc == 55 && r.sp == ToyMachine::kBase);
 }
 
@@ -431,10 +431,10 @@ void testFaultsOnlyCountWhereTheirCheckerIsActive() {
       ControlWord w = cu.step(Opcode::LOAD, f, kDivZero);          // divide-by-zero wire on a memory row
       CHECK(w.mem_read && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::CALL, f);
-      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::STACK_OVERFLOW);   // sp_dec row: no checker
+      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // sp_dec row: no checker
       CHECK(w.sp_dec && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::ADD, f);
-      ControlWord w = cu.step(Opcode::ADD, f, ExceptionCode::STACK_UNDERFLOW);   // ALU row, stack wire
+      ControlWord w = cu.step(Opcode::ADD, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // ALU row, no checker
       CHECK(w.alu_enable && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::ADD, f);
       ControlWord w = cu.step(Opcode::ADD, f, ExceptionCode::ILLEGAL_INSTRUCTION);
@@ -445,15 +445,15 @@ void testFaultsOnlyCountWhereTheirCheckerIsActive() {
 void testStackFaultsTrapThroughTheControlUnit() {
     Flags f;
     { ControlUnit cu; cu.step(Opcode::CALL, f); cu.step(Opcode::CALL, f);
-      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::STACK_OVERFLOW);
+      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::INVALID_MEMORY_ACCESS);
       CHECK(!w.mem_write && !w.stack_check && !w.mem_addr_sp);    // the return address is never written
-      CHECK(cu.pendingException() == ExceptionCode::STACK_OVERFLOW);
+      CHECK(cu.pendingException() == ExceptionCode::INVALID_MEMORY_ACCESS);
       w = cu.step(Opcode::CALL, f);                                // TRAP, so the jump row never runs
       CHECK(w.trap && !w.pc_write && cu.routineDone()); }
     { ControlUnit cu;
-      ControlWord w = cu.step(Opcode::RET, f, ExceptionCode::STACK_UNDERFLOW);
+      ControlWord w = cu.step(Opcode::RET, f, ExceptionCode::INVALID_MEMORY_ACCESS);
       CHECK(!w.mem_read && !w.sp_inc && !w.pc_write);
-      CHECK(cu.pendingException() == ExceptionCode::STACK_UNDERFLOW);
+      CHECK(cu.pendingException() == ExceptionCode::INVALID_MEMORY_ACCESS);
       CHECK(cu.step(Opcode::RET, f).trap); }
 }
 

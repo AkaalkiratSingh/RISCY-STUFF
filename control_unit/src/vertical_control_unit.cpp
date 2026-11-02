@@ -142,8 +142,6 @@ namespace risc201 {
             switch (e) {
             case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
             case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check || c.stack_check;
-            case ExceptionCode::STACK_OVERFLOW:
-            case ExceptionCode::STACK_UNDERFLOW:       return c.stack_check;
             case ExceptionCode::NONE:
             case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
             }

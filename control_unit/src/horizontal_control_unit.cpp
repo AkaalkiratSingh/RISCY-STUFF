@@ -191,14 +191,11 @@ namespace risc201 {
         // A fault is only meaningful in a cycle where the unit that reports it is checking:
         //   DIVIDE_BY_ZERO        -> ALU enabled
         //   INVALID_MEMORY_ACCESS -> memory guard (addr_check) or stack guard (stack_check) active
-        //   STACK_OVERFLOW/UNDERFLOW -> stack guard (stack_check) active
         // The simulator may therefore keep the fault wires at their current level every cycle.
         bool faultApplies(const ControlWord& c, ExceptionCode e) {
             switch (e) {
                 case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
                 case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check || c.stack_check;
-                case ExceptionCode::STACK_OVERFLOW:
-                case ExceptionCode::STACK_UNDERFLOW:       return c.stack_check;
                 case ExceptionCode::NONE:
                 case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
             }

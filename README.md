@@ -25,7 +25,7 @@ A from-scratch 32-bit processor project: a custom instruction set (**risc201**),
 - **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
 - **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 40-bit microword.
 - **ALU built from gate-level ideas:** a 32-bit carry-lookahead adder (eight chained 4-bit CLA blocks) and a radix-4 Booth multiplier.
-- **Stack guard:** a full-descending stack with bounds checking on `PUSH`, `POP`, `CALL` and `RET`, raising `STACK_OVERFLOW` / `STACK_UNDERFLOW` before the access commits.
+- **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
 - **Simulator CLI** with a decode listing, single-step mode and memory dumps.
 - **Interactive TUI (`risc201-tui`):** live source, binary, register, stats and memory panes; a hazard timeline; a source editor with explicit reassembly; and CPU configuration switching.
@@ -154,7 +154,7 @@ zero:
 
 Result: `R2 = 15`, `SP` back at 4096.
 
-The `examples/` folder has 13 programs. Most are real algorithms running from hundreds to tens of thousands of cycles: Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, plus recursion and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `STACK_OVERFLOW` on purpose.
+The `examples/` folder has 14 programs. Most are real algorithms running from hundreds to tens of thousands of cycles: Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, floating-point arithmetic with literals, plus recursion and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `INVALID_MEMORY_ACCESS` on purpose.
 
 Every run prints a `pipeline:` line counting stalls, flushes and flush bubbles, and `--trace` prints the pipeline clock by clock. Those explain the cycle count exactly: `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`.
 
@@ -196,7 +196,7 @@ When the `I` bit is set, the last operand is an 18-bit immediate. Otherwise it i
 
 ### Exceptions
 
-`STACK_OVERFLOW`, `STACK_UNDERFLOW`, `INVALID_MEMORY_ACCESS`, `DIVIDE_BY_ZERO`, `ILLEGAL_INSTRUCTION`
+`INVALID_MEMORY_ACCESS`, `DIVIDE_BY_ZERO`, `ILLEGAL_INSTRUCTION`
 
 An exception halts the CPU and is reported by the simulator.
 
@@ -230,7 +230,7 @@ RISCY-STUFF/
 │   └── tui/          # risc201-tui: panes, source editor, config dialog, hazard timeline
 ├── utils/            # shared helpers
 ├── tests/            # unit and integration tests (CTest)
-├── examples/         # 13 sample .asm programs
+├── examples/         # 14 sample .asm programs
 ├── demo.sh           # build + run every example with decode listing
 └── CMakeLists.txt
 ```

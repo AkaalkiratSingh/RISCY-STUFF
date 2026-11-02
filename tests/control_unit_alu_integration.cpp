@@ -87,14 +87,15 @@ int main() {
         c.run(Opcode::CMP, 0, 2, 1);  c.run(Opcode::BGT, 0, 0, 0);  CHECK(c.branched);
     }
 
-    // --- What the ALU reports for a zero divisor (information for the team) ---
+    // --- The ALU reports a zero divisor as a fault; the control unit and pipeline route it ---
     {
         Alu alu;
         Alu::Result q = alu.execute(Opcode::DIV, 7, 0);
         Alu::Result f = alu.execute(Opcode::FDIV, bitsOf(1.0f), bitsOf(0.0f));
-        std::cout << "  info: DIV 7/0 -> value " << q.value << " (no fault field in Alu::Result)\n"
-                  << "  info: FDIV 1.0/0.0 -> bits 0x" << std::hex << static_cast<uint32_t>(f.value)
-                  << std::dec << " (IEEE +infinity)\n";
+        CHECK(q.fault == ExceptionCode::DIVIDE_BY_ZERO);
+        CHECK(q.value == 0);
+        CHECK(f.fault == ExceptionCode::NONE);                       // IEEE divide by zero is +infinity, not a fault
+        CHECK(static_cast<uint32_t>(f.value) == 0x7F800000u);
     }
 
     if (failures == 0) { std::cout << "\ncontrol_unit_alu_integration_test: all checks passed\n"; return 0; }

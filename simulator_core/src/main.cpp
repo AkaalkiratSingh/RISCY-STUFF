@@ -42,8 +42,6 @@ const char* exceptionName(risc201::ExceptionCode code) {
     using risc201::ExceptionCode;
     switch (code) {
         case ExceptionCode::NONE:                  return "NONE";
-        case ExceptionCode::STACK_OVERFLOW:        return "STACK_OVERFLOW";
-        case ExceptionCode::STACK_UNDERFLOW:       return "STACK_UNDERFLOW";
         case ExceptionCode::INVALID_MEMORY_ACCESS: return "INVALID_MEMORY_ACCESS";
         case ExceptionCode::DIVIDE_BY_ZERO:        return "DIVIDE_BY_ZERO";
         case ExceptionCode::ILLEGAL_INSTRUCTION:   return "ILLEGAL_INSTRUCTION";

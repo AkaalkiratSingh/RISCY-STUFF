@@ -49,6 +49,12 @@ int main() {
     assert(alu.execute(Opcode::REM, 10, 3).value == 1);
     assert(alu.execute(Opcode::REM, -10, 3).value == -1); // Remainder takes sign of dividend
 
+    // Divide by zero is reported, not silently swallowed; a valid division raises nothing.
+    assert(alu.execute(Opcode::DIV, 7, 0).fault == ExceptionCode::DIVIDE_BY_ZERO);
+    assert(alu.execute(Opcode::REM, 7, 0).fault == ExceptionCode::DIVIDE_BY_ZERO);
+    assert(alu.execute(Opcode::DIV, 0, 1).fault == ExceptionCode::NONE);
+    assert(alu.execute(Opcode::DIV, 10, 3).fault == ExceptionCode::NONE);
+
     // ==========================================
     // 2. FLOATING POINT TESTS
     // ==========================================

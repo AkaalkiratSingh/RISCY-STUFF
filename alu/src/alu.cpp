@@ -290,7 +290,11 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
         }
         case Opcode::DIV:
         case Opcode::REM: {
-            if (rhs == 0) { res = 0; break; }
+            if (rhs == 0) {
+                res = 0;
+                r.fault = ExceptionCode::DIVIDE_BY_ZERO;
+                break;
+            }
             if (lhs == INT32_MIN && rhs == -1) {
                 res = (op == Opcode::DIV) ? static_cast<uint32_t>(INT32_MIN) : 0;
                 break;

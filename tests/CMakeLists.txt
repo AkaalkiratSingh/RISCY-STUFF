@@ -2,6 +2,10 @@ add_executable(horizontal_control_unit_test horizontal_control_unit_test.cpp)
 target_link_libraries(horizontal_control_unit_test PRIVATE control_unit)
 add_test(NAME HorizontalControlUnitTest COMMAND horizontal_control_unit_test)
 
+add_executable(control_unit_alu_integration control_unit_alu_integration.cpp)
+target_link_libraries(control_unit_alu_integration PRIVATE control_unit alu)
+add_test(NAME ControlUnitAluIntegration COMMAND control_unit_alu_integration)
+
 add_executable(vertical_control_unit_test vertical_control_unit_test.cpp)
 target_link_libraries(vertical_control_unit_test PRIVATE simulator_core_lib assembler_lib)
 target_compile_definitions(vertical_control_unit_test PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples")

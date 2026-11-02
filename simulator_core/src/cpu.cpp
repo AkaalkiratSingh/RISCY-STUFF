@@ -256,6 +256,11 @@ namespace risc201 {
             if (c.alu_enable) {
                 const int32_t rhs = (c.alu_src_imm || out.instr.I) ? out.instr.imm : out.rs2_val;
                 const Alu::Result r = alu_.execute(c.alu_op, out.rs1_val, rhs);
+                if (r.fault != ExceptionCode::NONE) {
+                    fx.fault = true;
+                    fx.code = r.fault;
+                    return;
+                }
                 out.alu_result = r.value;
                 if (c.flag_update) state_.flags = r.flags;
             }

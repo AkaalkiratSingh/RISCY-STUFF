@@ -311,8 +311,7 @@ int main() {
     section("Vertical == horizontal: lockstep with faults, every opcode x every fault");
     {
         const ExceptionCode faults[] = {
-            ExceptionCode::NONE, ExceptionCode::STACK_OVERFLOW, ExceptionCode::STACK_UNDERFLOW,
-            ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
+            ExceptionCode::NONE, ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
             ExceptionCode::ILLEGAL_INSTRUCTION };
         int mismatches = 0, trapped = 0;
         for (int opv = 0; opv < 256; ++opv) {
@@ -346,7 +345,6 @@ int main() {
     section("Vertical == horizontal: randomised, with faults, reset() and clearException()");
     {
         const ExceptionCode faults[] = {
-            ExceptionCode::STACK_OVERFLOW, ExceptionCode::STACK_UNDERFLOW,
             ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
             ExceptionCode::ILLEGAL_INSTRUCTION };
         ControlUnit h;

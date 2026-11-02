@@ -80,8 +80,6 @@ struct Instruction {
 // TODO(Milestone 0 — coordinate with Vaibhav): confirm final exception code set.
 enum class ExceptionCode : uint8_t {
     NONE = 0,
-    STACK_OVERFLOW,
-    STACK_UNDERFLOW,
     INVALID_MEMORY_ACCESS,
     DIVIDE_BY_ZERO,
     ILLEGAL_INSTRUCTION,

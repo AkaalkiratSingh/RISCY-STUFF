@@ -252,7 +252,7 @@ int main() {
         CHECK_EQ(cpu.state().sp, static_cast<uint32_t>(cpu.memory().size()));
     }
 
-    section("Cpu: PUSH past the stack limit raises STACK_OVERFLOW");
+    section("Cpu: PUSH past the stack limit raises INVALID_MEMORY_ACCESS");
     {
         Cpu cpu(PipelineVariant::FourStage, 1);
 
@@ -266,10 +266,10 @@ int main() {
 
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
-              ExceptionCode::STACK_OVERFLOW);
+              ExceptionCode::INVALID_MEMORY_ACCESS);
     }
 
-    section("Cpu: POP from an empty stack raises STACK_UNDERFLOW");
+    section("Cpu: POP from an empty stack raises INVALID_MEMORY_ACCESS");
     {
         Cpu cpu(PipelineVariant::FourStage);
 
@@ -282,7 +282,39 @@ int main() {
 
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
-              ExceptionCode::STACK_UNDERFLOW);
+              ExceptionCode::INVALID_MEMORY_ACCESS);
+    }
+
+    section("Cpu: DIV by zero raises DIVIDE_BY_ZERO and halts (both variants)");
+    {
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            const Cpu cpu = runProgram({
+                "SUB R1, R1, R1",
+                "ADD R2, R1, 1",
+                "DIV R3, R1, R2",
+                "DIV R4, R2, R1",
+                "HALT",
+            }, {}, variant);
+            CHECK(cpu.state().halted);
+            CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
+                  ExceptionCode::DIVIDE_BY_ZERO);
+            CHECK_EQ(reg(cpu, Register::R3), 0);          // 0 / 1 is a valid division
+        }
+    }
+
+    section("Cpu: a zero dividend does not trap");
+    {
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            const Cpu cpu = runProgram({
+                "SUB R1, R1, R1",
+                "ADD R2, R1, 1",
+                "DIV R3, R1, R2",
+                "HALT",
+            }, {}, variant);
+            CHECK(cpu.state().halted);
+            CHECK(!cpu.state().pending_exception.has_value());
+            CHECK_EQ(reg(cpu, Register::R3), 0);          // 0 / 1 == 0
+        }
     }
 
     section("Cpu: CALL then RET resumes after the call");
