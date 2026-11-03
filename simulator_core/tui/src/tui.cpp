@@ -423,6 +423,8 @@ void Tui::renderRegisters(int r, int c, int h, int w) {
 
         char buf[32];
         snprintf(buf, sizeof(buf), "R%02d:%-5d", i, st.registers[static_cast<size_t>(i)]);
+        std::string reg_text = buf;
+        
         Style reg_style{Color::Default, Color::Default, false};
         if (st.registers[static_cast<size_t>(i)] != 0) {
             reg_style.fg = Color::BrightWhite;
@@ -433,14 +435,16 @@ void Tui::renderRegisters(int r, int c, int h, int w) {
 
         for (const auto& entry : debugger_.watchpoints()) {
             const Watchpoint& w = entry.second;
-            if (w.enabled && w.kind == WatchKind::Register &&
-                w.target == static_cast<uint32_t>(i)) {
-                reg_style.fg = Color::BrightMagenta;
-                reg_style.bold = true;
+            if (w.kind == WatchKind::Register && w.target == static_cast<uint32_t>(i)) {
+                if (w.enabled) {
+                    reg_style.fg = Color::BrightMagenta;
+                    reg_style.bold = true;
+                }
+                reg_text += (w.enabled ? " ◄W" : " ◄w") + std::to_string(w.id);
             }
         }
 
-        screen_.drawText(r + 1 + grid_r, c + 1 + grid_c * col_width, buf, reg_style, col_width);
+        screen_.drawText(r + 1 + grid_r, c + 1 + grid_c * col_width, reg_text, reg_style, col_width);
     }
 
     // Status line: PC, SP
@@ -572,15 +576,21 @@ void Tui::renderMemory(int r, int c, int h, int w) {
         const bool is_sp = (static_cast<uint32_t>(addr) == sp);
         if (is_sp) oss << " ◄SP";
 
+        bool is_watched = false;
+
         for (const auto& entry : debugger_.watchpoints()) {
             const Watchpoint& w = entry.second;
             if (w.kind == WatchKind::Memory && w.target == static_cast<uint32_t>(addr)) {
                 oss << (w.enabled ? " ◄W" : " ◄w") << w.id;
+                if (w.enabled) is_watched = true;
             }
         }
 
         Style line_style{Color::Default, Color::Default, false};
-        if (is_sp) {
+        if (is_watched) {
+            line_style.fg = Color::BrightMagenta;
+            line_style.bold = true;
+        } else if (is_sp) {
             line_style.fg = Color::BrightYellow;
             line_style.bold = true;
         } else if (val != 0) {
