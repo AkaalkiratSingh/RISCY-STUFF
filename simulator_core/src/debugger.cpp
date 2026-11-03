@@ -90,6 +90,13 @@ int32_t Debugger::watchValue(const Watchpoint& w) const {
 
 int Debugger::addMemoryWatchpoint(uint32_t address) {
     if (address >= cpu_.memory().size()) return -1;
+
+    for (const auto& entry : watchpoints_) {
+        if (entry.second.kind == WatchKind::Memory && entry.second.target == address) {
+            return entry.second.id; 
+        }
+    }
+
     Watchpoint w;
     w.id = next_watch_id_++;
     w.kind = WatchKind::Memory;
@@ -100,10 +107,18 @@ int Debugger::addMemoryWatchpoint(uint32_t address) {
 }
 
 int Debugger::addRegisterWatchpoint(Register reg) {
+    const uint32_t target_reg = static_cast<uint32_t>(reg);
+
+    for (const auto& entry : watchpoints_) {
+        if (entry.second.kind == WatchKind::Register && entry.second.target == target_reg) {
+            return entry.second.id;
+        }
+    }
+
     Watchpoint w;
     w.id = next_watch_id_++;
     w.kind = WatchKind::Register;
-    w.target = static_cast<uint32_t>(reg);
+    w.target = target_reg;
     w.last = watchValue(w);
     watchpoints_[w.id] = w;
     return w.id;
