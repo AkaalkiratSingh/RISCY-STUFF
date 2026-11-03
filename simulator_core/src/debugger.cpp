@@ -122,6 +122,7 @@ bool Debugger::enableWatchpoint(int id, bool enabled) {
 
 void Debugger::clearWatchpoints() {
     watchpoints_.clear();
+    next_watch_id_ = 1;
 }
 
 void Debugger::snapshotWatchpoints() {
