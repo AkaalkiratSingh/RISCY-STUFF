@@ -172,12 +172,12 @@ int main() {
         return vrom[static_cast<size_t>(hcu.routineEntry(op) + offset)];
     };
     CHECK_EQ(word(Opcode::ADD, 0), 0x0400);        
-    CHECK_EQ(word(Opcode::ADD, 1), 0x0820);        
-    CHECK_EQ(word(Opcode::SUB, 1), 0x0840);        
+    CHECK_EQ(word(Opcode::ADD, 1), 0x0840);
+    CHECK_EQ(word(Opcode::SUB, 1), 0x0860);
     CHECK_EQ(word(Opcode::ADD, 2), 0x1C01);        
-    CHECK_EQ(word(Opcode::LOAD, 1), 0x1020);       
+    CHECK_EQ(word(Opcode::LOAD, 1), 0x1040);
     CHECK_EQ(word(Opcode::LOAD, 3), 0x2001);       
-    CHECK_EQ(word(Opcode::MOV, 1), 0x0E60);        
+    CHECK_EQ(word(Opcode::MOV, 1), 0x0C20);
     CHECK_EQ(word(Opcode::CALL, 1), 0x4800);        // RA.WR
     CHECK_EQ(word(Opcode::CALL, 2), 0x2401);        // JUMP, END
     CHECK_EQ(word(Opcode::RET, 0), 0x4C01);         // JUMP.RA, END
@@ -189,10 +189,10 @@ int main() {
     CHECK_EQ(word(Opcode::STORE, 2), 0x1801);       // MEM.WR (+addr_check), END
     CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x4401);   // TRAP, END
     CHECK_EQ(word(Opcode::BGT, 0), 0xE000 | ((hcu.routineEntry(Opcode::BGT) + 2) << 4));   // cond GT(6)
-    CHECK_EQ(word(Opcode::DIV, 1), 0x0AA0);         // ALU, func DIV(0x15)
-    CHECK_EQ(word(Opcode::FADD, 1), 0x0EE0);        // ALU.NF, func FADD(0x17): flags untouched
+    CHECK_EQ(word(Opcode::DIV, 1), 0x08A0);         // ALU, func DIV(0x05)
+    CHECK_EQ(word(Opcode::FADD, 1), 0x0EC0);        // ALU.NF, func FADD(0x16): flags untouched
     CHECK_EQ(word(Opcode::FADD, 2), 0x1C01);        // WB, END
-    CHECK_EQ(word(Opcode::FCMP, 1), 0x0B61);        // ALU, func FCMP(0x1B), END: no writeback
+    CHECK_EQ(word(Opcode::FCMP, 1), 0x0B41);        // ALU, func FCMP(0x1A), END: no writeback
     CHECK_EQ(packVertical(MicroOp{}, 0), 0x0001);   
     {
         MicroOp idle;
@@ -484,7 +484,7 @@ int main() {
         CHECK(h.rfind("addr  routine  cond  next  taken  microword(hex)  signals\n", 0) == 0);  
         CHECK(h.find("micro-op") == std::string::npos);
         CHECK(v.find("micro-op") != std::string::npos);
-        CHECK(v.find("0x0820") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
+        CHECK(v.find("0x0840") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
         CHECK(v.find("BRANCH Z") != std::string::npos);
         const size_t rows = hcm.size();
         CHECK(v.find(std::to_string(rows) + " rows x 16 bits = " + std::to_string(rows * 16) + " bits")

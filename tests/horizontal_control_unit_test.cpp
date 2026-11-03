@@ -257,8 +257,8 @@ void testControlMemoryWellFormed() {
 
 void testPackHorizontal() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    // ADD execute row (2): alu_enable(0) | flag_update(10) | alu_op=1<<16 | next=3<<24 | taken=END(0xFF)<<32
-    CHECK(ControlUnit::packHorizontal(cm[2]) == ((1ull<<0)|(1ull<<10)|(1ull<<16)|(3ull<<24)|(0xFFull<<32)));
+    // ADD execute row (2): alu_enable(0) | flag_update(10) | alu_op=2<<16 | next=3<<24 | taken=END(0xFF)<<32
+    CHECK(ControlUnit::packHorizontal(cm[2]) == ((1ull<<0)|(1ull<<10)|(2ull<<16)|(3ull<<24)|(0xFFull<<32)));
     // BEQ test row (32): cond=Zero(1)<<21 | next=33<<24 | taken=34<<32
     CHECK(ControlUnit::packHorizontal(cm[32]) == ((1ull<<21)|(33ull<<24)|(34ull<<32)));
     // MOV execute row (36): alu_op = MOV in bits 20:16
