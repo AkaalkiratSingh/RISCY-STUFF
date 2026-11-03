@@ -36,6 +36,10 @@ namespace risc201 {
             case Opcode::SHL:
             case Opcode::SHR:
             case Opcode::SAR:
+            case Opcode::FADD:
+            case Opcode::FSUB:
+            case Opcode::FMUL:
+            case Opcode::FDIV:
             case Opcode::MOV:
             case Opcode::LOAD:
                 return true;
