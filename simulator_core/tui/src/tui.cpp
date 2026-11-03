@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <sstream>
 #include <thread>
+#include <optional>
 
 namespace risc201 {
 
@@ -33,6 +34,66 @@ std::vector<std::string> wrapText(const std::string& text, int width) {
     return lines;
 }
 
+std::optional<Register> parseRegisterName(const std::string& s) {
+    if (s.size() < 2 || s.size() > 3) return std::nullopt;
+    if (s[0] != 'R' && s[0] != 'r') return std::nullopt;
+    if (s.find_first_not_of("0123456789", 1) != std::string::npos) return std::nullopt;
+    const unsigned long n = std::stoul(s.substr(1));
+    if (n >= static_cast<unsigned long>(kNumGPRegisters)) return std::nullopt;
+    return static_cast<Register>(n);
+}
+
+std::optional<CompareOp> parseCompareOp(const std::string& s) {
+    if (s == "==" || s == "=") return CompareOp::Eq;
+    if (s == "!=") return CompareOp::Ne;
+    if (s == "<") return CompareOp::Lt;
+    if (s == "<=") return CompareOp::Le;
+    if (s == ">") return CompareOp::Gt;
+    if (s == ">=") return CompareOp::Ge;
+    return std::nullopt;
+}
+
+const char* compareOpSymbol(CompareOp op) {
+    switch (op) {
+    case CompareOp::Eq: return "==";
+    case CompareOp::Ne: return "!=";
+    case CompareOp::Lt: return "<";
+    case CompareOp::Le: return "<=";
+    case CompareOp::Gt: return ">";
+    case CompareOp::Ge: return ">=";
+    }
+    return "?";
+}
+
+std::string formatCondition(const Condition& c) {
+    return "R" + std::to_string(static_cast<int>(c.reg)) + " " + compareOpSymbol(c.op) + " " + std::to_string(c.value);
+}
+
+std::optional<Condition> parseCondition(std::istringstream& iss) {
+    std::string reg_tok, op_tok, val_tok;
+    if (!(iss >> reg_tok >> op_tok >> val_tok)) return std::nullopt;
+
+    const std::optional<Register> reg = parseRegisterName(reg_tok);
+    const std::optional<CompareOp> op = parseCompareOp(op_tok);
+    if (!reg || !op) return std::nullopt;
+
+    long long value = 0;
+    try {
+        size_t used = 0;
+        value = std::stoll(val_tok, &used, 0);
+        if (used != val_tok.size()) return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
+    if (value < INT32_MIN || value > INT32_MAX) return std::nullopt;
+
+    Condition c;
+    c.reg = *reg;
+    c.op = *op;
+    c.value = static_cast<int32_t>(value);
+    return c;
+}
+
 } // namespace
 
 Tui::Tui(Cpu& cpu,
@@ -41,12 +102,40 @@ Tui::Tui(Cpu& cpu,
          const std::string& filename,
          bool show_trace)
     : cpu_(cpu),
+      debugger_(cpu),
       raw_assembly_(std::move(raw_assembly)),
       code_words_(cpu_.codeWords()),
       original_words_(std::move(program_words)),
       filename_(filename),
       show_trace_(show_trace) {
     cpu_.setTracing(true);
+}
+
+std::string Tui::describeStop(const StopInfo& info) const {
+    std::ostringstream os;
+    switch (info.reason) {
+    case StopReason::Breakpoint:
+        os << "Breakpoint at PC=" << info.pc << " (not yet executed).";
+        break;
+    case StopReason::TargetReached:
+        os << "Reached PC=" << info.pc << ".";
+        break;
+    case StopReason::Watchpoint:
+        os << "Watchpoint triggered.";
+        break;
+    case StopReason::CycleLimit:
+        os << "Cycle limit reached.";
+        break;
+    default:
+        break;
+    }
+    for (const WatchHit& h : info.watch_hits) {
+        os << " [watch #" << h.id << "] ";
+        if (h.kind == WatchKind::Register) os << "R" << h.target;
+        else os << "mem[" << h.target << "]";
+        os << ": " << h.old_value << " -> " << h.new_value << ".";
+    }
+    return os.str();
 }
 
 std::string Tui::formatActiveStage(uint32_t pc) const {
@@ -273,10 +362,16 @@ void Tui::renderAssembledBinary(int r, int c, int h, int w) {
         const std::string mnemonic = formatInstruction(instr);
         const std::string stage = formatActiveStage(static_cast<uint32_t>(pc));
         const bool is_active_pc = (pc == current_pc);
-        const bool has_break = (breakpoints_.find(static_cast<uint32_t>(pc)) != breakpoints_.end());
+        const auto bp_it = debugger_.breakpoints().find(static_cast<uint32_t>(pc));
+        const bool has_break = bp_it != debugger_.breakpoints().end();
+        const bool bp_enabled = has_break && bp_it->second.enabled;
+        char bp_mark = ' ';
+        if (has_break) {
+            bp_mark = !bp_enabled ? 'b' : (bp_it->second.condition ? 'C' : 'B');
+        }
 
         std::ostringstream oss;
-        oss << (has_break ? "B" : " ")
+        oss << bp_mark
             << "[" << std::setw(3) << std::right << pc << "] "
             << "0x" << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << word << " "
             << std::dec << std::setfill(' ')
@@ -297,8 +392,10 @@ void Tui::renderAssembledBinary(int r, int c, int h, int w) {
         } else if (!stage.empty()) {
             row_style.fg = Color::BrightCyan;
             row_style.bold = true;
-        } else if (has_break) {
+        } else if (bp_enabled) {
             row_style.fg = Color::BrightRed;
+        } else if (has_break) {
+            row_style.dim = true;
         }
 
         screen_.drawText(r + 1 + i, c + 1, row_str, row_style, inner_w);
@@ -326,6 +423,8 @@ void Tui::renderRegisters(int r, int c, int h, int w) {
 
         char buf[32];
         snprintf(buf, sizeof(buf), "R%02d:%-5d", i, st.registers[static_cast<size_t>(i)]);
+        std::string reg_text = buf;
+        
         Style reg_style{Color::Default, Color::Default, false};
         if (st.registers[static_cast<size_t>(i)] != 0) {
             reg_style.fg = Color::BrightWhite;
@@ -333,7 +432,19 @@ void Tui::renderRegisters(int r, int c, int h, int w) {
         } else {
             reg_style.fg = Color::BrightBlack;
         }
-        screen_.drawText(r + 1 + grid_r, c + 1 + grid_c * col_width, buf, reg_style, col_width);
+
+        for (const auto& entry : debugger_.watchpoints()) {
+            const Watchpoint& w = entry.second;
+            if (w.kind == WatchKind::Register && w.target == static_cast<uint32_t>(i)) {
+                if (w.enabled) {
+                    reg_style.fg = Color::BrightMagenta;
+                    reg_style.bold = true;
+                }
+                reg_text += (w.enabled ? " ◄W" : " ◄w") + std::to_string(w.id);
+            }
+        }
+
+        screen_.drawText(r + 1 + grid_r, c + 1 + grid_c * col_width, reg_text, reg_style, col_width);
     }
 
     // Status line: PC, SP
@@ -403,6 +514,15 @@ void Tui::renderExtraStats(int r, int c, int h, int w) {
     stat_lines.push_back(cpu_.encoding() == MicrocodeEncoding::Vertical ? "• ROM: vert"
                                                                        : "• ROM: horiz");
 
+    size_t bp_on = 0;
+    for (const auto& e : debugger_.breakpoints()) if (e.second.enabled) ++bp_on;
+    size_t wp_on = 0;
+    for (const auto& e : debugger_.watchpoints()) if (e.second.enabled) ++wp_on;
+    stat_lines.push_back("• Brk: " + std::to_string(debugger_.breakpoints().size()) +
+                         " (" + std::to_string(bp_on) + " on)");
+    stat_lines.push_back("• Wch: " + std::to_string(debugger_.watchpoints().size()) +
+                         " (" + std::to_string(wp_on) + " on)");
+
     for (size_t i = 0; i < stat_lines.size() && static_cast<int>(i) < inner_h; ++i) {
         screen_.drawText(r + 1 + static_cast<int>(i), c + 1, stat_lines[i],
                          Style{Color::Default, Color::Default, false}, inner_w);
@@ -456,8 +576,21 @@ void Tui::renderMemory(int r, int c, int h, int w) {
         const bool is_sp = (static_cast<uint32_t>(addr) == sp);
         if (is_sp) oss << " ◄SP";
 
+        bool is_watched = false;
+
+        for (const auto& entry : debugger_.watchpoints()) {
+            const Watchpoint& w = entry.second;
+            if (w.kind == WatchKind::Memory && w.target == static_cast<uint32_t>(addr)) {
+                oss << (w.enabled ? " ◄W" : " ◄w") << w.id;
+                if (w.enabled) is_watched = true;
+            }
+        }
+
         Style line_style{Color::Default, Color::Default, false};
-        if (is_sp) {
+        if (is_watched) {
+            line_style.fg = Color::BrightMagenta;
+            line_style.bold = true;
+        } else if (is_sp) {
             line_style.fg = Color::BrightYellow;
             line_style.bold = true;
         } else if (val != 0) {
@@ -884,7 +1017,7 @@ void Tui::handleKey(const KeyEvent& ev) {
                 case ':':
                     mode_ = Mode::Command;
                     command_buffer_.clear();
-                    feedback_message_ = "Type command and press Enter (or Esc to cancel). Commands: step, clock, run, break, reset, help, quit";
+                    feedback_message_ = "Type command and press Enter (or Esc to cancel). Commands: step, clock, run, break, cond, breaks, enable, disable, watch, watches, reset, help, quit";
                     feedback_is_error_ = false;
                     break;
                 case 's':
@@ -1006,13 +1139,15 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         }
 
         int stepped = 0;
+        StopInfo stop;
         while (stepped < count && !cpu_.state().halted) {
-            cpu_.stepInstruction();
+            stop = debugger_.stepInstruction();
             ++stepped;
-            if (breakpoints_.find(cpu_.state().pc) != breakpoints_.end()) {
-                feedback_message_ = "Breakpoint hit at PC=" + std::to_string(cpu_.state().pc);
-                return;
-            }
+            if (stop.reason == StopReason::Breakpoint || !stop.watch_hits.empty()) break;
+        }
+        if (stop.reason == StopReason::Breakpoint || !stop.watch_hits.empty()) {
+            feedback_message_ = describeStop(stop);
+            return;
         }
         feedback_message_ = "Stepped " + std::to_string(stepped) + " instruction(s). PC=" +
                             std::to_string(cpu_.state().pc) +
@@ -1029,9 +1164,15 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         }
 
         int ticked = 0;
+        StopInfo stop;
         while (ticked < count && !cpu_.state().halted) {
-            cpu_.step();
+            stop = debugger_.stepCycle();
             ++ticked;
+            if (stop.reason == StopReason::Breakpoint || !stop.watch_hits.empty()) break;
+        }
+        if (stop.reason == StopReason::Breakpoint || !stop.watch_hits.empty()) {
+            feedback_message_ = describeStop(stop);
+            return;
         }
         feedback_message_ = "Ticked " + std::to_string(ticked) + " clock(s). Cycles=" +
                             std::to_string(cpu_.cycles()) +
@@ -1050,11 +1191,12 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         }
 
         const uint64_t initial_retired = cpu_.retired();
-        bool hit_break = false;
+        bool stopped = false;
+        StopInfo stop;
         bool interrupted = false;
 
         while (!cpu_.state().halted) {
-            cpu_.step();
+            stop = debugger_.stepCycle();
 
             const uint64_t instrs_run = (cpu_.retired() >= initial_retired)
                                             ? (cpu_.retired() - initial_retired)
@@ -1063,8 +1205,8 @@ void Tui::executeCommand(const std::string& raw_cmd) {
             const uint64_t hundreds = instrs_run / 100;
             const double current_pause_us = 1000.0 * std::pow(0.9, static_cast<double>(hundreds));
 
-            if (breakpoints_.find(cpu_.state().pc) != breakpoints_.end()) {
-                hit_break = true;
+            if (stop.reason == StopReason::Breakpoint || !stop.watch_hits.empty()) {
+                stopped = true;
                 break;
             }
 
@@ -1089,9 +1231,8 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         if (interrupted) {
             feedback_message_ = "Execution paused at PC=" + std::to_string(cpu_.state().pc) +
                                 ", cycle " + std::to_string(cpu_.cycles()) + ".";
-        } else if (hit_break) {
-            feedback_message_ = "Breakpoint hit at PC=" + std::to_string(cpu_.state().pc) +
-                                " (cycle " + std::to_string(cpu_.cycles()) + ").";
+        } else if (stopped) {
+               feedback_message_ = describeStop(stop) + " (cycle " + std::to_string(cpu_.cycles()) + ").";
         } else if (cpu_.state().halted) {
             feedback_message_ = "Program halted after " + std::to_string(cpu_.retired()) +
                                 " instructions, " + std::to_string(cpu_.cycles()) + " cycles.";
@@ -1099,24 +1240,168 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         render();
     } else if (action == "b" || action == "break") {
         uint32_t pc = 0;
-        if (iss >> pc) {
-            if (breakpoints_.find(pc) != breakpoints_.end()) {
-                breakpoints_.erase(pc);
-                feedback_message_ = "Removed breakpoint at PC=" + std::to_string(pc);
-            } else {
-                breakpoints_.insert(pc);
-                feedback_message_ = "Added breakpoint at PC=" + std::to_string(pc);
-            }
-        } else {
-            feedback_message_ = "Usage: :break <pc>";
+        if (!(iss >> pc)) {
+            feedback_message_ = "Usage: :break <pc> [if <Rn> <op> <value>]";
             feedback_is_error_ = true;
+        } else if (pc >= code_words_.size()) {
+            feedback_message_ = "PC " + std::to_string(pc) + " is outside the program (0.." +
+                                std::to_string(code_words_.empty() ? 0 : code_words_.size() - 1) + ").";
+            feedback_is_error_ = true;
+        } else {
+            std::string kw;
+            iss >> kw;
+            if (kw.empty()) {
+                if (debugger_.toggleBreakpoint(pc)) {
+                    feedback_message_ = "Added breakpoint at PC=" + std::to_string(pc);
+                } else {
+                    feedback_message_ = "Removed breakpoint at PC=" + std::to_string(pc);
+                }
+            } else if (kw == "if") {
+                const std::optional<Condition> cond = parseCondition(iss);
+                if (!cond) {
+                    feedback_message_ = "Usage: :break <pc> if <Rn> <op> <value>   (op: == != < <= > >=)";
+                    feedback_is_error_ = true;
+                } else if (debugger_.hasBreakpoint(pc)) {
+                    debugger_.setBreakpointCondition(pc, cond);
+                    feedback_message_ = "Breakpoint at PC=" + std::to_string(pc) +
+                                        " now stops when " + formatCondition(*cond);
+                } else {
+                    debugger_.addBreakpoint(pc, cond);
+                    feedback_message_ = "Added breakpoint at PC=" + std::to_string(pc) +
+                                        " when " + formatCondition(*cond);
+                }
+            } else {
+                feedback_message_ = "Usage: :break <pc> [if <Rn> <op> <value>]";
+                feedback_is_error_ = true;
+            }
         }
     } else if (action == "cb" || action == "clearbreak") {
-        breakpoints_.clear();
+        debugger_.clearBreakpoints();
         feedback_message_ = "All breakpoints cleared.";
+    } else if (action == "cond") {
+        uint32_t pc = 0;
+        if (!(iss >> pc)) {
+            feedback_message_ = "Usage: :cond <pc> [<Rn> <op> <value>]  (no condition = clear it)";
+            feedback_is_error_ = true;
+        } else if (!debugger_.hasBreakpoint(pc)) {
+            feedback_message_ = "No breakpoint at PC=" + std::to_string(pc) + ". Use :break first.";
+            feedback_is_error_ = true;
+        } else {
+            std::string rest;
+            std::getline(iss, rest);
+            if (rest.find_first_not_of(" \t") == std::string::npos) {
+                debugger_.setBreakpointCondition(pc, std::nullopt);
+                feedback_message_ = "Cleared condition on breakpoint at PC=" + std::to_string(pc);
+            } else {
+                std::istringstream cond_stream(rest);
+                const std::optional<Condition> cond = parseCondition(cond_stream);
+                if (!cond) {
+                    feedback_message_ = "Usage: :cond <pc> <Rn> <op> <value>   (op: == != < <= > >=)";
+                    feedback_is_error_ = true;
+                } else {
+                    debugger_.setBreakpointCondition(pc, cond);
+                    feedback_message_ = "Breakpoint at PC=" + std::to_string(pc) +
+                                        " now stops when " + formatCondition(*cond);
+                }
+            }
+        }
+    } else if (action == "enable" || action == "disable") {
+        const bool on = (action == "enable");
+        std::string what, num;
+        iss >> what >> num;
+        const bool numeric = !num.empty() && num.size() <= 9 &&
+                             num.find_first_not_of("0123456789") == std::string::npos;
+        if ((what != "break" && what != "watch") || !numeric) {
+            feedback_message_ = "Usage: :" + action + " break <pc> | :" + action + " watch <id>";
+            feedback_is_error_ = true;
+        } else {
+            const unsigned long n = std::stoul(num);
+            const bool ok = (what == "break")
+                ? debugger_.enableBreakpoint(static_cast<uint32_t>(n), on)
+                : debugger_.enableWatchpoint(static_cast<int>(n), on);
+            if (ok) {
+                feedback_message_ = std::string(what == "break" ? "Breakpoint at PC=" : "Watchpoint #") +
+                                    num + (on ? " enabled." : " disabled.");
+            } else {
+                feedback_message_ = std::string("No ") + (what == "break" ? "breakpoint at PC=" : "watchpoint #") +
+                                    num + ".";
+                feedback_is_error_ = true;
+            }
+        }
+    } else if (action == "breaks" || action == "lb") {
+        const auto& bps = debugger_.breakpoints();
+        if (bps.empty()) {
+            feedback_message_ = "No breakpoints.";
+        } else {
+            std::ostringstream oss;
+            bool first = true;
+            for (const auto& entry : bps) {
+                const Breakpoint& bp = entry.second;
+                if (!first) oss << " | ";
+                first = false;
+                oss << "PC=" << bp.pc << (bp.enabled ? " [on]" : " [off]");
+                if (bp.condition) oss << " if " << formatCondition(*bp.condition);
+                oss << " hits=" << bp.hits;
+            }
+            feedback_message_ = oss.str();
+        }
+    } else if (action == "w" || action == "watch") {
+        std::string kind;
+        std::string target;
+        iss >> kind >> target;
+        if (kind == "mem" && !target.empty() &&
+            target.find_first_not_of("0123456789") == std::string::npos) {
+            const int id = debugger_.addMemoryWatchpoint(static_cast<uint32_t>(std::stoul(target)));
+            if (id < 0) {
+                feedback_message_ = "Address " + target + " is outside data memory.";
+                feedback_is_error_ = true;
+            } else {
+                feedback_message_ = "Watchpoint #" + std::to_string(id) + " on mem[" + target + "]";
+            }
+        } else if (kind == "reg" && target.size() >= 2 && (target[0] == 'R' || target[0] == 'r') &&
+                   target.find_first_not_of("0123456789", 1) == std::string::npos &&
+                   std::stoul(target.substr(1)) < static_cast<unsigned long>(kNumGPRegisters)) {
+            const unsigned long n = std::stoul(target.substr(1));
+            const int id = debugger_.addRegisterWatchpoint(static_cast<Register>(n));
+            feedback_message_ = "Watchpoint #" + std::to_string(id) + " on R" + std::to_string(n);
+        } else {
+            feedback_message_ = "Usage: :watch mem <addr> | :watch reg <R0-R15>";
+            feedback_is_error_ = true;
+        }
+    } else if (action == "uw" || action == "unwatch") {
+        std::string which;
+        iss >> which;
+        if (which == "all") {
+            debugger_.clearWatchpoints();
+            feedback_message_ = "All watchpoints cleared.";
+        } else if (!which.empty() && which.find_first_not_of("0123456789") == std::string::npos &&
+                   debugger_.removeWatchpoint(std::stoi(which))) {
+            feedback_message_ = "Removed watchpoint #" + which;
+        } else {
+            feedback_message_ = "Usage: :unwatch <id> | :unwatch all";
+            feedback_is_error_ = true;
+        }
+    } else if (action == "watches" || action == "lw") {
+        const auto& wps = debugger_.watchpoints();
+        if (wps.empty()) {
+            feedback_message_ = "No watchpoints.";
+        } else {
+            std::ostringstream oss;
+            bool first = true;
+            for (const auto& entry : wps) {
+                const Watchpoint& w = entry.second;
+                if (!first) oss << " | ";
+                first = false;
+                oss << "#" << w.id << " ";
+                if (w.kind == WatchKind::Register) oss << "R" << w.target;
+                else                               oss << "mem[" << w.target << "]";
+                oss << (w.enabled ? " [on]" : " [off]")
+                    << " last=" << w.last << " hits=" << w.hits;
+            }
+            feedback_message_ = oss.str();
+        }
     } else if (action == "reset") {
-        std::fill(cpu_.memory().begin(), cpu_.memory().end(), 0);
-        cpu_.loadWords(original_words_);
+        debugger_.reset();
         bin_scroll_ = 0;
         asm_scroll_ = 0;
         auto_scroll_ = true;
@@ -1206,7 +1491,7 @@ void Tui::executeCommand(const std::string& raw_cmd) {
             feedback_is_error_ = false;
         }
     } else if (action == "h" || action == "help" || action == "?") {
-        feedback_message_ = "Commands: :load <path>, :assemble (:asm), :step [n], :clock [n], :run, :break <pc>, :clearbreak, :reset, :mem <s:c>, :config [stage 4|6] [rom horiz|vert] [forward on|off], :trace, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), T (hazard timeline), [ ] (scroll timeline), q (quit)";
+                feedback_message_ = "Commands: :load <path>, :assemble (:asm), :step [n], :clock [n], :run, :break <pc> [if <Rn> <op> <val>], :cond <pc> [<Rn> <op> <val>], :clearbreak, :breaks, :enable|:disable break <pc>|watch <id>, :watch mem <addr>|reg <Rn>, :watches, :unwatch <id>|all, :reset, :mem <s:c>, :config [stage 4|6] [rom horiz|vert] [forward on|off], :trace, :quit. Keys: s/n/Enter (step), c (clock), r (run), j/k (scroll), T (hazard timeline), [ ] (scroll timeline), q (quit)";
     } else {
         feedback_message_ = "Unknown command '" + action + "'. Type ':help' for available commands.";
         feedback_is_error_ = true;
@@ -1218,7 +1503,8 @@ void Tui::installProgram(std::vector<uint32_t> words) {
     cpu_.loadWords(words);
     code_words_ = cpu_.codeWords();
     original_words_ = std::move(words);
-    breakpoints_.clear();
+    debugger_.clearBreakpoints();
+    debugger_.clearWatchpoints();
     bin_scroll_ = 0;
     asm_scroll_ = 0;
     auto_scroll_ = true;

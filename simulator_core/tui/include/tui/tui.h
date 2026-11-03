@@ -1,11 +1,11 @@
 #pragma once
 
 #include "simulator_core/cpu.h"
+#include "simulator_core/debugger.h"
 #include "tui/screen.h"
 #include "tui/terminal.h"
 
 #include <cstdint>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -59,8 +59,10 @@ private:
     void renderFeedback(int r, int c, int h, int w);
 
     std::string formatActiveStage(uint32_t pc) const;
+    std::string describeStop(const StopInfo& info) const;
 
     Cpu& cpu_;
+    Debugger debugger_;
     std::vector<std::string> raw_assembly_;
     std::vector<uint32_t> code_words_;
     std::vector<uint32_t> original_words_;
@@ -95,7 +97,6 @@ private:
     std::vector<DialogRow> dialog_rows_;
     int dialog_selected_ = 0;
 
-    std::set<uint32_t> breakpoints_;
 };
 
 } // namespace risc201
