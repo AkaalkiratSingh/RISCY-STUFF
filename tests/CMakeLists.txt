@@ -58,3 +58,7 @@ add_test(NAME LiteralsTest COMMAND literals_test)
 add_executable(preprocessor_test preprocessor_test.cpp)
 target_link_libraries(preprocessor_test PRIVATE assembler_lib)
 add_test(NAME PreprocessorTest COMMAND preprocessor_test)
+
+add_executable(debugger_test debugger_test.cpp)
+target_link_libraries(debugger_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME DebuggerTest COMMAND debugger_test)

@@ -37,6 +37,7 @@ namespace risc201 {
         std::vector<int32_t>& memory() { return memory_; }
         const std::vector<int32_t>& memory() const { return memory_; }
         const std::vector<uint32_t>& codeWords() const { return code_; }
+        const std::vector<uint32_t>& sourceWords() const { return source_words_; }
 
         uint64_t cycles() const { return cycles_; }
         uint64_t retired() const { return retired_; }

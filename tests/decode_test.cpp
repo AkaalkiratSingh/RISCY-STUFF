@@ -124,7 +124,7 @@ int main() {
 
     section("Decoder: BGT is a J_TYPE branch");
     {
-        const Instruction d = decodeInstruction(0xE0000008u);
+        const Instruction d = decodeInstruction(0x98000008u);
         CHECK(d.opcode == Opcode::BGT);
         CHECK(d.format == InstrFormat::J_TYPE);
         CHECK_EQ(d.imm, 8);
