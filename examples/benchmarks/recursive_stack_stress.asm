@@ -1,0 +1,26 @@
+.main:
+MOV R8, 128
+MOV R9, 0
+repeat:
+MOV R1, 128
+CALL sum
+ADD R9, R9, R2
+SUB R8, R8, 1
+BEQ done
+JMP repeat
+done:
+HALT
+sum:
+CMP R1, 0
+BEQ base
+PUSH R14
+PUSH R1
+SUB R1, R1, 1
+CALL sum
+POP R1
+POP R14
+ADD R2, R2, R1
+RET
+base:
+MOV R2, 0
+RET

@@ -59,7 +59,7 @@ enum class Opcode : uint8_t {
     FMUL = 0x18,
     FDIV = 0x19,
     FCMP = 0x1A,
-    HALT = 0x1B,
+    HALT = 0x1F,
 };
 
 // 32-bit fixed-width instruction word. Encoding/decoding helpers belong in

@@ -1,5 +1,8 @@
 # RISCY-STUFF (risc201)
 
+**Project evaluation report:** [Specifications, architecture, operation, and measured results](docs/PROJECT_ARCHITECTURE.md).
+
+
 A from-scratch 32-bit processor project: a custom instruction set (**risc201**), a two-pass assembler, and a C++17 simulator whose control unit is driven by real microcode. It also includes a hardware-style stack guard that raises exceptions on stack overflow or underflow.
 
 > **Status: work in progress.**  Several pieces are still stubs or planned (see [Status and roadmap](#status-and-roadmap)).
@@ -287,6 +290,10 @@ RISCY-STUFF/
 ├── demo.sh           # build + run every example with decode listing
 └── CMakeLists.txt
 ```
+
+## Stress benchmarks
+
+Five longer, deterministic workloads are available in [examples/benchmarks](examples/benchmarks/README.md), with expected results, a runner for all eight CPU configurations, and measured counters. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
 
 ## Testing
 
