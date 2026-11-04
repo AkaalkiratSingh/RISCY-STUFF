@@ -1,4 +1,5 @@
 // tests/horizontal_control_unit_test.cpp - horizontal control unit
+#include "control_unit/control_path.h"
 #include "control_unit/horizontal_control_unit.h"
 #include <iostream>
 #include <vector>
@@ -64,7 +65,7 @@ void testEveryOpcodeHasARoutine() {
 void testAddRoutine() {
     ControlUnit cu; Flags f;
     ControlWord w = cu.step(Opcode::ADD, f);
-    CHECK(w.pc_inc && !w.alu_enable && !w.reg_write);
+    CHECK(w.operand_read && !w.alu_enable && !w.reg_write);
     CHECK(!cu.routineDone() && cu.microPC() == 2);
     w = cu.step(Opcode::ADD, f);
     CHECK(w.alu_enable && w.alu_op == Opcode::ADD && w.flag_update && !w.alu_src_imm);
@@ -86,12 +87,12 @@ void testAluOpsCarryTheirOwnFunction() {
 void testFloatRoutines() {
     for (Opcode op : {Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV}) {
         auto r = runAll(op);
-        CHECK(r.size() == 3 && r[0].pc_inc);
+        CHECK(r.size() == 3 && r[0].operand_read);
         CHECK(r[1].alu_enable && r[1].alu_op == op && !r[1].flag_update);
         CHECK(r[2].reg_write && !r[2].mem_to_reg);
     }
     auto c = runAll(Opcode::FCMP);
-    CHECK(c.size() == 2 && c[0].pc_inc);
+    CHECK(c.size() == 2 && c[0].operand_read);
     CHECK(c[1].alu_enable && c[1].alu_op == Opcode::FCMP && c[1].flag_update);
     for (const auto& w : c) CHECK(!w.reg_write && !w.mem_write && !w.mem_read);
 }
@@ -99,14 +100,14 @@ void testFloatRoutines() {
 void testCmpSetsFlagsButWritesNothing() {
     auto r = runAll(Opcode::CMP);
     CHECK(r.size() == 2);
-    CHECK(r[0].pc_inc);
+    CHECK(r[0].operand_read);
     CHECK(r[1].alu_enable && r[1].alu_op == Opcode::CMP && r[1].flag_update);
     for (const auto& w : r) CHECK(!w.reg_write && !w.mem_write && !w.mem_read);
 }
 
 void testLoadStore() {
     auto l = runAll(Opcode::LOAD);
-    CHECK(l.size() == 4 && l[0].pc_inc);
+    CHECK(l.size() == 4 && l[0].operand_read);
     CHECK(l[1].alu_enable && l[1].alu_src_imm && l[1].alu_op == Opcode::ADD && !l[1].flag_update);
     CHECK(l[2].mem_read && !l[2].mem_write);
     CHECK(l[2].addr_check && !l[2].mem_addr_sp);                  // bounds check, address from the ALU
@@ -120,12 +121,12 @@ void testLoadStore() {
 void testJmpHaltNop() {
     auto j = runAll(Opcode::JMP);  CHECK(j.size() == 1 && j[0].pc_write && !j[0].pc_inc);
     auto h = runAll(Opcode::HALT); CHECK(h.size() == 1 && h[0].halt);
-    auto n = runAll(Opcode::NOP);  CHECK(n.size() == 1 && n[0].pc_inc && !n[0].halt && !n[0].alu_enable);
+    auto n = runAll(Opcode::NOP);  CHECK(n.size() == 1 && !n[0].pc_inc && !n[0].halt && !n[0].alu_enable);
 }
 
 void testMov() {
     auto r = runAll(Opcode::MOV);
-    CHECK(r.size() == 3 && r[0].pc_inc);
+    CHECK(r.size() == 3 && r[0].operand_read);
     CHECK(r[1].alu_enable && r[1].alu_op == Opcode::MOV && !r[1].flag_update);
     CHECK(r[2].reg_write && !r[2].mem_to_reg);
 }
@@ -138,7 +139,7 @@ void testBeq() {
     { ControlUnit cu; Flags nz = flagsWithZero(false);
       ControlWord w = cu.step(Opcode::BEQ, nz);
       CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 33);
-      w = cu.step(Opcode::BEQ, nz); CHECK(w.pc_inc && !w.pc_write && cu.routineDone()); }
+      w = cu.step(Opcode::BEQ, nz); CHECK(!w.pc_inc && !w.pc_write && cu.routineDone()); }
 }
 
 void testBgt() {
@@ -152,7 +153,7 @@ void testBgt() {
       ControlWord w = cu.step(Opcode::BGT, ng);
       CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 61);
       w = cu.step(Opcode::BGT, ng);                                // not-taken row
-      CHECK(w.pc_inc && !w.pc_write && cu.routineDone()); }
+      CHECK(!w.pc_inc && !w.pc_write && cu.routineDone()); }
     // BGT looks only at greaterThan: Z, N, C, V alone must not take it.
     Flags other; other.zero = other.negative = other.carry = other.overflow = other.equal = true;
     { ControlUnit cu; cu.step(Opcode::BGT, other); CHECK(cu.microPC() == 61); }
@@ -162,7 +163,7 @@ void testBgt() {
 
 void testCallRetRows() {
     auto c = runAll(Opcode::CALL);
-    CHECK(c.size() == 3 && c[0].pc_inc);
+    CHECK(c.size() == 3 && c[0].operand_read);
     CHECK(c[1].ra_write && !c[1].pc_write);
     CHECK(c[2].pc_write && !c[2].pc_src_mem && !c[2].pc_src_ra);
     auto r = runAll(Opcode::RET);
@@ -196,6 +197,9 @@ struct ToyMachine {
     bool run(Opcode op, uint32_t target = 0) {
         ControlUnit cu; Flags f;
         fault = ExceptionCode::NONE;
+        for (int address : frontendRows(cu)) {
+            if (!apply(cu.controlMemory()[static_cast<size_t>(address)].ctl, target)) return false;
+        }
         for (int guard = 0; guard < 16; ++guard) {
             const ControlWord w = cu.step(op, f);
             if (!apply(w, target)) { fault = cu.pendingException(); return false; }
@@ -233,7 +237,7 @@ void testBackToBackAndIllegal() {
 
 void testControlMemoryWellFormed() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    CHECK(cm.size() == 77);
+    CHECK(cm.size() == 79);
     CHECK(cm.size() <= kMaxControlMemoryRows);
     for (const MicroOp& r : cm) {
         CHECK(r.next == kMicroEnd || (r.next >= 0 && r.next < static_cast<int32_t>(cm.size())));
@@ -247,7 +251,7 @@ void testControlMemoryWellFormed() {
         CHECK(!r.ctl.pc_src_ra   || r.ctl.pc_write);
         CHECK(!(r.ctl.pc_src_mem && r.ctl.pc_src_ra));
         CHECK(!r.ctl.stack_check || r.ctl.mem_addr_sp);
-        CHECK((ControlUnit::packHorizontal(r) >> 44) == 0);       // microword is 44 bits
+        CHECK((ControlUnit::packHorizontal(r) >> 48) == 0);
         CHECK(!r.ctl.addr_check || ((r.ctl.mem_read || r.ctl.mem_write) && !r.ctl.mem_addr_sp));
         CHECK(!(r.ctl.addr_check && r.ctl.stack_check));          // one guard per access
         CHECK(static_cast<unsigned>(r.cond) <= 7u);               // cond field is 3 bits
@@ -286,7 +290,7 @@ constexpr ExceptionCode kDivZero = ExceptionCode::DIVIDE_BY_ZERO;
 void testAluFaultAbortsRoutineWithoutCommitting() {
     ControlUnit cu; Flags f;
     ControlWord w = cu.step(Opcode::DIV, f, kDivZero);          // fetch row: ALU idle, fault not honoured
-    CHECK(w.pc_inc && cu.pendingException() == ExceptionCode::NONE);
+    CHECK(w.operand_read && cu.pendingException() == ExceptionCode::NONE);
 
     w = cu.step(Opcode::DIV, f, kDivZero);                      // execute row: fault honoured
     // every control signal of the faulting cycle is deleted
@@ -307,7 +311,7 @@ void testAluFaultAbortsRoutineWithoutCommitting() {
 void testFaultIgnoredWhileAluIsIdle() {
     ControlUnit cu; Flags f;
     ControlWord w = cu.step(Opcode::ADD, f, kDivZero);          // row 1 = fetch (no ALU)
-    CHECK(w.pc_inc && !w.trap && cu.pendingException() == ExceptionCode::NONE);
+    CHECK(w.operand_read && !w.trap && cu.pendingException() == ExceptionCode::NONE);
     CHECK(cu.microPC() == 2);                                  // routine continues normally
 }
 
@@ -347,7 +351,7 @@ void testNormalExecutionIsUnaffected() {
     CHECK(cu.pendingException() == ExceptionCode::NONE && cu.routineDone());
     int traps = 0;
     for (const MicroOp& r : cu.controlMemory()) traps += r.ctl.trap ? 1 : 0;
-    CHECK(traps == 1);                                         // only the TRAP row asserts trap
+    CHECK(traps == 2);
 }
 
 // Toy datapath: one destination register, FLAGS, a halted bit.

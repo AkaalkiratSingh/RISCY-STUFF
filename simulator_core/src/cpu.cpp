@@ -1,25 +1,14 @@
 #include "simulator_core/cpu.h"
 
+#include "control_unit/control_path.h"
 #include "simulator_core/decoder.h"
 
 #include <cstddef>
+#include <stdexcept>
 
 namespace risc201 {
 
     namespace {
-
-        bool condHolds(BranchCond c, const Flags& f) {
-            switch (c) {
-            case BranchCond::None:     return false;
-            case BranchCond::Zero:     return f.zero;
-            case BranchCond::NotZero:  return !f.zero;
-            case BranchCond::Negative: return f.negative;
-            case BranchCond::Carry:    return f.carry;
-            case BranchCond::Overflow: return f.overflow;
-            case BranchCond::GreaterThan: return f.greaterThan;
-            }
-            return false;
-        }
 
         int stageWith(const StageLayout& layout, bool StageSlot::* which) {
             for (size_t i = 0; i < layout.count; ++i) {
@@ -35,10 +24,13 @@ namespace risc201 {
         encoding_(encoding),
         memory_(memory_words, 0),
         control_unit_(MicrocodeEncoding::Horizontal),
+        vertical_unit_(),
         stack_guard_(memory_words, 0),
         controls_(encoding == MicrocodeEncoding::Vertical
-                      ? buildStageControls(VerticalControlUnit{})
+                      ? buildStageControls(vertical_unit_)
                       : buildStageControls(control_unit_)) {
+        frontend_ = encoding == MicrocodeEncoding::Vertical
+            ? frontendControls(vertical_unit_) : frontendControls(control_unit_);
         state_.sp = memory_words;
         state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         resetPipeline();
@@ -47,8 +39,10 @@ namespace risc201 {
     void Cpu::resetPipeline() {
         regs_.fill(Latch{});
         trace_.clear();
+        micro_trace_.clear();
         fetch_pc_ = 0;
         stop_fetch_ = false;
+        fetch_held_ = false;
 
         const StageLayout layout = layoutFor(variant_);
         n_slots_ = static_cast<int>(layout.count);
@@ -86,9 +80,13 @@ namespace risc201 {
         variant_ = variant;
         encoding_ = encoding;
         control_unit_ = ControlUnit(MicrocodeEncoding::Horizontal);
+        vertical_unit_ = VerticalControlUnit{};
         controls_ = encoding == MicrocodeEncoding::Vertical
-                        ? buildStageControls(VerticalControlUnit{})
+                        ? buildStageControls(vertical_unit_)
                         : buildStageControls(control_unit_);
+        frontend_ = encoding == MicrocodeEncoding::Vertical
+            ? frontendControls(vertical_unit_) : frontendControls(control_unit_);
+        routine_ends_valid_ = false;
         memory_.assign(memory_.size(), 0);
         loadWords(source_words_);
     }
@@ -120,7 +118,7 @@ namespace risc201 {
 
     Latch Cpu::fetchStage(bool stall) {
         Latch out;
-        if (stop_fetch_) return out;
+        if (stop_fetch_ || fetch_held_ || !frontend_.ir_load) return out;
 
         if (fetch_pc_ >= code_.size()) {
             out.valid = true;
@@ -135,7 +133,7 @@ namespace risc201 {
         out.valid = true;
         out.pc = fetch_pc_;
         out.word = code_[fetch_pc_];
-        if (!stall) fetch_pc_ += 1;
+        if (!stall && frontend_.pc_inc) fetch_pc_ += 1;
         return out;
     }
 
@@ -208,6 +206,8 @@ namespace risc201 {
     }
 
     bool Cpu::wouldStall(uint32_t* pc) const {
+        if (fetch_held_) return false;
+
         Latch candidate;
 
         if (ex_slot_ == 1) {
@@ -243,23 +243,37 @@ namespace risc201 {
     }
 
     void Cpu::applySlot(const StageSlot& slot, Latch& out, Effects& fx) {
-        if (out.fault) return;
+        if (out.fault) {
+            if (slot.EX) {
+                fx.fault = true;
+                fx.code = out.fault_code;
+            }
+            return;
+        }
 
-        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
-
-        if (slot.ID && !out.decoded) {
+        if (slot.ID && !out.decoded && frontend_.instr_decode && frontend_.opcode_dispatch) {
             out.instr = decodeInstruction(out.word);
             out.decoded = true;
+            if (control_unit_.routineEntry(out.instr.opcode) ==
+                control_unit_.routineEntry(static_cast<Opcode>(0xFF))) {
+                out.fault = true;
+                out.fault_code = ExceptionCode::ILLEGAL_INSTRUCTION;
+                return;
+            }
             if (controls_[static_cast<uint8_t>(out.instr.opcode)].halting) fx.stop_fetch = true;
         }
 
-        if (slot.OF && out.decoded) {
+        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
+
+        if (slot.OF && out.decoded && controls_[op].operand_read) {
             out.rs1_val = state_.registers[static_cast<size_t>(out.instr.rs1)];
             out.rs2_val = state_.registers[static_cast<size_t>(out.instr.rs2)];
             out.rd_val  = state_.registers[static_cast<size_t>(out.instr.rd)];
+            out.ra_val = state_.registers[static_cast<size_t>(Register::R14)];
         }
 
         if (slot.EX && out.decoded) {
+            out.execution_flags = state_.flags;
             const StageControls& c = controls_[op];
 
             if (forwarding_) {
@@ -294,8 +308,8 @@ namespace risc201 {
 
             if (c.pc_from_ra) {
                 const int32_t ra = forwarding_
-                    ? bypass(Register::R14, static_cast<int32_t>(state_.registers[static_cast<size_t>(Register::R14)]))
-                    : static_cast<int32_t>(state_.registers[static_cast<size_t>(Register::R14)]);
+                    ? bypass(Register::R14, out.ra_val)
+                    : out.ra_val;
                 out.redirect = true;
                 out.next_pc = static_cast<uint32_t>(ra);
                 fx.taken = true;
@@ -358,6 +372,8 @@ namespace risc201 {
 
         if (out.fault) {
             state_.pending_exception = out.fault_code;
+            state_.fault_info = FaultInfo{out.pc, n_slots_ - 1, out.pc};
+            ++trace_.faults;
             stop_fetch_ = true;
             return;
         }
@@ -376,6 +392,7 @@ namespace risc201 {
         if (c.ra_write) {
             state_.registers[static_cast<size_t>(Register::R14)] = static_cast<int32_t>(out.pc + 1);
         }
+        recordMicroTrace(out);
         state_.pc = out.pc;
         if (!c.halting) ++retired_;
     }
@@ -431,6 +448,16 @@ namespace risc201 {
 
             if (!wrong_path && !have_effect &&
                 (here.fault || here.taken || here.stop_fetch)) {
+                if (here.fault) {
+                    FaultInfo info{out.pc, i, std::nullopt};
+                    if (here.code == ExceptionCode::INVALID_MEMORY_ACCESS) {
+                        const auto& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
+                        info.address = out.fault ? out.pc : (c.mem_addr_sp ? out.mem_sp_addr
+                                                   : static_cast<uint32_t>(out.alu_result));
+                    }
+                    state_.fault_info = info;
+                    recordMicroTrace(out, here.code);
+                }
                 oldest = here;
                 have_effect = true;
                 effect_slot = i;
@@ -481,7 +508,99 @@ namespace risc201 {
         if (stop_fetch_ && pipelineEmpty()) state_.halted = true;
     }
 
+    void Cpu::recordMicroTrace(const Latch& instruction, ExceptionCode fault) {
+        if (!micro_tracing_ || (instruction.fault &&
+            instruction.fault_code == ExceptionCode::INVALID_MEMORY_ACCESS)) return;
+
+        const auto record = [&](const auto& unit) {
+            const auto& cm = unit.controlMemory();
+            for (const ControlStep& step : controlPath(unit, instruction.instr.opcode,
+                                                       instruction.execution_flags, fault)) {
+                const MicroOp& row = cm[static_cast<size_t>(step.micro_pc)];
+                const uint64_t packed = encoding_ == MicrocodeEncoding::Vertical
+                    ? packVertical(row, step.micro_pc)
+                    : ControlUnit::packHorizontal(row);
+                micro_trace_.push_back({cycles_, instruction.pc, instruction.instr.opcode,
+                    static_cast<uint32_t>(step.micro_pc), step.next, packed, step.signals,
+                    step.condition, step.exception});
+            }
+        };
+
+        if (encoding_ == MicrocodeEncoding::Vertical) {
+            record(vertical_unit_);
+        } else {
+            record(control_unit_);
+        }
+    }
+
+    std::vector<MicroPcView> Cpu::microSnapshot() const {
+        const StageLayout layout = layoutFor(variant_);
+
+        const auto snapshotFor = [&](const auto& unit) {
+            std::vector<MicroPcView> views;
+
+            const auto appendFor = [&](const std::vector<PathStep>& rows,
+                                       PipelineStage stage, uint32_t pc) {
+                const StageMask bit = stageBit(stage);
+                for (const PathStep& step : rows) {
+                    if (step.stages & bit) {
+                        views.push_back({pc, pipelineStageName(stage), step.micro_pc,
+                                         step.signals});
+                        return;
+                    }
+                }
+            };
+
+            for (int i = 0; i < n_slots_; ++i) {
+                const Latch& l = regs_[static_cast<size_t>(i)];
+                if (!l.valid) continue;
+
+                const StageSlot& slot = layout[static_cast<size_t>(i)];
+                const std::vector<PathStep>& rows =
+                    opcodeLayout(unit, l.decoded ? l.instr.opcode : Opcode::NOP);
+
+                if (slot.IF)  appendFor(rows, PipelineStage::IF, l.pc);
+                if (!l.decoded) continue;
+                if (slot.ID)  appendFor(rows, PipelineStage::ID, l.pc);
+                if (slot.OF)  appendFor(rows, PipelineStage::OF, l.pc);
+                if (slot.EX)  appendFor(rows, PipelineStage::EX, l.pc);
+                if (slot.MEM) appendFor(rows, PipelineStage::MEM, l.pc);
+                if (slot.WB)  appendFor(rows, PipelineStage::WB, l.pc);
+            }
+
+            if (fetching() && !fetch_held_) {
+                const std::vector<PathStep>& rows = opcodeLayout(unit, Opcode::NOP);
+                for (const PathStep& step : rows) {
+                    if (step.stages & stageBit(PipelineStage::IF)) {
+                        views.push_back({fetch_pc_, "IF", step.micro_pc, step.signals});
+                        break;
+                    }
+                }
+            }
+            return views;
+        };
+
+        return encoding_ == MicrocodeEncoding::Vertical ? snapshotFor(vertical_unit_)
+                                                        : snapshotFor(control_unit_);
+    }
+
+    const std::vector<MicroOp>& Cpu::controlMemory() const {
+        return encoding_ == MicrocodeEncoding::Vertical ? vertical_unit_.controlMemory()
+                                                        : control_unit_.controlMemory();
+    }
+
+    const std::vector<int>& Cpu::routineEnds() const {
+        if (!routine_ends_valid_) {
+            routine_ends_ = encoding_ == MicrocodeEncoding::Vertical
+                ? risc201::routineEnds(vertical_unit_)
+                : risc201::routineEnds(control_unit_);
+            routine_ends_valid_ = true;
+        }
+        return routine_ends_;
+    }
+
     void Cpu::step() {
+        micro_trace_.clear();
         if (state_.halted) return;
         ++cycles_;
         tick();

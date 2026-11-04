@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <iomanip>
+#include <map>
 #include <sstream>
 #include <thread>
 #include <optional>
@@ -207,14 +208,20 @@ void Tui::render() {
     // Column 1 (Assembly): ~28%
     // Column 2 (Binary):   ~34%
     // Column 3 (Right):    Remainder
+    // Widest binary row: "[ 11] 0x7C7C0000 STORE R1, 0[R15] ◄[MEM]" (40 columns).
+    // Three spare columns plus two borders give the ROM pane the rest of the width.
+    constexpr int kBinaryPaneWidth = 45;
     int col1_w = (total_cols * 28) / 100;
-    int col2_w = (total_cols * 34) / 100;
     if (col1_w < 20) col1_w = 20;
-    if (col2_w < 26) col2_w = 26;
+    int col2_w = std::min(kBinaryPaneWidth, total_cols - col1_w - 28);
+    if (col2_w < 26) {
+        col2_w = 26;
+        col1_w = std::max(18, total_cols - col2_w - 28);
+    }
     int col3_w = total_cols - col1_w - col2_w;
     if (col3_w < 28) {
         col3_w = 28;
-        col1_w = std::max(18, (total_cols - col3_w) * 45 / 100);
+        col1_w = std::max(18, total_cols - col3_w - 26);
         col2_w = std::max(22, total_cols - col1_w - col3_w);
     }
 
@@ -224,13 +231,17 @@ void Tui::render() {
 
     const int reg_cols = (col3_w - 2 >= 36) ? 4 : 2;
     const int reg_rows = (kNumGPRegisters + reg_cols - 1) / reg_cols;
-    const int reg_h = std::min(reg_rows + 5, top_h - 5);
+    const int reserve = top_h >= 14 ? 7 : 5;
+    const int reg_h = std::min(reg_rows + 5, top_h - reserve);
     const int sub_h = top_h - reg_h;
     const int stats_w = (col3_w * 54) / 100;
     const int stack_w = col3_w - stats_w;
+    const int rom_h = (sub_h >= 6) ? std::max(3, (sub_h * 45) / 100) : 0;
+    const int stats_h = sub_h - rom_h;
 
     renderRegisters(0, col1_w + col2_w, reg_h, col3_w);
-    renderExtraStats(reg_h, col1_w + col2_w, sub_h, stats_w);
+    renderExtraStats(reg_h, col1_w + col2_w, stats_h, stats_w);
+    if (rom_h > 0) renderControlRom(reg_h + stats_h, col1_w + col2_w, rom_h, stats_w);
     renderMemory(reg_h, col1_w + col2_w + stats_w, sub_h, stack_w);
 
     asm_view_h_ = std::max(0, top_h - 2);
@@ -251,7 +262,8 @@ void Tui::render() {
             case Pane::Assembly:  fr = 0;     fc = 0;                               fh = top_h;  fw = col1_w;    break;
             case Pane::Binary:    fr = 0;     fc = col1_w;                          fh = top_h;  fw = col2_w;    break;
             case Pane::Registers: fr = 0;     fc = col1_w + col2_w;                 fh = reg_h;  fw = col3_w;    break;
-            case Pane::Stats:     fr = reg_h; fc = col1_w + col2_w;                 fh = sub_h;  fw = stats_w;   break;
+            case Pane::Stats:     fr = reg_h; fc = col1_w + col2_w;                 fh = stats_h; fw = stats_w;  break;
+            case Pane::ControlRom: fr = reg_h + stats_h; fc = col1_w + col2_w;      fh = rom_h;   fw = stats_w;  break;
             case Pane::Memory:    fr = reg_h; fc = col1_w + col2_w + stats_w;       fh = sub_h;  fw = stack_w;   break;
             case Pane::Timeline:  fr = top_h; fc = 0;                               fh = trace_h; fw = total_cols; break;
         }
@@ -529,6 +541,79 @@ void Tui::renderExtraStats(int r, int c, int h, int w) {
     }
 }
 
+void Tui::renderControlRom(int r, int c, int h, int w) {
+    const std::string title =
+        cpu_.encoding() == MicrocodeEncoding::Vertical ? "CONTROL ROM V" : "CONTROL ROM H";
+    screen_.drawBox(r, c, h, w, title,
+                    Style{Color::White, Color::Default, false},
+                    Style{Color::BrightCyan, Color::Default, true});
+
+    const int inner_h = h - 2;
+    const int inner_w = w - 2;
+    if (inner_h <= 0 || inner_w <= 0) return;
+    rom_view_h_ = inner_h;
+
+    const auto& rom = cpu_.controlMemory();
+    if (rom.empty()) return;
+
+    const std::vector<MicroPcView> views = cpu_.microSnapshot();
+
+    // Oldest in-flight instruction that has a control row for its current stage.
+    // Some stages have no row (an ALU op in MEM), so `nextPc()` alone can miss.
+    uint32_t target_pc = debugger_.nextPc();
+    const auto& stages = cpu_.stages();
+    for (int i = cpu_.stageCount() - 1; i >= 0; --i) {
+        const Latch& latch = stages[static_cast<size_t>(i)];
+        if (!latch.valid) continue;
+        const bool has_view = std::any_of(views.begin(), views.end(),
+            [&](const MicroPcView& view) { return view.pc == latch.pc; });
+        if (has_view) {
+            target_pc = latch.pc;
+            break;
+        }
+    }
+
+    std::map<int, std::string> active;
+    int active_micro_pc = -1;
+    for (const MicroPcView& view : views) {
+        if (view.pc != target_pc) continue;
+        if (active_micro_pc < 0) active_micro_pc = view.micro_pc;
+        std::string& label = active[view.micro_pc];
+        if (!label.empty()) label += ", ";
+        label += std::string(view.stage) + " pc=" + std::to_string(view.pc);
+    }
+
+    const int max_top = std::max(0, static_cast<int>(rom.size()) - inner_h);
+    if (rom_follow_) {
+        rom_scroll_ = active_micro_pc >= 0
+            ? std::max(0, active_micro_pc - inner_h / 2)
+            : (views.empty() ? 0 : std::max(0, views.front().micro_pc - inner_h / 2));
+    }
+    rom_scroll_ = std::max(0, std::min(rom_scroll_, max_top));
+
+    const std::vector<int>& ends = cpu_.routineEnds();
+    int row = 0;
+    for (int address = rom_scroll_; row < inner_h && address < static_cast<int>(rom.size());
+         ++address) {
+        const auto hit = active.find(address);
+        const bool on = hit != active.end();
+        std::ostringstream line;
+        line << (on ? "►" : " ") << std::right << std::setw(3) << std::setfill('0')
+             << address << std::setfill(' ') << " "
+             << controlSignalNames(rom[static_cast<size_t>(address)].ctl);
+        if (on) line << " [" << hit->second << "]";
+
+        Style style{Color::Default, Color::Default, false};
+        if (on) {
+            style.fg = Color::BrightGreen;
+            style.bold = true;
+        }
+        screen_.drawText(r + 1 + row, c + 1, line.str(), style, inner_w);
+        ++row;
+        if (std::binary_search(ends.begin(), ends.end(), address)) ++row;
+    }
+}
+
 void Tui::renderMemory(int r, int c, int h, int w) {
     const uint32_t sp = cpu_.state().sp;
     const auto& memory = cpu_.memory();
@@ -716,6 +801,11 @@ uint32_t Tui::memoryTop() const {
 }
 
 void Tui::scrollFocused(int delta) {
+    if (pane_ == Pane::ControlRom) {
+        rom_follow_ = false;
+        rom_scroll_ = std::max(0, rom_scroll_ + delta);
+        return;
+    }
     if (pane_ == Pane::Memory) {
         mem_follow_sp_ = false;
         const int next = static_cast<int>(mem_anchor_) - delta;
@@ -735,6 +825,8 @@ void Tui::clampFocusedScroll() {
     bin_scroll_ = std::max(0, std::min(bin_scroll_,
         std::max(0, static_cast<int>(code_words_.size()) - bin_view_h_)));
     mem_anchor_ = std::min(mem_anchor_, static_cast<uint32_t>(cpu_.memory().size()));
+    const int rom_max = std::max(0, static_cast<int>(cpu_.controlMemory().size()) - rom_view_h_);
+    rom_scroll_ = std::max(0, std::min(rom_scroll_, rom_max));
 }
 
 void Tui::cyclePane() {
@@ -743,7 +835,8 @@ void Tui::cyclePane() {
             case Pane::Assembly:  pane_ = Pane::Binary; break;
             case Pane::Binary:    pane_ = Pane::Registers; break;
             case Pane::Registers: pane_ = Pane::Stats; break;
-            case Pane::Stats:     pane_ = Pane::Memory; break;
+            case Pane::Stats:     pane_ = Pane::ControlRom; break;
+            case Pane::ControlRom: pane_ = Pane::Memory; break;
             case Pane::Memory:    pane_ = Pane::Timeline; break;
             case Pane::Timeline:  pane_ = Pane::Assembly; break;
         }
@@ -757,6 +850,7 @@ std::string Tui::paneName() const {
         case Pane::Binary:    return "BIN";
         case Pane::Registers: return "REGS";
         case Pane::Stats:     return "STATS";
+        case Pane::ControlRom: return "ROM";
         case Pane::Memory:    return "MEM";
         case Pane::Timeline:  return "TRACE";
     }
@@ -978,6 +1072,9 @@ void Tui::handleKey(const KeyEvent& ev) {
             if (pane_ == Pane::Memory) {
                 mem_anchor_ = 0;
                 mem_follow_sp_ = false;
+            } else if (pane_ == Pane::ControlRom) {
+                rom_follow_ = false;
+                rom_scroll_ = 0;
             } else if (int* scroll = focusedScroll()) {
                 auto_scroll_ = false;
                 *scroll = 0;
@@ -994,6 +1091,9 @@ void Tui::handleKey(const KeyEvent& ev) {
             } else if (pane_ == Pane::Binary) {
                 auto_scroll_ = false;
                 bin_scroll_ = static_cast<int>(code_words_.size());
+            } else if (pane_ == Pane::ControlRom) {
+                rom_follow_ = false;
+                rom_scroll_ = static_cast<int>(cpu_.controlMemory().size());
             }
             return;
         }
@@ -1507,6 +1607,8 @@ void Tui::installProgram(std::vector<uint32_t> words) {
     debugger_.clearWatchpoints();
     bin_scroll_ = 0;
     asm_scroll_ = 0;
+    rom_scroll_ = 0;
+    rom_follow_ = true;
     auto_scroll_ = true;
 }
 

@@ -1,5 +1,8 @@
 # RISCY-STUFF (risc201)
 
+**Project evaluation report:** [Specifications, architecture, operation, and measured results](docs/PROJECT_ARCHITECTURE.md).
+
+
 A from-scratch 32-bit processor project: a custom instruction set (**risc201**), a two-pass assembler, and a C++17 simulator whose control unit is driven by real microcode. It also includes a hardware-style stack guard that raises exceptions on stack overflow or underflow.
 
 > **Status: work in progress.**  Several pieces are still stubs or planned (see [Status and roadmap](#status-and-roadmap)).
@@ -23,7 +26,7 @@ A from-scratch 32-bit processor project: a custom instruction set (**risc201**),
 ## Highlights
 
 - **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 44-bit microword.
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword.
 - **ALU built from gate-level ideas:** a 32-bit carry-lookahead adder (eight chained 4-bit CLA blocks) and a radix-4 Booth multiplier.
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
@@ -93,9 +96,9 @@ build/simulator_core/tui/risc201-tui examples/recursive_sum.asm
 
 With no path the TUI starts empty — press `Tab` to focus the assembly pane and `e` to write a program from scratch. It accepts the same pipeline options as the simulator CLI: `-4`/`-6`, `--no-forward`, `--horizontal`/`--vertical` and `--trace`.
 
-The screen has panes for raw assembly, assembled binary, registers, extra stats and memory, plus an optional hazard timeline. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
+The screen has panes for raw assembly, assembled binary, registers, extra stats, a live control-ROM cursor and memory, plus an optional hazard timeline. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
 
-**Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
+**Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane follows the active control row of the oldest in-flight instruction, with blank separators between instruction routines (addresses are unchanged); `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
 
 **Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`; `:assemble` applies the buffer and clears it. A failed assembly reports the error and leaves the running program untouched.
 
@@ -115,6 +118,8 @@ Commands (type `:` in normal or inspect mode):
 | `:help`, `:quit` | Show help / quit |
 
 Stage and ROM changes restart the run (a dialog applies both in one reset); forwarding changes apply live.
+
+Breakpoints are fetch barriers. When one fires, fetching stops before that PC is admitted, the older instructions drain and retire, and the debugger reports the stop with an empty pipeline at the breakpoint PC. Resuming therefore starts a fresh pipeline exactly at that instruction.
 
 ### Assemble to a file
 
@@ -216,7 +221,57 @@ An exception halts the CPU and is reported by the simulator.
  └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Each instruction is expanded into a micro-routine by the control unit. The `Cpu` steps through that routine one control word at a time, driving the ALU, memory, PC and SP, and consulting the stack guard on stack accesses.
+The control ROM includes a shared front end: `ir_load pc_inc` fetches a word and
+advances the word-index PC, then `instr_decode opcode_dispatch` decodes it and
+selects its opcode routine. Instruction bodies use `operand_read` when operands
+are needed, followed by ALU, memory, branch and writeback signals. RET's combined
+`operand_read pc_write pc_src_ra` row reads R14 in OF and redirects in EX.
+
+The CPU gates IF and ID with the selected ROM's shared controls, and OF with the
+decoded instruction's `operand_read` control. The four-stage pipeline combines
+IF/ID/OF in one slot; the six-stage pipeline keeps them separate. These signals
+change who authorizes each operation without adding pipeline clocks.
+
+Generated ROM references show the physical ROM and each instruction's complete
+flow, repeating the shared prefix by address before its opcode-specific rows:
+
+- [Horizontal ROM](docs/control_rom_horizontal.txt): 48-bit packed words.
+- [Vertical ROM](docs/control_rom_vertical.txt): 16-bit words, 22 micro-op codes.
+
+Regenerate both files from the actual ROM definitions with:
+
+```bash
+cmake --build build --target export_control_rom
+```
+
+`ControlRomListings` in CTest fails if either checked-in listing differs from the
+current ROM. The `risc201-rom` exporter also accepts `--check <directory>`.
+
+The CPU derives a per-opcode control bundle from each ROM routine and applies those
+signals in the pipeline stages. It does not advance a single global microPC during
+pipeline execution; several instructions overlap.
+
+`--micro-trace` reconstructs each retired or faulting instruction's microcode path
+using the selected sequencer and the flags captured when that instruction executes.
+The shared fetch/decode rows are included before each opcode routine.
+Each row shows its instruction PC, microPC, successor (or END), packed ROM word,
+output signals, branch condition, and exception. The cycle label identifies the
+pipeline retirement/fault clock, not a separate clock for each microcode row.
+Squashed instructions are omitted. Faulting rows show suppressed signals followed
+by the TRAP row; an invalid instruction fetch has no microcode routine to display.
+
+```bash
+build/simulator_core/risc201-sim examples/recursive_sum.asm --micro-trace --vertical
+build/simulator_core/risc201-sim examples/recursive_sum.asm --micro-step
+```
+
+`--micro-step` pauses between reconstructed rows: Enter advances the display and
+`q` (or EOF) stops. It does not pause or execute datapath micro-operations individually.
+Combine `--micro-trace` with `--trace` for pipeline context or `-s` for register
+snapshots. Trace modes stop after 4000 pipeline clocks. Exit status is 0 for normal
+completion, 1 for an exception/input error, and 2 for an incomplete run.
+Exceptions include the faulting instruction PC, detection stage, and memory address
+when applicable. Undefined opcodes raise `ILLEGAL_INSTRUCTION`.
 
 All modules share a single header-only contract, `isa_spec/isa201.h`, so the assembler, decoder, ALU and control unit always agree on opcodes, registers, flags and exception codes.
 
@@ -237,6 +292,10 @@ RISCY-STUFF/
 ├── demo.sh           # build + run every example with decode listing
 └── CMakeLists.txt
 ```
+
+## Stress benchmarks
+
+Five longer, deterministic workloads are available in [examples/benchmarks](examples/benchmarks/README.md), with expected results, a runner for all eight CPU configurations, and measured counters. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
 
 ## Testing
 
@@ -280,7 +339,7 @@ All CTest targets pass. The TUI is exercised manually and is not covered by CTes
 
 **In progress / planned**
 - [ ] Debugger class: breakpoints and watchpoints are stubbed in `simulator_core` (`stepInstruction` works; `continueExecution`, `reset` and `printMemory` are TODO). The TUI implements its own breakpoints.
-- [ ] Control-unit display: `--trace` shows the pipeline slot by slot, but the microPC, the packed control word and the signal bundle are not shown
+- [x] Reconstructed microcode display: `--micro-trace` and `--micro-step` show microPC transitions, packed ROM words, signals and traps without changing pipeline timing
 - [ ] Wire the stack visualizer into the simulator output
 - [ ] Complete the ISA, with end to end implementation
 - [ ] Expose `NOT`, `SAR`, `CMP`, `MOV`, `BGT` and `FCMP` in the assembler

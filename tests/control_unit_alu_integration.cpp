@@ -1,6 +1,7 @@
 // Control unit + the real ALU: the microcode rows drive Alu::execute through a tiny datapath,
 // so float routines, FLAGS handling and BEQ/BGT after a compare are checked end to end.
 // Needs the `alu` library linked in addition to `control_unit` (and `utils`).
+#include "control_unit/control_path.h"
 #include "control_unit/horizontal_control_unit.h"
 #include "alu/alu.h"
 
@@ -30,6 +31,9 @@ struct Cpu {
         ControlUnit cu;
         Alu::Result last;
         branched = false;
+        for (int address : frontendRows(cu)) {
+            if (cu.controlMemory()[static_cast<size_t>(address)].ctl.pc_inc) ++pc;
+        }
         do {
             const ControlWord w = cu.step(op, flags);
             if (w.alu_enable) last = alu.execute(w.alu_op, regs[rs1], regs[rs2]);

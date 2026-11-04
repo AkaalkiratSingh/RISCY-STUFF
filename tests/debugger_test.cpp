@@ -124,6 +124,9 @@ void testBreakpointStopsBeforeExecution(PipelineVariant v) {
     CHECK_EQ(dbg.registers()[1], 1);       // the ADD before it has retired
     CHECK_EQ(dbg.registers()[2], 3);       // the SUB behind it has not
     CHECK_EQ(dbg.breakpoints().at(3).hits, uint64_t{1});
+    CHECK(cpu.pipelineEmpty());            // the barrier drains everything before pc 3
+    CHECK_EQ(cpu.fetchPc(), 3u);
+    for (const auto& stage : cpu.stages()) CHECK(!stage.valid);
 
     // Resuming runs the STORE instead of stopping on it again, then comes back
     // around the loop to the same breakpoint.
@@ -144,12 +147,32 @@ void testStepOntoBreakpoint(PipelineVariant v) {
     Debugger dbg(cpu);
     dbg.addBreakpoint(2);
 
-    StopInfo s = dbg.stepInstruction();     // retires pc 0; next is pc 1
-    CHECK(s.reason == StopReason::StepDone);
-    CHECK_EQ(s.pc, 1u);
-    s = dbg.stepInstruction();              // retires pc 1; next is pc 2
+    // Fetching pc 2 is the barrier. The step drains pc 0 and pc 1 first, then stops
+    // with an empty pipeline so resuming starts fresh at pc 2.
+    StopInfo s = dbg.stepInstruction();
     CHECK(s.reason == StopReason::Breakpoint);
     CHECK_EQ(s.pc, 2u);
+    CHECK_EQ(cpu.retired(), uint64_t{2});
+    CHECK(cpu.pipelineEmpty());
+    CHECK_EQ(cpu.fetchPc(), 2u);
+
+    // Resuming executes pc 2 once and continues to pc 3.
+    s = dbg.stepInstruction();
+    CHECK(s.reason == StopReason::StepDone);
+    CHECK_EQ(s.pc, 3u);
+    CHECK_EQ(cpu.retired(), uint64_t{3});
+}
+
+void testBreakpointOnSkippedPath(PipelineVariant v) {
+    section("Debugger: a branch that skips the breakpoint does not stop");
+    Cpu cpu(v);
+    cpu.loadWords(assembleWords({"ADD R1, R0, 1", "JMP skip", "NOP", "skip:", "HALT"}));
+    Debugger dbg(cpu);
+    dbg.addBreakpoint(2);                   // the NOP on the not-taken path
+
+    StopInfo s = dbg.continueExecution();
+    CHECK(s.reason == StopReason::Halted);
+    CHECK_EQ(dbg.breakpoints().at(2).hits, uint64_t{0});
 }
 
 void testConditionalBreakpoint(PipelineVariant v) {
@@ -418,6 +441,7 @@ int main() {
         testStepping(v);
         testBreakpointStopsBeforeExecution(v);
         testStepOntoBreakpoint(v);
+        testBreakpointOnSkippedPath(v);
         testConditionalBreakpoint(v);
         testBreakpointManagement(v);
         testRunUntil(v);

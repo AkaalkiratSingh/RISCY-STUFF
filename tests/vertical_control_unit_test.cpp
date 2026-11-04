@@ -3,6 +3,7 @@
 
 #include "assembler/assembler.h"
 #include "assembler/preprocessor.h"
+#include "control_unit/control_path.h"
 #include "control_unit/horizontal_control_unit.h"
 #include "control_unit/vertical_control_unit.h"
 #include "simulator_core/control_decode.h"
@@ -50,7 +51,10 @@ using namespace risc201;
 
 // Exact member-wise comparison.
 bool sameWord(const ControlWord& a, const ControlWord& b) {
-    return a.alu_enable == b.alu_enable && a.mem_read == b.mem_read &&
+    return a.ir_load == b.ir_load && a.instr_decode == b.instr_decode &&
+           a.operand_read == b.operand_read && a.opcode_dispatch == b.opcode_dispatch &&
+           a.ra_write == b.ra_write && a.pc_src_ra == b.pc_src_ra &&
+           a.alu_enable == b.alu_enable && a.mem_read == b.mem_read &&
            a.mem_write == b.mem_write && a.reg_write == b.reg_write &&
            a.pc_write == b.pc_write && a.pc_inc == b.pc_inc &&
            a.alu_src_imm == b.alu_src_imm && a.mem_to_reg == b.mem_to_reg &&
@@ -68,7 +72,10 @@ bool sameRow(const MicroOp& a, const MicroOp& b) {
 }
 
 bool sameControls(const StageControls& a, const StageControls& b) {
-    return a.halting == b.halting && a.is_branch == b.is_branch && a.cond == b.cond &&
+    return a.ir_load == b.ir_load && a.instr_decode == b.instr_decode &&
+           a.operand_read == b.operand_read && a.opcode_dispatch == b.opcode_dispatch &&
+           a.ra_write == b.ra_write && a.pc_from_ra == b.pc_from_ra &&
+           a.halting == b.halting && a.is_branch == b.is_branch && a.cond == b.cond &&
            a.pc_inc == b.pc_inc && a.alu_enable == b.alu_enable && a.alu_op == b.alu_op &&
            a.alu_src_imm == b.alu_src_imm && a.flag_update == b.flag_update &&
            a.sp_dec == b.sp_dec && a.sp_inc == b.sp_inc &&
@@ -159,8 +166,8 @@ int main() {
     CHECK(vcu.encoding() == MicrocodeEncoding::Vertical);
     CHECK_EQ(vrom.size(), hcm.size());                       
     CHECK_EQ(vcm.size(), hcm.size());
-    CHECK_EQ(kHorizontalWordBits, 44);                       // bits 0..43 of packHorizontal
-    CHECK_EQ(kNumControlLines, 20);
+    CHECK_EQ(kHorizontalWordBits, 48);
+    CHECK_EQ(kNumControlLines, 24);
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
     CHECK_EQ(kVerticalWordBits, 16);
     CHECK_EQ(sizeof(vrom[0]) * 8, static_cast<size_t>(kVerticalWordBits));
@@ -171,6 +178,17 @@ int main() {
     const auto word = [&](Opcode op, int offset) {
         return vrom[static_cast<size_t>(hcu.routineEntry(op) + offset)];
     };
+    const std::vector<int> front = frontendRows(hcu);
+    CHECK_EQ(vcu.frontendEntry(), hcu.frontendEntry());
+    CHECK(front.size() >= 2);
+    const size_t fetch_row = static_cast<size_t>(front[0]);
+    const size_t decode_row = static_cast<size_t>(front[1]);
+    CHECK_EQ(vrom[fetch_row], 0x5000);
+    CHECK_EQ(vrom[decode_row], 0x5401);
+    CHECK_EQ(ControlUnit::packHorizontal(hcm[fetch_row]),
+        (1ull << 44) | (1ull << 5) | (78ull << 24) | (0xFFull << 32));
+    CHECK_EQ(ControlUnit::packHorizontal(hcm[decode_row]),
+        (1ull << 45) | (1ull << 47) | (0xFFull << 24) | (0xFFull << 32));
     CHECK_EQ(word(Opcode::ADD, 0), 0x0400);        
     CHECK_EQ(word(Opcode::ADD, 1), 0x0840);
     CHECK_EQ(word(Opcode::SUB, 1), 0x0860);
@@ -183,7 +201,7 @@ int main() {
     CHECK_EQ(word(Opcode::RET, 0), 0x4C01);         // JUMP.RA, END
     CHECK_EQ(word(Opcode::HALT, 0), 0x4001);       
     CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
-    CHECK_EQ(word(Opcode::BEQ, 1), 0x0401);        
+    CHECK_EQ(word(Opcode::BEQ, 1), 0x0001);        
     CHECK_EQ(word(Opcode::BEQ, 2), 0x2401);   
     CHECK_EQ(word(Opcode::LOAD, 2), 0x1400);        // MEM.RD (+addr_check)
     CHECK_EQ(word(Opcode::STORE, 2), 0x1801);       // MEM.WR (+addr_check), END
@@ -489,10 +507,10 @@ int main() {
         const size_t rows = hcm.size();
         CHECK(v.find(std::to_string(rows) + " rows x 16 bits = " + std::to_string(rows * 16) + " bits")
               != std::string::npos);
-        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 44 = " + std::to_string(rows * 44) + " bits")
+        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 48 = " + std::to_string(rows * 48) + " bits")
               != std::string::npos);
-        CHECK(v.find("64% narrower") != std::string::npos);
-        CHECK(v.find("20 control lines") != std::string::npos);
+        CHECK(v.find("67% narrower") != std::string::npos);
+        CHECK(v.find("24 control lines") != std::string::npos);
         CHECK(v.find("TRAP") != std::string::npos && v.find("BRANCH GT") != std::string::npos);
     }
 

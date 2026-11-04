@@ -5,6 +5,7 @@
 //
 // No CPU involved and no behaviour change: cpu.cpp is untouched by this phase.
 
+#include "control_unit/control_path.h"
 #include "simulator_core/control_decode.h"
 #include "utils/utils.h"
 
@@ -71,6 +72,10 @@ std::set<std::string> rowSignals(const MicroOp& row) {
     std::set<std::string> s;
     auto add = [&s](bool on, const char* name) { if (on) s.insert(name); };
 
+    add(c.ir_load, "ir_load");
+    add(c.instr_decode, "instr_decode");
+    add(c.operand_read, "operand_read");
+    add(c.opcode_dispatch, "opcode_dispatch");
     add(c.pc_inc, "pc_inc");
     add(c.alu_enable, "alu_enable");
     if (c.alu_enable) s.insert(std::string("alu_op=") + opcodeName(c.alu_op));
@@ -97,6 +102,10 @@ std::set<std::string> controlsSignals(const StageControls& sc) {
     std::set<std::string> s;
     auto add = [&s](bool on, const char* name) { if (on) s.insert(name); };
 
+    add(sc.ir_load, "ir_load");
+    add(sc.instr_decode, "instr_decode");
+    add(sc.operand_read, "operand_read");
+    add(sc.opcode_dispatch, "opcode_dispatch");
     add(sc.pc_inc, "pc_inc");
     add(sc.alu_enable, "alu_enable");
     if (sc.alu_enable) s.insert(std::string("alu_op=") + opcodeName(sc.alu_op));
@@ -122,6 +131,11 @@ std::set<std::string> controlsSignals(const StageControls& sc) {
 
 std::set<std::string> routineSignals(const ControlUnit& cu, Opcode op) {
     std::set<std::string> all;
+    for (int addr : frontendRows(cu)) {
+        for (const auto& name : rowSignals(cu.controlMemory()[static_cast<size_t>(addr)])) {
+            all.insert(name);
+        }
+    }
     for (int addr : reachableRows(cu, op)) {
         for (const auto& name : rowSignals(cu.controlMemory()[static_cast<size_t>(addr)])) {
             all.insert(name);
@@ -135,6 +149,30 @@ std::set<std::string> routineSignals(const ControlUnit& cu, Opcode op) {
 int main() {
     ControlUnit cu;
     const StageControlTable table = buildStageControls(cu);
+
+    section("Control decode: shared front end and operand gates");
+    {
+        const auto front = frontendControls(cu);
+        const std::vector<int> front_rows = frontendRows(cu);
+        CHECK(front.ir_load && front.pc_inc && front.instr_decode && front.opcode_dispatch);
+        CHECK(!front.operand_read && !front.alu_enable && !front.reg_write);
+        CHECK(front_rows.size() >= 2);
+        CHECK(cu.controlMemory()[static_cast<size_t>(front_rows[0])].ctl.ir_load);
+        const auto& decode = cu.controlMemory()[static_cast<size_t>(front_rows[1])];
+        CHECK(decode.ctl.instr_decode && decode.ctl.opcode_dispatch);
+        CHECK(decode.next == kMicroEnd);
+        for (int i = 0; i < 256; ++i) {
+            const auto& c = table[static_cast<size_t>(i)];
+            CHECK(c.ir_load && c.instr_decode && c.pc_inc && c.opcode_dispatch);
+            if (c.alu_enable || c.mem_write || c.pc_from_ra) CHECK(c.operand_read);
+        }
+        for (auto op : {Opcode::JMP, Opcode::BEQ, Opcode::BGT, Opcode::HALT, Opcode::NOP}) {
+            CHECK(!controlFor(cu, op).operand_read);
+        }
+        for (auto op : {Opcode::ADD, Opcode::LOAD, Opcode::STORE, Opcode::RET}) {
+            CHECK(controlFor(cu, op).operand_read);
+        }
+    }
 
     section("Control decode: the layout tables describe both variants");
     {
@@ -210,7 +248,7 @@ int main() {
         // RET: jump through R14.
         const StageControls ret = controlFor(cu, Opcode::RET);
         CHECK(ret.pc_from_ra && !ret.pc_from_target && !ret.pc_from_mem);
-        CHECK(!ret.pc_inc && !ret.mem_write && !ret.mem_read && !ret.reg_write);
+        CHECK(ret.pc_inc && !ret.mem_write && !ret.mem_read && !ret.reg_write);
         CHECK(!ret.alu_enable && !ret.sp_inc);
 
         // // PUSH: same stack write as CALL, but the data is a REGISTER, not the PC.
@@ -247,10 +285,8 @@ int main() {
         CHECK(beq.pc_inc && beq.pc_from_target);
         CHECK_EQ(reachableRows(cu, Opcode::BEQ).size(), size_t{3});
 
-        // JMP has no fetch row in the micro-code (PC is overwritten); the pipeline
-        // still fetches, so the bundle carries only the transfer.
         const StageControls jmp = controlFor(cu, Opcode::JMP);
-        CHECK(jmp.pc_from_target && !jmp.pc_inc && !jmp.is_branch);
+        CHECK(jmp.pc_from_target && jmp.pc_inc && !jmp.is_branch);
 
         // NOP advances the PC and does nothing else.
         const StageControls nop = controlFor(cu, Opcode::NOP);
@@ -262,13 +298,13 @@ int main() {
         // HALT is a real opcode with its own routine; it just happens to be halt-only too.
         const StageControls halt = controlFor(cu, Opcode::HALT);
         CHECK(halt.halting);
-        CHECK(controlsSignals(halt) == std::set<std::string>{"halt"});
+        CHECK((controlsSignals(halt) == std::set<std::string>{"halt", "ir_load", "instr_decode", "opcode_dispatch", "pc_inc"}));
         CHECK(cu.routineEntry(Opcode::HALT) != cu.routineEntry(static_cast<Opcode>(0x55)));
 
         // An opcode with no routine collapses to the illegal sink: halt, and nothing else.
         const StageControls sink = controlFor(cu, static_cast<Opcode>(0x55));
         CHECK(sink.halting);
-        CHECK(controlsSignals(sink) == std::set<std::string>{"halt"});
+        CHECK((controlsSignals(sink) == std::set<std::string>{"halt", "ir_load", "instr_decode", "opcode_dispatch", "pc_inc"}));
     }
 
     section("Control decode: collapsed control words");

@@ -21,6 +21,11 @@ namespace risc201 {
     };
 
     struct ControlWord {
+        bool ir_load = false;
+        bool instr_decode = false;
+        bool operand_read = false;
+        bool opcode_dispatch = false;
+
         bool    alu_enable = false;
         bool      mem_read = false;
         bool     mem_write = false;
@@ -46,6 +51,32 @@ namespace risc201 {
 
         Opcode  alu_op = Opcode::NOP;
     };
+
+    inline bool condHolds(BranchCond c, const Flags& f) {
+        switch (c) {
+            case BranchCond::None:     return false;
+            case BranchCond::Zero:     return f.zero;
+            case BranchCond::NotZero:  return !f.zero;
+            case BranchCond::Negative: return f.negative;
+            case BranchCond::Carry:    return f.carry;
+            case BranchCond::Overflow: return f.overflow;
+            case BranchCond::GreaterThan: return f.greaterThan;
+        }
+        return false;
+    }
+
+    // A fault counts only in a cycle where the unit that reports it is checking.
+    inline bool faultApplies(const ControlWord& c, ExceptionCode e) {
+        switch (e) {
+            case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
+            case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check || c.stack_check;
+            case ExceptionCode::NONE:
+            case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
+        }
+        return false;
+    }
+
+    std::string controlSignalNames(const ControlWord& word);
 
     inline constexpr int kMicroAddrBits = 8;
     inline constexpr uint32_t kMicroEndField = 0xFF;
@@ -83,6 +114,7 @@ namespace risc201 {
         MicrocodeEncoding encoding() const { return encoding_; }
 
         int routineEntry(Opcode op) const;
+        int frontendEntry() const { return frontend_entry_; }
         int trapEntry() const { return trap_entry_; }
 
         const std::vector<MicroOp>& controlMemory() const { return cm_; }
@@ -105,6 +137,7 @@ namespace risc201 {
 
         std::vector<MicroOp> cm_;
         std::unordered_map<uint8_t, int> entries_;
+        int frontend_entry_ = 0;
         int illegal_entry_ = 0;
         int trap_entry_ = 0;
         ExceptionCode pending_exception_ = ExceptionCode::NONE;

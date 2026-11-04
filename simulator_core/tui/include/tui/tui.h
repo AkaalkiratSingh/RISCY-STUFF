@@ -12,7 +12,7 @@
 namespace risc201 {
 
 enum class Mode { Normal, Inspect, Command, Dialog };
-enum class Pane { Assembly, Binary, Registers, Stats, Memory, Timeline };
+enum class Pane { Assembly, Binary, Registers, Stats, ControlRom, Memory, Timeline };
 
 struct DialogRow {
     std::string label;
@@ -53,6 +53,7 @@ private:
     void renderAssembledBinary(int r, int c, int h, int w);
     void renderRegisters(int r, int c, int h, int w);
     void renderExtraStats(int r, int c, int h, int w);
+    void renderControlRom(int r, int c, int h, int w);
     void renderMemory(int r, int c, int h, int w);
     void renderHazardTimeline(int r, int c, int h, int w);
     void renderCommandLine(int r, int c, int h, int w);
@@ -85,6 +86,7 @@ private:
     bool mem_follow_sp_ = true;
     int asm_view_h_ = 0;
     int bin_view_h_ = 0;
+    int rom_view_h_ = 0;
     bool auto_scroll_ = true;
 
     bool editing_ = false;
@@ -93,6 +95,9 @@ private:
 
     bool show_trace_ = false;
     int trace_scroll_ = 0;
+
+    int rom_scroll_ = 0;
+    bool rom_follow_ = true;
 
     std::vector<DialogRow> dialog_rows_;
     int dialog_selected_ = 0;

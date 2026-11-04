@@ -41,11 +41,11 @@ enum class Opcode : uint8_t {
     REM  = 0x06,
     AND  = 0x07,
     OR   = 0x08,
-    XOR  = 0x09,
+    XOR  = 0x09, //
     NOT  = 0x0A,
     SHL  = 0x0B,
     SHR  = 0x0C,
-    SAR  = 0x0D,
+    SAR  = 0x0D, //
     LOAD = 0x0E,
     STORE= 0x0F,
     CMP  = 0x10,
@@ -54,12 +54,15 @@ enum class Opcode : uint8_t {
     BGT  = 0x13,
     CALL = 0x14,
     RET  = 0x15,
-    FADD = 0x16,
-    FSUB = 0x17,
-    FMUL = 0x18,
-    FDIV = 0x19,
-    FCMP = 0x1A,
-    HALT = 0x1B,
+    FADD = 0x16,//
+    FSUB = 0x17,//
+    FMUL = 0x18,//
+    FDIV = 0x19,//
+    FCMP = 0x1A,//
+    // TODO : FTOI = 0x1B,
+    // TODO : ITOF = 0x1C,
+
+    HALT = 0x1F, //
 };
 
 // 32-bit fixed-width instruction word. Encoding/decoding helpers belong in
