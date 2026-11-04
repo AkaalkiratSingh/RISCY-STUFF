@@ -1,4 +1,5 @@
 add_library(control_unit STATIC
+    src/control_path.cpp
     src/horizontal_control_unit.cpp
     src/vertical_control_unit.cpp
 )

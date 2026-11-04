@@ -5,6 +5,7 @@
 //
 // No CPU involved and no behaviour change: cpu.cpp is untouched by this phase.
 
+#include "control_unit/control_path.h"
 #include "simulator_core/control_decode.h"
 #include "utils/utils.h"
 
@@ -130,10 +131,10 @@ std::set<std::string> controlsSignals(const StageControls& sc) {
 
 std::set<std::string> routineSignals(const ControlUnit& cu, Opcode op) {
     std::set<std::string> all;
-    for (int addr = cu.frontendEntry(); addr != kMicroEnd;) {
-        const auto& row = cu.controlMemory()[static_cast<size_t>(addr)];
-        for (const auto& name : rowSignals(row)) all.insert(name);
-        addr = row.next;
+    for (int addr : frontendRows(cu)) {
+        for (const auto& name : rowSignals(cu.controlMemory()[static_cast<size_t>(addr)])) {
+            all.insert(name);
+        }
     }
     for (int addr : reachableRows(cu, op)) {
         for (const auto& name : rowSignals(cu.controlMemory()[static_cast<size_t>(addr)])) {
@@ -152,10 +153,12 @@ int main() {
     section("Control decode: shared front end and operand gates");
     {
         const auto front = frontendControls(cu);
+        const std::vector<int> front_rows = frontendRows(cu);
         CHECK(front.ir_load && front.pc_inc && front.instr_decode && front.opcode_dispatch);
         CHECK(!front.operand_read && !front.alu_enable && !front.reg_write);
-        CHECK(cu.controlMemory()[cu.frontendEntry()].ctl.ir_load);
-        const auto& decode = cu.controlMemory()[cu.frontendEntry() + 1];
+        CHECK(front_rows.size() >= 2);
+        CHECK(cu.controlMemory()[static_cast<size_t>(front_rows[0])].ctl.ir_load);
+        const auto& decode = cu.controlMemory()[static_cast<size_t>(front_rows[1])];
         CHECK(decode.ctl.instr_decode && decode.ctl.opcode_dispatch);
         CHECK(decode.next == kMicroEnd);
         for (int i = 0; i < 256; ++i) {

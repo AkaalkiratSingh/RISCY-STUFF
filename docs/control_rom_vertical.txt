@@ -23,7 +23,7 @@ Otherwise the next row is address+1; address 255 denotes END.
 
 PHYSICAL ROM
 addr  routine  cond  next  taken  microword(hex)  micro-op        signals
-0000  ILLEGAL  -     END   -      0x4401          TRAP            trap halt
+0000  ILLEGAL  -     END   -      0x4401          TRAP            halt trap
 0001  ADD      -     2     -      0x0400          OPERANDS        operand_read
 0002           -     3     -      0x0840          ALU(ADD)        alu_enable alu_op=ADD flag_update
 0003           -     END   -      0x1C01          WB              reg_write
@@ -76,7 +76,7 @@ addr  routine  cond  next  taken  microword(hex)  micro-op        signals
 0050           -     END   -      0x1C01          WB              reg_write
 0051  CMP      -     52    -      0x0400          OPERANDS        operand_read
 0052           -     END   -      0x0A01          ALU(CMP)        alu_enable alu_op=CMP flag_update
-0053  TRAP     -     END   -      0x4401          TRAP            trap halt
+0053  TRAP     -     END   -      0x4401          TRAP            halt trap
 0054  DIV      -     55    -      0x0400          OPERANDS        operand_read
 0055           -     56    -      0x08A0          ALU(DIV)        alu_enable alu_op=DIV flag_update
 0056           -     END   -      0x1C01          WB              reg_write

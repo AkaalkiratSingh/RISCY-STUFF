@@ -1,6 +1,8 @@
 #pragma once
 
 // Vertical-microcode control unit.
+// Compresses 48-bit horizontal rows into 16-bit words.
+// Decoder expands 5-bit codes back to the 24 control lines.
 // Fully interchangeable with the horizontal unit.
 
 #include "control_unit/horizontal_control_unit.h"

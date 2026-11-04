@@ -96,9 +96,9 @@ build/simulator_core/tui/risc201-tui examples/recursive_sum.asm
 
 With no path the TUI starts empty — press `Tab` to focus the assembly pane and `e` to write a program from scratch. It accepts the same pipeline options as the simulator CLI: `-4`/`-6`, `--no-forward`, `--horizontal`/`--vertical` and `--trace`.
 
-The screen has panes for raw assembly, assembled binary, registers, extra stats and memory, plus an optional hazard timeline. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
+The screen has panes for raw assembly, assembled binary, registers, extra stats, a live control-ROM cursor and memory, plus an optional hazard timeline. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
 
-**Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
+**Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane follows the active control row of the oldest in-flight instruction, with blank separators between instruction routines (addresses are unchanged); `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
 
 **Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`; `:assemble` applies the buffer and clears it. A failed assembly reports the error and leaves the running program untouched.
 
@@ -118,6 +118,8 @@ Commands (type `:` in normal or inspect mode):
 | `:help`, `:quit` | Show help / quit |
 
 Stage and ROM changes restart the run (a dialog applies both in one reset); forwarding changes apply live.
+
+Breakpoints are fetch barriers. When one fires, fetching stops before that PC is admitted, the older instructions drain and retire, and the debugger reports the stop with an empty pipeline at the breakpoint PC. Resuming therefore starts a fresh pipeline exactly at that instruction.
 
 ### Assemble to a file
 

@@ -123,39 +123,10 @@ bool printMicroTrace(const risc201::Cpu& cpu, bool interactive) {
         if (row.next == risc201::kMicroEnd) std::cout << "END";
         else std::cout << row.next;
         std::cout << " word=0x" << std::right << std::hex << std::uppercase << std::setfill('0')
-                  << std::setw(cpu.encoding() == risc201::MicrocodeEncoding::Vertical ? 4 : risc201::kHorizontalWordBits / 4)
-                  << row.packed << std::dec << std::setfill(' ') << " signals:";
-        const auto& c = row.signals;
-        bool any = false;
-        auto signal = [&](bool enabled, const char* name) {
-            if (enabled) { std::cout << " " << name; any = true; }
-        };
-        signal(c.ir_load, "ir_load");
-        signal(c.instr_decode, "instr_decode");
-        signal(c.operand_read, "operand_read");
-        signal(c.opcode_dispatch, "opcode_dispatch");
-        signal(c.alu_enable, "alu_enable");
-        signal(c.mem_read, "mem_read");
-        signal(c.mem_write, "mem_write");
-        signal(c.reg_write, "reg_write");
-        signal(c.pc_write, "pc_write");
-        signal(c.pc_inc, "pc_inc");
-        signal(c.alu_src_imm, "alu_src_imm");
-        signal(c.mem_to_reg, "mem_to_reg");
-        signal(c.sp_dec, "sp_dec");
-        signal(c.sp_inc, "sp_inc");
-        signal(c.flag_update, "flag_update");
-        signal(c.halt, "halt");
-        signal(c.trap, "trap");
-        signal(c.mem_addr_sp, "mem_addr_sp");
-        signal(c.mem_data_pc, "mem_data_pc");
-        signal(c.pc_src_mem, "pc_src_mem");
-        signal(c.pc_src_ra, "pc_src_ra");
-        signal(c.stack_check, "stack_check");
-        signal(c.addr_check, "addr_check");
-        signal(c.ra_write, "ra_write");
-        if (!any) std::cout << " (idle/suppressed)";
-        if (c.alu_enable) std::cout << " alu_op=" << risc201::opcodeName(c.alu_op);
+                  << std::setw(cpu.encoding() == risc201::MicrocodeEncoding::Vertical
+                          ? 4 : risc201::kHorizontalWordBits / 4)
+                  << row.packed << std::dec << std::setfill(' ')
+                  << " signals: " << risc201::controlSignalNames(row.signals);
         if (row.condition != risc201::BranchCond::None) {
             const char* conditions[] = {"none", "Z", "!Z", "N", "C", "V", "GT"};
             std::cout << " condition=" << conditions[static_cast<size_t>(row.condition)];

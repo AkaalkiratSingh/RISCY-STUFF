@@ -58,6 +58,7 @@ bool Debugger::setBreakpointCondition(uint32_t pc, std::optional<Condition> cond
 
 void Debugger::clearBreakpoints() {
     breakpoints_.clear();
+    skip_break_once_.reset();
 }
 
 bool Debugger::conditionHolds(const Condition& c) const {
@@ -71,6 +72,11 @@ bool Debugger::conditionHolds(const Condition& c) const {
     case CompareOp::Ge: return v >= c.value;
     }
     return false;
+}
+
+bool Debugger::breakpointArmedAt(uint32_t pc) const {
+    auto it = breakpoints_.find(pc);
+    return it != breakpoints_.end() && it->second.enabled;
 }
 
 bool Debugger::breakpointHit(uint32_t pc) {
@@ -179,11 +185,60 @@ StopInfo Debugger::terminalInfo() const {
     return info;
 }
 
-StopInfo Debugger::clock() {
-    const uint64_t retired_before = cpu_.retired();
-    cpu_.step();
+StopInfo Debugger::runFetchBarrier(uint32_t pc) {
+    cpu_.holdFetch(true);
+    std::vector<WatchHit> hits;
+    while (!cpu_.pipelineEmpty() && !cpu_.state().halted) {
+        cpu_.step();
+        std::vector<WatchHit> now = checkWatchpoints();
+        hits.insert(hits.end(), now.begin(), now.end());
+    }
+    cpu_.holdFetch(false);
 
-    std::vector<WatchHit> hits = checkWatchpoints();
+    if (cpu_.state().halted) {
+        StopInfo info = terminalInfo();
+        info.watch_hits = std::move(hits);
+        return info;
+    }
+
+    StopInfo info;
+    info.watch_hits = std::move(hits);
+    info.pc = cpu_.fetchPc();
+
+    if (info.pc != pc) {
+        info.reason = info.watch_hits.empty() ? StopReason::StepDone : StopReason::Watchpoint;
+        return info;
+    }
+    if (breakpointHit(pc)) {
+        info.reason = StopReason::Breakpoint;
+        skip_break_once_ = pc;
+    }
+    else if (run_target_ && *run_target_ == pc) {
+        info.reason = StopReason::TargetReached;
+    }
+    else {
+        info.reason = info.watch_hits.empty() ? StopReason::StepDone : StopReason::Watchpoint;
+    }
+    return info;
+}
+
+StopInfo Debugger::clock() {
+    std::vector<WatchHit> hits;
+    if (skip_break_once_ && cpu_.fetchPc() == *skip_break_once_) {
+        skip_break_once_.reset();
+    }
+    else if (breakpointArmedAt(cpu_.fetchPc()) ||
+             (run_target_ && *run_target_ == cpu_.fetchPc())) {
+        StopInfo barrier = runFetchBarrier(cpu_.fetchPc());
+        if (barrier.reason != StopReason::StepDone) return barrier;
+        // The drain finished without a stop: the condition did not hold, or a branch
+        // redirected. Keep its watch hits and step normally from the resolved fetch PC.
+        hits = std::move(barrier.watch_hits);
+    }
+
+    cpu_.step();
+    std::vector<WatchHit> now = checkWatchpoints();
+    hits.insert(hits.end(), now.begin(), now.end());
 
     StopInfo info;
     if (cpu_.state().halted) {
@@ -191,16 +246,7 @@ StopInfo Debugger::clock() {
     }
     else {
         info.pc = nextPc();
-        const bool retired = cpu_.retired() != retired_before;
-        if (retired && breakpointHit(info.pc)) {
-            info.reason = StopReason::Breakpoint;
-        }
-        else if (retired && run_target_ && *run_target_ == info.pc) {
-            info.reason = StopReason::TargetReached;
-        }
-        else if (!hits.empty()) {
-            info.reason = StopReason::Watchpoint;
-        }
+        if (!hits.empty()) info.reason = StopReason::Watchpoint;
     }
     info.watch_hits = std::move(hits);
     return info;
@@ -254,6 +300,7 @@ void Debugger::reset() {
     cpu_.loadWords(image);
 
     run_target_.reset();
+    skip_break_once_.reset();
     for (auto& entry : breakpoints_) entry.second.hits = 0;
     for (auto& entry : watchpoints_) entry.second.hits = 0;
     snapshotWatchpoints();

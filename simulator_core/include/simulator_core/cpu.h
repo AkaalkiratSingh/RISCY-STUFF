@@ -30,6 +30,13 @@ namespace risc201 {
         std::optional<uint32_t> address;
     };
 
+    struct MicroPcView {
+        uint32_t    pc = 0;
+        const char* stage = "";
+        int         micro_pc = 0;
+        ControlWord signals;
+    };
+
     struct CpuState {
         std::array<int32_t, kNumGPRegisters> registers{};
         uint32_t pc = 0;
@@ -74,6 +81,15 @@ namespace risc201 {
         const std::array<Latch, kMaxPipelineSlots>& stages() const { return regs_; }
         uint32_t fetchPc() const { return fetch_pc_; }
         bool fetching() const { return !stop_fetch_; }
+
+        // Debugger barrier: stop admitting new instructions without halting the CPU.
+        void holdFetch(bool hold) { fetch_held_ = hold; }
+        bool fetchHeld() const { return fetch_held_; }
+
+        // Per-stage control-ROW cursors for the active pipeline state.
+        std::vector<MicroPcView> microSnapshot() const;
+        const std::vector<MicroOp>& controlMemory() const;
+        const std::vector<int>& routineEnds() const;
         bool pipelineEmpty() const;
         int stageCount() const { return n_slots_; }
         int exceptionSlot() const { return ex_slot_; }
@@ -110,15 +126,19 @@ namespace risc201 {
         std::vector<int32_t> memory_;
         Alu alu_;
         ControlUnit control_unit_;
+        VerticalControlUnit vertical_unit_;
         StackGuard stack_guard_;
         StageControlTable controls_;
         StageControls frontend_;
         std::array<Latch, kMaxPipelineSlots> regs_{};
         PipelineTrace trace_;
         std::vector<MicroTraceRow> micro_trace_;
+        mutable std::vector<int> routine_ends_;
+        mutable bool routine_ends_valid_ = false;
         bool micro_tracing_ = false;
         uint32_t fetch_pc_ = 0;
         bool stop_fetch_ = false;
+        bool fetch_held_ = false;
         bool forwarding_ = true;
         bool tracing_ = false;
         int n_slots_ = 0;

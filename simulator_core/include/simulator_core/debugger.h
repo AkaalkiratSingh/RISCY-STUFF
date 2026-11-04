@@ -105,6 +105,8 @@ public:
 private:
     StopInfo clock();
     StopInfo terminalInfo() const;
+    StopInfo runFetchBarrier(uint32_t pc);
+    bool breakpointArmedAt(uint32_t pc) const;
     bool breakpointHit(uint32_t pc);
     bool conditionHolds(const Condition& c) const;
     int32_t watchValue(const Watchpoint& w) const;
@@ -116,6 +118,7 @@ private:
     std::map<int, Watchpoint> watchpoints_;
     int next_watch_id_ = 1;
     std::optional<uint32_t> run_target_;
+    std::optional<uint32_t> skip_break_once_;
 };
 
 } // namespace risc201

@@ -35,6 +35,15 @@ int main() {
                     plain.loadWords(program);
                     traced.loadWords(program);
                     traced.setMicroTracing(true);
+
+                    const auto snapshot = traced.microSnapshot();
+                    CHECK(!snapshot.empty());
+                    for (const auto& view : snapshot) {
+                        CHECK(view.micro_pc >= 0 &&
+                              static_cast<size_t>(view.micro_pc) < traced.controlMemory().size());
+                        CHECK(view.stage != nullptr && view.stage[0] != '\0');
+                    }
+
                     plain.run();
                     std::vector<MicroTraceRow> rows;
                     for (int guard = 0; !traced.state().halted && guard < 200; ++guard) {

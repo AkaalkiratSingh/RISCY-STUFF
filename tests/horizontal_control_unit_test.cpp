@@ -1,4 +1,5 @@
 // tests/horizontal_control_unit_test.cpp - horizontal control unit
+#include "control_unit/control_path.h"
 #include "control_unit/horizontal_control_unit.h"
 #include <iostream>
 #include <vector>
@@ -196,10 +197,8 @@ struct ToyMachine {
     bool run(Opcode op, uint32_t target = 0) {
         ControlUnit cu; Flags f;
         fault = ExceptionCode::NONE;
-        for (int address = cu.frontendEntry(); address != kMicroEnd;) {
-            const auto& row = cu.controlMemory()[static_cast<size_t>(address)];
-            if (!apply(row.ctl, target)) return false;
-            address = row.next;
+        for (int address : frontendRows(cu)) {
+            if (!apply(cu.controlMemory()[static_cast<size_t>(address)].ctl, target)) return false;
         }
         for (int guard = 0; guard < 16; ++guard) {
             const ControlWord w = cu.step(op, f);

@@ -3,6 +3,7 @@
 
 #include "assembler/assembler.h"
 #include "assembler/preprocessor.h"
+#include "control_unit/control_path.h"
 #include "control_unit/horizontal_control_unit.h"
 #include "control_unit/vertical_control_unit.h"
 #include "simulator_core/control_decode.h"
@@ -177,12 +178,16 @@ int main() {
     const auto word = [&](Opcode op, int offset) {
         return vrom[static_cast<size_t>(hcu.routineEntry(op) + offset)];
     };
+    const std::vector<int> front = frontendRows(hcu);
     CHECK_EQ(vcu.frontendEntry(), hcu.frontendEntry());
-    CHECK_EQ(vrom[hcu.frontendEntry()], 0x5000);
-    CHECK_EQ(vrom[hcu.frontendEntry() + 1], 0x5401);
-    CHECK_EQ(ControlUnit::packHorizontal(hcm[hcu.frontendEntry()]),
+    CHECK(front.size() >= 2);
+    const size_t fetch_row = static_cast<size_t>(front[0]);
+    const size_t decode_row = static_cast<size_t>(front[1]);
+    CHECK_EQ(vrom[fetch_row], 0x5000);
+    CHECK_EQ(vrom[decode_row], 0x5401);
+    CHECK_EQ(ControlUnit::packHorizontal(hcm[fetch_row]),
         (1ull << 44) | (1ull << 5) | (78ull << 24) | (0xFFull << 32));
-    CHECK_EQ(ControlUnit::packHorizontal(hcm[hcu.frontendEntry() + 1]),
+    CHECK_EQ(ControlUnit::packHorizontal(hcm[decode_row]),
         (1ull << 45) | (1ull << 47) | (0xFFull << 24) | (0xFFull << 32));
     CHECK_EQ(word(Opcode::ADD, 0), 0x0400);        
     CHECK_EQ(word(Opcode::ADD, 1), 0x0840);

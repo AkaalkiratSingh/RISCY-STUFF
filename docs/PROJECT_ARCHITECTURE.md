@@ -159,7 +159,7 @@ Assembly-generated branch targets are aligned by construction. The current CPU d
 | 0x14–0x15 | CALL, RET | Link-register call and return |
 | 0x16–0x19 | FADD, FSUB, FMUL, FDIV | Floating-point arithmetic on register bit patterns |
 | 0x1A | FCMP | Floating-point comparison |
-| 0x1B | HALT | Stop fetching and allow the pipeline to drain |
+| 0x1F | HALT | Stop fetching and allow the pipeline to drain |
 
 All listed mnemonics are exposed by the assembler. PUSH and POP are macros, not additional encoded opcodes.
 
@@ -371,8 +371,11 @@ A separate `StackGuard` supplies stack-bound checks, and `StackVisualizer` can r
 | `--trace` | Pipeline snapshots and hazard events after each simulated clock |
 | `-s` / instruction step | Register snapshots associated with instruction-level advancement |
 | `--micro-trace` / `--micro-step` | Reconstructed control-ROM path for an instruction at retirement or fault |
+| TUI CONTROL ROM pane | Live control row for each active pipeline stage, derived from the same control-path walker |
 
 The microcode view includes the shared fetch/decode prefix, the selected instruction's routine, branch successors based on captured execution flags, and trap controls when applicable. It prints actual ROM words and signal definitions, but the sequence is reconstructed for explanation. Squashed instructions are omitted.
+
+The TUI cursor is not a serial global microPC. It reports the ROM row driving the current stage of the oldest in-flight instruction that has a control row for that stage, using the stage projection of the same `controlPath` used by the sequencer listing, the collapse into `StageControls`, and the reconstruction. The pane inserts a visual blank line after each instruction routine without changing any ROM address.
 
 ### 11.2 Why the first microcode output is labelled cycle 4
 
@@ -528,7 +531,7 @@ The terminal UI displays assembly, encoded words, registers, memory, statistics,
 | `:config rom vert` | Select vertical ROM and restart |
 | `:trace` | Toggle hazard timeline |
 
-Watchpoints detect value changes, not every access to an address. Breakpoints are observed through the pipeline-aware debugger after retirement boundaries; they should not be interpreted as hardware execution breakpoints that prevent all effects of an in-flight target instruction.
+Watchpoints detect value changes, not every access to an address. Breakpoints are fetch barriers: when the next fetch PC matches a breakpoint, the debugger holds fetch, drains the older instructions, and reports the stop only if that PC is still next. No instruction at or after the breakpoint enters the pipeline, and resuming starts from an empty pipeline at that PC.
 
 The source editor requires explicit reassembly. A stale-buffer indication distinguishes edited text from the loaded program. Failed assembly does not replace the currently loaded machine image.
 

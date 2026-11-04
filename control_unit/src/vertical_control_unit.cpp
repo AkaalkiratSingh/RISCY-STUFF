@@ -1,4 +1,6 @@
 #include "control_unit/vertical_control_unit.h"
+
+#include "control_unit/control_path.h"
 #include "utils/utils.h"
 
 #include <array>
@@ -82,19 +84,6 @@ namespace risc201 {
             return a == kMicroEnd ? kMicroEndField : (static_cast<uint32_t>(a) & 0xFFu);
         }
 
-        bool condHolds(BranchCond c, const Flags& f) {
-            switch (c) {
-            case BranchCond::None:     return false;
-            case BranchCond::Zero:     return f.zero;
-            case BranchCond::NotZero:  return !f.zero;
-            case BranchCond::Negative: return f.negative;
-            case BranchCond::Carry:    return f.carry;
-            case BranchCond::Overflow: return f.overflow;
-            case BranchCond::GreaterThan: return f.greaterThan;
-            }
-            return false;
-        }
-
         const char* condName(BranchCond c) {
             switch (c) {
             case BranchCond::None:     return "-";
@@ -141,21 +130,9 @@ namespace risc201 {
             add(w.stack_check, "stack_check");
             add(w.addr_check, "addr_check");
             add(w.ra_write, "ra_write");
-            add(w.trap, "trap");
             add(w.halt, "halt");
+            add(w.trap, "trap");
             return s.empty() ? "(idle)" : s;
-        }
-
-        // A fault counts only in a cycle where the unit that reports it is checking
-        // (same rule as the horizontal unit).
-        bool faultApplies(const ControlWord& c, ExceptionCode e) {
-            switch (e) {
-            case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
-            case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check || c.stack_check;
-            case ExceptionCode::NONE:
-            case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
-            }
-            return false;
         }
 
         // ---- the encoder ----------------------------------------------------
@@ -399,8 +376,9 @@ namespace risc201 {
         if (!cm_.empty()) {
             labels[illegal_entry_] = "ILLEGAL";
             labels[trap_entry_] = "TRAP";
-            labels[frontend_entry_] = "FETCH";
-            labels[frontend_entry_ + 1] = "DECODE";
+            const std::vector<int> frontend = frontendRows(*this);
+            if (frontend.size() > 0) labels[frontend[0]] = "FETCH";
+            if (frontend.size() > 1) labels[frontend[1]] = "DECODE";
         }
         for (int op = 0; op < 256; ++op) {
             const int entry = entries_[static_cast<size_t>(op)];
