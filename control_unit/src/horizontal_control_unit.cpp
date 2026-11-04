@@ -8,9 +8,9 @@
 namespace risc201 {
     namespace {
 
-        MicroOp fetchRow() {          
+        MicroOp operandRow() {          
             MicroOp m;
-            m.ctl.pc_inc = true;
+            m.ctl.operand_read = true;
             return m;
         }
 
@@ -87,6 +87,7 @@ namespace risc201 {
             MicroOp m;
             m.ctl.pc_write = true;
             m.ctl.pc_src_ra = true;
+            m.ctl.operand_read = true;
             return m;
         }
 
@@ -104,7 +105,7 @@ namespace risc201 {
         }
 
         std::vector<MicroOp> aluRoutine(Opcode fn) {
-            return { fetchRow(), aluRow(fn), writebackRow() };
+            return { operandRow(), aluRow(fn), writebackRow() };
         }
 
         bool condHolds(BranchCond c, const Flags& f) {
@@ -140,6 +141,10 @@ namespace risc201 {
                 if (!s.empty()) s += ' ';
                 s += name;
             };
+            add(w.ir_load, "ir_load");
+            add(w.instr_decode, "instr_decode");
+            add(w.operand_read, "operand_read");
+            add(w.opcode_dispatch, "opcode_dispatch");
             add(w.alu_enable, "alu_enable");
             if (w.alu_enable) {
                 s += ' ';
@@ -187,6 +192,8 @@ namespace risc201 {
 
     }
 
+    std::string controlSignalNames(const ControlWord& word) { return signalList(word); }
+
     ControlUnit::ControlUnit(MicrocodeEncoding encoding) : encoding_(encoding) {
         if (encoding_ == MicrocodeEncoding::Horizontal) {
             buildHorizontalRom();
@@ -194,7 +201,7 @@ namespace risc201 {
     }
 
     void ControlUnit::buildHorizontalRom() {
-        illegal_entry_ = appendRaw({ haltRow() });
+        illegal_entry_ = appendRaw({ trapRow() });
 
         Opcode logicInstruction[] = {
             Opcode::ADD,
@@ -210,36 +217,36 @@ namespace risc201 {
         }
 
         appendRoutine(Opcode::LOAD,
-            { fetchRow(), aluImmRow(Opcode::ADD), memReadRow(),
+            { operandRow(), aluImmRow(Opcode::ADD), memReadRow(),
              writebackMemRow() });
 
         appendRoutine(Opcode::STORE,
-            { fetchRow(), aluImmRow(Opcode::ADD), memWriteRow() });
+            { operandRow(), aluImmRow(Opcode::ADD), memWriteRow() });
 
         appendRoutine(Opcode::JMP, { jumpRow() });
         appendRoutine(Opcode::HALT, { haltRow() });
-        appendRoutine(Opcode::NOP, { fetchRow() });
+        appendRoutine(Opcode::NOP, { MicroOp{} });
 
-        appendBranchRoutine(Opcode::BEQ, BranchCond::Zero, jumpRow(), fetchRow());
+        appendBranchRoutine(Opcode::BEQ, BranchCond::Zero, jumpRow(), MicroOp{});
 
-        appendRoutine(Opcode::MOV, { fetchRow(), movRow(), writebackRow() });
+        appendRoutine(Opcode::MOV, { operandRow(), movRow(), writebackRow() });
 
         appendRoutine(Opcode::CALL,
-            { fetchRow(), raWriteRow(), jumpRow() });
+            { operandRow(), raWriteRow(), jumpRow() });
 
         appendRoutine(Opcode::RET,
             { pcFromRARow() });
 
-        // appendRoutine(Opcode::PUSH, { fetchRow(), spDecRow(), pushWriteRow() });
+        // appendRoutine(Opcode::PUSH, { operandRow(), spDecRow(), pushWriteRow() });
 
         // appendRoutine(Opcode::POP,
-        //     { fetchRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
+        //     { operandRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
 
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
         appendRoutine(Opcode::MUL, aluRoutine(Opcode::MUL));
 
-        appendRoutine(Opcode::CMP, { fetchRow(), aluRow(Opcode::CMP) });
+        appendRoutine(Opcode::CMP, { operandRow(), aluRow(Opcode::CMP) });
 
         trap_entry_ = appendRaw({ trapRow() });
 
@@ -248,15 +255,22 @@ namespace risc201 {
 
         // BGT target: conditional micro-branch on flags.greaterThan (set by CMP), built exactly
         // like BEQ. Appended last so no existing routine moves.
-        appendBranchRoutine(Opcode::BGT, BranchCond::GreaterThan, jumpRow(), fetchRow());
+        appendBranchRoutine(Opcode::BGT, BranchCond::GreaterThan, jumpRow(), MicroOp{});
 
         // Floating point (IEEE-754 single, held in the ordinary 32-bit registers; one ALU cycle each).
         // FADD/FSUB/FMUL/FDIV: fetch -> execute -> writeback, FLAGS untouched (see aluRowKeepFlags).
         for (Opcode op : { Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV }) {
-            appendRoutine(op, { fetchRow(), aluRowKeepFlags(op), writebackRow() });
+            appendRoutine(op, { operandRow(), aluRowKeepFlags(op), writebackRow() });
         }
         // FCMP rs1, rs2: sets zero/equal/greaterThan only, no writeback (like CMP), so BGT/BEQ can follow.
-        appendRoutine(Opcode::FCMP, { fetchRow(), aluRow(Opcode::FCMP) });
+        appendRoutine(Opcode::FCMP, { operandRow(), aluRow(Opcode::FCMP) });
+
+        MicroOp fetch, decode;
+        fetch.ctl.ir_load = true;
+        fetch.ctl.pc_inc = true;
+        decode.ctl.instr_decode = true;
+        decode.ctl.opcode_dispatch = true;
+        frontend_entry_ = appendRaw({fetch, decode});
     }
 
     int ControlUnit::appendRaw(std::vector<MicroOp> routine) {
@@ -320,6 +334,9 @@ namespace risc201 {
         if (!latched_) {
             micro_pc_ = static_cast<uint32_t>(routineEntry(op));
             latched_ = true;
+            if (static_cast<int>(micro_pc_) == illegal_entry_) {
+                pending_exception_ = ExceptionCode::ILLEGAL_INSTRUCTION;
+            }
         }
 
         const MicroOp& cur = cm_[micro_pc_];
@@ -376,6 +393,10 @@ namespace risc201 {
         w |= static_cast<uint64_t>(c.addr_check)  << 41;
         w |= static_cast<uint64_t>(c.ra_write)    << 42;
         w |= static_cast<uint64_t>(c.pc_src_ra)   << 43;
+        w |= static_cast<uint64_t>(c.ir_load) << 44;
+        w |= static_cast<uint64_t>(c.instr_decode) << 45;
+        w |= static_cast<uint64_t>(c.operand_read) << 46;
+        w |= static_cast<uint64_t>(c.opcode_dispatch) << 47;
         return w;
     }
 
@@ -384,6 +405,8 @@ namespace risc201 {
         if (!cm_.empty()) {
             labels[illegal_entry_] = "ILLEGAL";
             labels[trap_entry_]    = "TRAP";
+            labels[frontend_entry_] = "FETCH";
+            labels[frontend_entry_ + 1] = "DECODE";
         }
         for (const auto& [opc, addr] : entries_) {
             labels[addr] = opcodeName(static_cast<Opcode>(opc));
@@ -407,7 +430,7 @@ namespace risc201 {
             else os << std::setw(5) << r.branch_target;
 
             os << "  0x" << std::right << std::hex << std::uppercase
-               << std::setfill('0') << std::setw(11) << packHorizontal(r)
+               << std::setfill('0') << std::setw(12) << packHorizontal(r)
                << std::dec << std::setfill(' ') << std::left << "     "
                << signalList(r.ctl) << "\n";
         }

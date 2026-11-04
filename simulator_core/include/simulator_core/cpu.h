@@ -12,6 +12,24 @@
 #include <vector>
 
 namespace risc201 {
+    struct MicroTraceRow {
+        uint64_t cycle = 0;
+        uint32_t pc = 0;
+        Opcode opcode = Opcode::NOP;
+        uint32_t micro_pc = 0;
+        int32_t next = kMicroEnd;
+        uint64_t packed = 0;
+        ControlWord signals;
+        BranchCond condition = BranchCond::None;
+        ExceptionCode exception = ExceptionCode::NONE;
+    };
+
+    struct FaultInfo {
+        uint32_t pc = 0;
+        int slot = -1;
+        std::optional<uint32_t> address;
+    };
+
     struct CpuState {
         std::array<int32_t, kNumGPRegisters> registers{};
         uint32_t pc = 0;
@@ -19,6 +37,7 @@ namespace risc201 {
         Flags    flags;
         bool     halted = false;
         std::optional<ExceptionCode> pending_exception;
+        std::optional<FaultInfo> fault_info;
     };
 
     class Cpu {
@@ -50,6 +69,8 @@ namespace risc201 {
         void setTracing(bool on) { tracing_ = on; }
         bool tracing() const { return tracing_; }
         const PipelineTrace& trace() const { return trace_; }
+        void setMicroTracing(bool on) { micro_tracing_ = on; micro_trace_.clear(); }
+        const std::vector<MicroTraceRow>& microTrace() const { return micro_trace_; }
         const std::array<Latch, kMaxPipelineSlots>& stages() const { return regs_; }
         uint32_t fetchPc() const { return fetch_pc_; }
         bool fetching() const { return !stop_fetch_; }
@@ -66,6 +87,7 @@ namespace risc201 {
             bool          stop_fetch = false;
         };
 
+        void recordMicroTrace(const Latch& instruction, ExceptionCode fault = ExceptionCode::NONE);
         void tick();
         void applySlot(const StageSlot& slot, Latch& out, Effects& fx);
         void retire(const Latch& out);
@@ -90,8 +112,11 @@ namespace risc201 {
         ControlUnit control_unit_;
         StackGuard stack_guard_;
         StageControlTable controls_;
+        StageControls frontend_;
         std::array<Latch, kMaxPipelineSlots> regs_{};
         PipelineTrace trace_;
+        std::vector<MicroTraceRow> micro_trace_;
+        bool micro_tracing_ = false;
         uint32_t fetch_pc_ = 0;
         bool stop_fetch_ = false;
         bool forwarding_ = true;

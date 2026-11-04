@@ -30,6 +30,11 @@ struct Cpu {
         ControlUnit cu;
         Alu::Result last;
         branched = false;
+        for (int address = cu.frontendEntry(); address != kMicroEnd;) {
+            const auto& row = cu.controlMemory()[static_cast<size_t>(address)];
+            if (row.ctl.pc_inc) ++pc;
+            address = row.next;
+        }
         do {
             const ControlWord w = cu.step(op, flags);
             if (w.alu_enable) last = alu.execute(w.alu_op, regs[rs1], regs[rs2]);

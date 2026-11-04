@@ -11,6 +11,10 @@
 
 namespace risc201 {
     struct StageControls {
+        bool ir_load = false;
+        bool instr_decode = false;
+        bool operand_read = false;
+        bool opcode_dispatch = false;
         bool       halting = false;
         bool       is_branch = false;
         BranchCond cond = BranchCond::None;
@@ -37,6 +41,8 @@ namespace risc201 {
         bool       reg_write = false;
         bool       mem_to_reg = false;
     };
+    StageControls frontendControls(const ControlUnit& cu);
+    StageControls frontendControls(const VerticalControlUnit& cu);
     StageControls controlFor(const ControlUnit& cu, Opcode op);
 
     using StageControlTable = std::array<StageControls, 256>;

@@ -10,6 +10,10 @@ namespace risc201 {
         void mergeRow(StageControls& sc, const MicroOp& row) {
             const ControlWord& c = row.ctl;
 
+            sc.ir_load |= c.ir_load;
+            sc.instr_decode |= c.instr_decode;
+            sc.operand_read |= c.operand_read;
+            sc.opcode_dispatch |= c.opcode_dispatch;
             sc.pc_inc |= c.pc_inc;
 
             if (c.alu_enable) {
@@ -80,8 +84,20 @@ namespace risc201 {
         }
 
         template <class Unit>
-        StageControls controlForUnit(const Unit& cu, Opcode op) {
+        StageControls frontendOf(const Unit& cu) {
             StageControls sc;
+            if (cu.controlMemory().empty()) return sc;
+            for (int addr = cu.frontendEntry(); addr != kMicroEnd;) {
+                const auto& row = cu.controlMemory().at(static_cast<size_t>(addr));
+                mergeRow(sc, row);
+                addr = row.next;
+            }
+            return sc;
+        }
+
+        template <class Unit>
+        StageControls controlForUnit(const Unit& cu, Opcode op) {
+            StageControls sc = frontendOf(cu);
 
             if (cu.controlMemory().empty()) {
                 sc.halting = true;
@@ -104,6 +120,9 @@ namespace risc201 {
         }
 
     }
+
+    StageControls frontendControls(const ControlUnit& cu) { return frontendOf(cu); }
+    StageControls frontendControls(const VerticalControlUnit& cu) { return frontendOf(cu); }
 
     std::vector<int> reachableRows(const ControlUnit& cu, Opcode op) {
         return reachableRowsOf(cu, op);

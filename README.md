@@ -23,7 +23,7 @@ A from-scratch 32-bit processor project: a custom instruction set (**risc201**),
 ## Highlights
 
 - **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 44-bit microword.
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword.
 - **ALU built from gate-level ideas:** a 32-bit carry-lookahead adder (eight chained 4-bit CLA blocks) and a radix-4 Booth multiplier.
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
@@ -216,7 +216,57 @@ An exception halts the CPU and is reported by the simulator.
  └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Each instruction is expanded into a micro-routine by the control unit. The `Cpu` steps through that routine one control word at a time, driving the ALU, memory, PC and SP, and consulting the stack guard on stack accesses.
+The control ROM includes a shared front end: `ir_load pc_inc` fetches a word and
+advances the word-index PC, then `instr_decode opcode_dispatch` decodes it and
+selects its opcode routine. Instruction bodies use `operand_read` when operands
+are needed, followed by ALU, memory, branch and writeback signals. RET's combined
+`operand_read pc_write pc_src_ra` row reads R14 in OF and redirects in EX.
+
+The CPU gates IF and ID with the selected ROM's shared controls, and OF with the
+decoded instruction's `operand_read` control. The four-stage pipeline combines
+IF/ID/OF in one slot; the six-stage pipeline keeps them separate. These signals
+change who authorizes each operation without adding pipeline clocks.
+
+Generated ROM references show the physical ROM and each instruction's complete
+flow, repeating the shared prefix by address before its opcode-specific rows:
+
+- [Horizontal ROM](docs/control_rom_horizontal.txt): 48-bit packed words.
+- [Vertical ROM](docs/control_rom_vertical.txt): 16-bit words, 22 micro-op codes.
+
+Regenerate both files from the actual ROM definitions with:
+
+```bash
+cmake --build build --target export_control_rom
+```
+
+`ControlRomListings` in CTest fails if either checked-in listing differs from the
+current ROM. The `risc201-rom` exporter also accepts `--check <directory>`.
+
+The CPU derives a per-opcode control bundle from each ROM routine and applies those
+signals in the pipeline stages. It does not advance a single global microPC during
+pipeline execution; several instructions overlap.
+
+`--micro-trace` reconstructs each retired or faulting instruction's microcode path
+using the selected sequencer and the flags captured when that instruction executes.
+The shared fetch/decode rows are included before each opcode routine.
+Each row shows its instruction PC, microPC, successor (or END), packed ROM word,
+output signals, branch condition, and exception. The cycle label identifies the
+pipeline retirement/fault clock, not a separate clock for each microcode row.
+Squashed instructions are omitted. Faulting rows show suppressed signals followed
+by the TRAP row; an invalid instruction fetch has no microcode routine to display.
+
+```bash
+build/simulator_core/risc201-sim examples/recursive_sum.asm --micro-trace --vertical
+build/simulator_core/risc201-sim examples/recursive_sum.asm --micro-step
+```
+
+`--micro-step` pauses between reconstructed rows: Enter advances the display and
+`q` (or EOF) stops. It does not pause or execute datapath micro-operations individually.
+Combine `--micro-trace` with `--trace` for pipeline context or `-s` for register
+snapshots. Trace modes stop after 4000 pipeline clocks. Exit status is 0 for normal
+completion, 1 for an exception/input error, and 2 for an incomplete run.
+Exceptions include the faulting instruction PC, detection stage, and memory address
+when applicable. Undefined opcodes raise `ILLEGAL_INSTRUCTION`.
 
 All modules share a single header-only contract, `isa_spec/isa201.h`, so the assembler, decoder, ALU and control unit always agree on opcodes, registers, flags and exception codes.
 
@@ -280,7 +330,7 @@ All CTest targets pass. The TUI is exercised manually and is not covered by CTes
 
 **In progress / planned**
 - [ ] Debugger class: breakpoints and watchpoints are stubbed in `simulator_core` (`stepInstruction` works; `continueExecution`, `reset` and `printMemory` are TODO). The TUI implements its own breakpoints.
-- [ ] Control-unit display: `--trace` shows the pipeline slot by slot, but the microPC, the packed control word and the signal bundle are not shown
+- [x] Reconstructed microcode display: `--micro-trace` and `--micro-step` show microPC transitions, packed ROM words, signals and traps without changing pipeline timing
 - [ ] Wire the stack visualizer into the simulator output
 - [ ] Complete the ISA, with end to end implementation
 - [ ] Expose `NOT`, `SAR`, `CMP`, `MOV`, `BGT` and `FCMP` in the assembler

@@ -32,6 +32,8 @@ void printUsage(const char* prog) {
         << "  -d, --decode    print the decoded instruction listing before running\n"
         << "  -m, --mem S:C   dump C data-memory words starting at word index S\n"
         << "      --trace         print the pipeline per clock, with hazard events\n"
+        << "      --micro-trace reconstruct each completed/faulting instruction's microcode path\n"
+        << "      --micro-step  pause between reconstructed microcode rows (Enter/q)\n"
         << "      --no-forward stall on every dependency instead of bypassing\n"
         << "      --horizontal use the horizontal microcode ROM (default)\n"
         << "      --vertical   use the vertical microcode ROM (same behaviour, narrower words)\n"
@@ -113,6 +115,64 @@ void printTraceLine(const risc201::Cpu& cpu, size_t& event_cursor) {
     std::cout << "\n";
 }
 
+bool printMicroTrace(const risc201::Cpu& cpu, bool interactive) {
+    for (const auto& row : cpu.microTrace()) {
+        std::cout << "  completed/fault cycle=" << row.cycle << " pc=" << row.pc
+                  << " " << risc201::opcodeName(row.opcode)
+                  << " microPC=" << row.micro_pc << " -> ";
+        if (row.next == risc201::kMicroEnd) std::cout << "END";
+        else std::cout << row.next;
+        std::cout << " word=0x" << std::right << std::hex << std::uppercase << std::setfill('0')
+                  << std::setw(cpu.encoding() == risc201::MicrocodeEncoding::Vertical ? 4 : risc201::kHorizontalWordBits / 4)
+                  << row.packed << std::dec << std::setfill(' ') << " signals:";
+        const auto& c = row.signals;
+        bool any = false;
+        auto signal = [&](bool enabled, const char* name) {
+            if (enabled) { std::cout << " " << name; any = true; }
+        };
+        signal(c.ir_load, "ir_load");
+        signal(c.instr_decode, "instr_decode");
+        signal(c.operand_read, "operand_read");
+        signal(c.opcode_dispatch, "opcode_dispatch");
+        signal(c.alu_enable, "alu_enable");
+        signal(c.mem_read, "mem_read");
+        signal(c.mem_write, "mem_write");
+        signal(c.reg_write, "reg_write");
+        signal(c.pc_write, "pc_write");
+        signal(c.pc_inc, "pc_inc");
+        signal(c.alu_src_imm, "alu_src_imm");
+        signal(c.mem_to_reg, "mem_to_reg");
+        signal(c.sp_dec, "sp_dec");
+        signal(c.sp_inc, "sp_inc");
+        signal(c.flag_update, "flag_update");
+        signal(c.halt, "halt");
+        signal(c.trap, "trap");
+        signal(c.mem_addr_sp, "mem_addr_sp");
+        signal(c.mem_data_pc, "mem_data_pc");
+        signal(c.pc_src_mem, "pc_src_mem");
+        signal(c.pc_src_ra, "pc_src_ra");
+        signal(c.stack_check, "stack_check");
+        signal(c.addr_check, "addr_check");
+        signal(c.ra_write, "ra_write");
+        if (!any) std::cout << " (idle/suppressed)";
+        if (c.alu_enable) std::cout << " alu_op=" << risc201::opcodeName(c.alu_op);
+        if (row.condition != risc201::BranchCond::None) {
+            const char* conditions[] = {"none", "Z", "!Z", "N", "C", "V", "GT"};
+            std::cout << " condition=" << conditions[static_cast<size_t>(row.condition)];
+        }
+        if (row.exception != risc201::ExceptionCode::NONE) {
+            std::cout << " exception=" << risc201::exceptionName(row.exception);
+        }
+        std::cout << "\n";
+        if (interactive) {
+            std::cout << "Enter: next microcode row; q: stop > " << std::flush;
+            std::string command;
+            if (!std::getline(std::cin, command) || command == "q") return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -123,6 +183,9 @@ int main(int argc, char** argv) {
     bool dump_mem = false;
     bool forwarding = true;
     bool trace_mode = false;
+    bool micro_trace = false;
+    bool micro_step = false;
+    bool interrupted = false;
     risc201::MicrocodeEncoding encoding = risc201::MicrocodeEncoding::Horizontal;
     uint32_t mem_start = 0;
     uint32_t mem_count = 0;
@@ -147,6 +210,11 @@ int main(int argc, char** argv) {
             encoding = risc201::MicrocodeEncoding::Horizontal;
         } else if (arg == "--vertical") {
             encoding = risc201::MicrocodeEncoding::Vertical;
+        } else if (arg == "--micro-trace") {
+            micro_trace = true;
+        } else if (arg == "--micro-step") {
+            micro_trace = true;
+            micro_step = true;
         } else if (arg == "--trace") {
             trace_mode = true;
         } else if (arg == "-m" || arg == "--mem") {
@@ -177,6 +245,7 @@ int main(int argc, char** argv) {
     risc201::Cpu cpu(variant, risc201::kDefaultMemoryWords, encoding);
     cpu.setForwarding(forwarding);
     cpu.setTracing(trace_mode);
+    cpu.setMicroTracing(micro_trace);
 
     // --- load -------------------------------------------------------------
     if (kind == InputKind::Assembly) {
@@ -266,18 +335,29 @@ int main(int argc, char** argv) {
     }
 
     // --- run --------------------------------------------------------------
-    if (trace_mode) {
+    if (micro_trace) {
+        std::cout << "\nMicrocode reconstruction: rows are replayed at retirement or fault.\n"
+                  << "The cycle label is the pipeline completion/fault clock; rows do not add clocks.\n"
+                  << "Squashed instructions are omitted; signals are sequencer outputs, not live pipeline wires.\n";
+    }
+    if (trace_mode || micro_trace) {
         std::cout << "\n--- pipeline trace: " << risc201::variantName(variant)
                   << (forwarding ? " (forwarding)" : " (no forwarding)") << " ---\n";
-        printTraceHeader(variant);
+        if (trace_mode) printTraceHeader(variant);
         size_t event_cursor = 0;
         uint64_t clock = 0;
         while (!cpu.state().halted && clock < kMaxTraceCycles) {
+            const uint64_t retired_before = cpu.retired();
             cpu.step();
             ++clock;
-            printTraceLine(cpu, event_cursor);
+            if (trace_mode) printTraceLine(cpu, event_cursor);
+            if (micro_trace && !printMicroTrace(cpu, micro_step)) {
+                interrupted = true;
+                break;
+            }
+            if (step_mode && cpu.retired() != retired_before) printRegisters(cpu.state());
         }
-        if (!cpu.state().halted) {
+        if (!cpu.state().halted && !interrupted) {
             std::cout << "  (trace stopped after " << kMaxTraceCycles << " cycles)\n";
         }
     } else if (step_mode) {
@@ -312,7 +392,14 @@ int main(int argc, char** argv) {
 
     if (cpu.state().pending_exception) {
         std::cout << "EXCEPTION: "
-                  << risc201::exceptionName(*cpu.state().pending_exception) << "\n";
+                  << risc201::exceptionName(*cpu.state().pending_exception);
+        if (cpu.state().fault_info) {
+            const auto& fault = *cpu.state().fault_info;
+            std::cout << " pc=" << fault.pc << " stage="
+                      << risc201::layoutFor(cpu.variant())[static_cast<size_t>(fault.slot)].name;
+            if (fault.address) std::cout << " address=" << *fault.address;
+        }
+        std::cout << "\n";
     }
 
     std::cout << "\nFinal register file:\n";
@@ -328,5 +415,5 @@ int main(int argc, char** argv) {
         }
     }
 
-    return 0;
+    return cpu.state().pending_exception ? 1 : (!cpu.state().halted ? 2 : 0);
 }

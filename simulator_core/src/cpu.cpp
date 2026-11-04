@@ -3,6 +3,7 @@
 #include "simulator_core/decoder.h"
 
 #include <cstddef>
+#include <stdexcept>
 
 namespace risc201 {
 
@@ -39,6 +40,8 @@ namespace risc201 {
         controls_(encoding == MicrocodeEncoding::Vertical
                       ? buildStageControls(VerticalControlUnit{})
                       : buildStageControls(control_unit_)) {
+        frontend_ = encoding == MicrocodeEncoding::Vertical
+            ? frontendControls(VerticalControlUnit{}) : frontendControls(control_unit_);
         state_.sp = memory_words;
         state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         resetPipeline();
@@ -47,6 +50,7 @@ namespace risc201 {
     void Cpu::resetPipeline() {
         regs_.fill(Latch{});
         trace_.clear();
+        micro_trace_.clear();
         fetch_pc_ = 0;
         stop_fetch_ = false;
 
@@ -89,6 +93,8 @@ namespace risc201 {
         controls_ = encoding == MicrocodeEncoding::Vertical
                         ? buildStageControls(VerticalControlUnit{})
                         : buildStageControls(control_unit_);
+        frontend_ = encoding == MicrocodeEncoding::Vertical
+            ? frontendControls(VerticalControlUnit{}) : frontendControls(control_unit_);
         memory_.assign(memory_.size(), 0);
         loadWords(source_words_);
     }
@@ -120,7 +126,7 @@ namespace risc201 {
 
     Latch Cpu::fetchStage(bool stall) {
         Latch out;
-        if (stop_fetch_) return out;
+        if (stop_fetch_ || !frontend_.ir_load) return out;
 
         if (fetch_pc_ >= code_.size()) {
             out.valid = true;
@@ -135,7 +141,7 @@ namespace risc201 {
         out.valid = true;
         out.pc = fetch_pc_;
         out.word = code_[fetch_pc_];
-        if (!stall) fetch_pc_ += 1;
+        if (!stall && frontend_.pc_inc) fetch_pc_ += 1;
         return out;
     }
 
@@ -243,23 +249,37 @@ namespace risc201 {
     }
 
     void Cpu::applySlot(const StageSlot& slot, Latch& out, Effects& fx) {
-        if (out.fault) return;
+        if (out.fault) {
+            if (slot.EX) {
+                fx.fault = true;
+                fx.code = out.fault_code;
+            }
+            return;
+        }
 
-        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
-
-        if (slot.ID && !out.decoded) {
+        if (slot.ID && !out.decoded && frontend_.instr_decode && frontend_.opcode_dispatch) {
             out.instr = decodeInstruction(out.word);
             out.decoded = true;
+            if (control_unit_.routineEntry(out.instr.opcode) ==
+                control_unit_.routineEntry(static_cast<Opcode>(0xFF))) {
+                out.fault = true;
+                out.fault_code = ExceptionCode::ILLEGAL_INSTRUCTION;
+                return;
+            }
             if (controls_[static_cast<uint8_t>(out.instr.opcode)].halting) fx.stop_fetch = true;
         }
 
-        if (slot.OF && out.decoded) {
+        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
+
+        if (slot.OF && out.decoded && controls_[op].operand_read) {
             out.rs1_val = state_.registers[static_cast<size_t>(out.instr.rs1)];
             out.rs2_val = state_.registers[static_cast<size_t>(out.instr.rs2)];
             out.rd_val  = state_.registers[static_cast<size_t>(out.instr.rd)];
+            out.ra_val = state_.registers[static_cast<size_t>(Register::R14)];
         }
 
         if (slot.EX && out.decoded) {
+            out.execution_flags = state_.flags;
             const StageControls& c = controls_[op];
 
             if (forwarding_) {
@@ -294,8 +314,8 @@ namespace risc201 {
 
             if (c.pc_from_ra) {
                 const int32_t ra = forwarding_
-                    ? bypass(Register::R14, static_cast<int32_t>(state_.registers[static_cast<size_t>(Register::R14)]))
-                    : static_cast<int32_t>(state_.registers[static_cast<size_t>(Register::R14)]);
+                    ? bypass(Register::R14, out.ra_val)
+                    : out.ra_val;
                 out.redirect = true;
                 out.next_pc = static_cast<uint32_t>(ra);
                 fx.taken = true;
@@ -358,6 +378,8 @@ namespace risc201 {
 
         if (out.fault) {
             state_.pending_exception = out.fault_code;
+            state_.fault_info = FaultInfo{out.pc, n_slots_ - 1, out.pc};
+            ++trace_.faults;
             stop_fetch_ = true;
             return;
         }
@@ -376,6 +398,7 @@ namespace risc201 {
         if (c.ra_write) {
             state_.registers[static_cast<size_t>(Register::R14)] = static_cast<int32_t>(out.pc + 1);
         }
+        recordMicroTrace(out);
         state_.pc = out.pc;
         if (!c.halting) ++retired_;
     }
@@ -431,6 +454,16 @@ namespace risc201 {
 
             if (!wrong_path && !have_effect &&
                 (here.fault || here.taken || here.stop_fetch)) {
+                if (here.fault) {
+                    FaultInfo info{out.pc, i, std::nullopt};
+                    if (here.code == ExceptionCode::INVALID_MEMORY_ACCESS) {
+                        const auto& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
+                        info.address = out.fault ? out.pc : (c.mem_addr_sp ? out.mem_sp_addr
+                                                   : static_cast<uint32_t>(out.alu_result));
+                    }
+                    state_.fault_info = info;
+                    recordMicroTrace(out, here.code);
+                }
                 oldest = here;
                 have_effect = true;
                 effect_slot = i;
@@ -481,7 +514,49 @@ namespace risc201 {
         if (stop_fetch_ && pipelineEmpty()) state_.halted = true;
     }
 
+    void Cpu::recordMicroTrace(const Latch& instruction, ExceptionCode fault) {
+        if (!micro_tracing_ || (instruction.fault &&
+            instruction.fault_code == ExceptionCode::INVALID_MEMORY_ACCESS)) return;
+        auto record = [&](auto& unit) {
+            for (int address = unit.frontendEntry(); address != kMicroEnd;) {
+                const auto& row = unit.controlMemory().at(static_cast<size_t>(address));
+                const int32_t next = row.ctl.opcode_dispatch
+                    ? unit.routineEntry(instruction.instr.opcode) : row.next;
+                const uint64_t packed = encoding_ == MicrocodeEncoding::Vertical
+                    ? packVertical(row, address) : ControlUnit::packHorizontal(row);
+                micro_trace_.push_back({cycles_, instruction.pc, instruction.instr.opcode,
+                    static_cast<uint32_t>(address), next, packed, row.ctl, row.cond,
+                    ExceptionCode::NONE});
+                address = row.next;
+            }
+            for (size_t count = 0; count <= unit.controlMemory().size(); ++count) {
+                const uint32_t address = count == 0
+                    ? static_cast<uint32_t>(unit.routineEntry(instruction.instr.opcode))
+                    : unit.microPC();
+                const MicroOp& row = unit.controlMemory().at(address);
+                const ControlWord signals = unit.step(instruction.instr.opcode,
+                                                     instruction.execution_flags, fault);
+                const uint64_t packed = encoding_ == MicrocodeEncoding::Vertical
+                    ? packVertical(row, static_cast<int>(address))
+                    : ControlUnit::packHorizontal(row);
+                micro_trace_.push_back({cycles_, instruction.pc, instruction.instr.opcode,
+                    address, unit.routineDone() ? kMicroEnd : static_cast<int32_t>(unit.microPC()),
+                    packed, signals, row.cond, unit.pendingException()});
+                if (unit.routineDone()) return;
+            }
+            throw std::logic_error("microcode routine did not terminate");
+        };
+        if (encoding_ == MicrocodeEncoding::Vertical) {
+            VerticalControlUnit unit;
+            record(unit);
+        } else {
+            ControlUnit unit;
+            record(unit);
+        }
+    }
+
     void Cpu::step() {
+        micro_trace_.clear();
         if (state_.halted) return;
         ++cycles_;
         tick();

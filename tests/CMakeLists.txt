@@ -62,3 +62,12 @@ add_test(NAME PreprocessorTest COMMAND preprocessor_test)
 add_executable(debugger_test debugger_test.cpp)
 target_link_libraries(debugger_test PRIVATE simulator_core_lib assembler_lib)
 add_test(NAME DebuggerTest COMMAND debugger_test)
+
+add_executable(micro_trace_test micro_trace_test.cpp)
+target_link_libraries(micro_trace_test PRIVATE simulator_core_lib)
+add_test(NAME MicroTraceTest COMMAND micro_trace_test)
+
+add_test(NAME MicroCliTest COMMAND ${CMAKE_COMMAND}
+    -DSIM=$<TARGET_FILE:risc201-sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/micro_cli_test.cmake)
+
+add_test(NAME ControlRomListings COMMAND risc201-rom --check ${CMAKE_SOURCE_DIR}/docs)

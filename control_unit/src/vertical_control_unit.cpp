@@ -35,7 +35,7 @@ namespace risc201 {
                 using C = ControlWord;
                 UopTable t = { {
                     { MicroOpCode::Idle,         "IDLE",     false, lines({}) },
-                    { MicroOpCode::Fetch,        "FETCH",    false, lines({ &C::pc_inc }) },
+                    { MicroOpCode::Operands,     "OPERANDS", false, lines({ &C::operand_read }) },
                     { MicroOpCode::Alu,          "ALU",      true,  lines({ &C::alu_enable, &C::flag_update }) },
                     { MicroOpCode::AluNoFlags,   "ALU.NF",   true,  lines({ &C::alu_enable }) },
                     { MicroOpCode::AluImm,       "ALU.IMM",  true,  lines({ &C::alu_enable, &C::alu_src_imm }) },
@@ -53,7 +53,9 @@ namespace risc201 {
                     { MicroOpCode::Halt,         "HALT",     false, lines({ &C::halt }) },
                     { MicroOpCode::Trap,         "TRAP",     false, lines({ &C::trap, &C::halt }) },
                     { MicroOpCode::RaWrite,      "RA.WR",    false, lines({ &C::ra_write }) },
-                    { MicroOpCode::JumpRa,       "JUMP.RA",  false, lines({ &C::pc_write, &C::pc_src_ra }) },
+                    { MicroOpCode::JumpRa,       "JUMP.RA",  false, lines({ &C::pc_write, &C::pc_src_ra, &C::operand_read }) },
+                    { MicroOpCode::InstructionFetch, "IF", false, lines({ &C::ir_load, &C::pc_inc }) },
+                    { MicroOpCode::DecodeDispatch, "ID.DISPATCH", false, lines({ &C::instr_decode, &C::opcode_dispatch }) },
                 } };
                 for (size_t i = 0; i < t.size(); ++i) {
                     if (static_cast<size_t>(t[i].code) != i) {
@@ -113,6 +115,10 @@ namespace risc201 {
                 if (!s.empty()) s += ' ';
                 s += name;
                 };
+            add(w.ir_load, "ir_load");
+            add(w.instr_decode, "instr_decode");
+            add(w.operand_read, "operand_read");
+            add(w.opcode_dispatch, "opcode_dispatch");
             add(w.alu_enable, "alu_enable");
             if (w.alu_enable) {
                 s += ' ';
@@ -295,6 +301,7 @@ namespace risc201 {
         }
         illegal_entry_ = source.routineEntry(static_cast<Opcode>(0xFF));
         trap_entry_ = source.trapEntry();
+        frontend_entry_ = source.frontendEntry();
 
         vrom_.reserve(rows.size());
         for (size_t a = 0; a < rows.size(); ++a) {
@@ -354,6 +361,9 @@ namespace risc201 {
         if (!latched_) {
             micro_pc_ = static_cast<uint32_t>(routineEntry(op));
             latched_ = true;
+            if (static_cast<int>(micro_pc_) == illegal_entry_) {
+                pending_exception_ = ExceptionCode::ILLEGAL_INSTRUCTION;
+            }
         }
 
         const MicroOp cur = readRow(micro_pc_);
@@ -389,6 +399,8 @@ namespace risc201 {
         if (!cm_.empty()) {
             labels[illegal_entry_] = "ILLEGAL";
             labels[trap_entry_] = "TRAP";
+            labels[frontend_entry_] = "FETCH";
+            labels[frontend_entry_ + 1] = "DECODE";
         }
         for (int op = 0; op < 256; ++op) {
             const int entry = entries_[static_cast<size_t>(op)];
