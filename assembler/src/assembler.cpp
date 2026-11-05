@@ -139,6 +139,12 @@ namespace risc201 {
             }
         }
 
+        bool isValidLabelName(const std::string& label) {
+            if (label.empty()) return false;
+            const unsigned char first = static_cast<unsigned char>(label[0]);
+            return !std::isdigit(first) && first != '-';
+        }
+
         bool inRange(int32_t value, int32_t lo, int32_t hi) {
             return (value >= lo && value <= hi);
         }
@@ -182,7 +188,8 @@ namespace risc201 {
         std::string label;
         bool has_label = extractLabel(line, label);
         if (has_label) {
-            if (symbol_table_.count(label)) addError(line_num, "duplicate label '" + label + "'");
+            if (!isValidLabelName(label)) addError(line_num, "invalid label '" + label + "': label names cannot start with a digit or '-'");
+            else if (symbol_table_.count(label)) addError(line_num, "duplicate label '" + label + "'");
             else symbol_table_[label] = location_counter_;
         }
 
@@ -339,16 +346,30 @@ namespace risc201 {
                 }
 
                 case OperandKind::LABEL: {
-                    auto symbol = symbol_table_.find(token);
-                    if (symbol == symbol_table_.end()) {
-                        addError(pl.line_number, "undefined label '" + token + "'");
+                    int32_t raw_offset;
+                    if (parseImmediate(token, raw_offset)) {
+                        out.imm = raw_offset;
+                        imm_token = token;
+                        if (raw_offset % 4 != 0) {
+                            addWarning(pl.line_number, "jump offset " + token + " is not a multiple of 4 (instructions are 4 bytes)");
+                        }
+                    }
+                    else if (token[0] == '-' || std::isdigit(static_cast<unsigned char>(token[0]))) {
+                        addError(pl.line_number, "invalid jump offset '" + token + "'");
                         return false;
                     }
-                    int32_t target = static_cast<int32_t>(symbol->second);
-                    int32_t current_pc = static_cast<int32_t>(pl.address);
-                    out.imm = target - (current_pc + 4);
+                    else {
+                        auto symbol = symbol_table_.find(token);
+                        if (symbol == symbol_table_.end()) {
+                            addError(pl.line_number, "undefined label '" + token + "'");
+                            return false;
+                        }
+                        int32_t target = static_cast<int32_t>(symbol->second);
+                        int32_t current_pc = static_cast<int32_t>(pl.address);
+                        out.imm = target - (current_pc + 4);
+                        imm_token = token + " (resolved offset " + std::to_string(out.imm) + ")";
+                    }
                     have_imm_or_label = true;
-                    imm_token = token + " (resolved offset " + std::to_string(out.imm) + ")";;
 
                     break;
                 }

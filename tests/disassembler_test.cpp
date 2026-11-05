@@ -500,6 +500,49 @@ void testDisassembleBgtWithLabels() {
     std::cout << "testDisassembleBgtWithLabels passed\n";
 }
 
+// ---------- jump offsets print as numbers and reassemble ----------
+
+void testDisassembledJumpsReassemble() {
+    const std::vector<std::string> sources[] = {
+        { ".main:", "ADD R1, R0, 1", "BEQ skip", "ADD R1, R1, 1", "skip: CALL fn", "HALT", "fn: RET" },
+        { ".main:", "top: ADD R1, R1, 1", "BGT top", "JMP end", "NOP", "end: HALT" },
+    };
+    for (const auto& src : sources) {
+        Assembler asmblr;
+        auto program = assembleProgram(src, asmblr);
+        assert(asmblr.errors().empty());
+        std::vector<uint32_t> words;
+        for (const auto& instr : program) words.push_back(asmblr.encodeInstruction(instr));
+
+        Disassembler disasm;
+        auto decoded = disasm.decodeProgram(words);
+        auto lines = disasm.disassemble(decoded);          // jump targets are raw numbers
+
+        // Reassemble the plain disassembly (without the JMP .main prelude line).
+        std::vector<std::string> again = { ".main:" };
+        again.insert(again.end(), lines.begin() + 1, lines.end());
+        Assembler second;
+        auto program2 = assembleProgram(again, second);
+        assert(second.errors().empty());
+        std::vector<uint32_t> words2;
+        for (const auto& instr : program2) words2.push_back(second.encodeInstruction(instr));
+        assert(words2 == words);
+    }
+    std::cout << "testDisassembledJumpsReassemble passed\n";
+}
+
+void testDisassembledJumpOffsetText() {
+    Assembler asmblr;
+    auto program = assembleProgram({ ".main:", "top: NOP", "BGT top", "BEQ next", "next: HALT" }, asmblr);
+    assert(asmblr.errors().empty());
+    Disassembler disasm;
+    auto lines = disasm.disassemble(program);
+    // lines: JMP 0 | NOP | BGT -8 | BEQ 0 | HALT
+    assert(lines[2] == "BGT -8");
+    assert(lines[3] == "BEQ 0");
+    std::cout << "testDisassembledJumpOffsetText passed\n";
+}
+
 int main() {
     testDecodeRType();
     testDecodeIType();
@@ -528,6 +571,9 @@ int main() {
     testDecodeEmptyOperandWords();
     testEmptyOperandSourceRoundtrip();
     testDisassembleBgtWithLabels();
+
+    testDisassembledJumpsReassemble();
+    testDisassembledJumpOffsetText();
 
     std::cout << "All disassembler tests passed.\n";
     return 0;
