@@ -1,12 +1,7 @@
-# RISCY201: Processor Architecture and Simulator
+# Processor Architecture and Simulator
 
 **Technical report for project evaluation**  
 **Implementation:** C++17, CMake, custom 32-bit instruction set  
-**Documented version:** 4 November 2026
-
-RISCY201 is an educational processor and toolchain implemented in software. It includes a two-pass assembler, macro preprocessor, disassembler, arithmetic logic unit, horizontal and vertical control ROMs, two pipelined execution configurations, memory-access checks, and terminal-based debugging tools.
-
-The project connects instruction encoding, control signals, datapath operations, and observable program execution. A program can be assembled, decoded, executed under different pipeline configurations, inspected through control-ROM listings, and checked against register values, memory contents, exceptions, and cycle counters.
 
 The processor uses a **custom ISA**. Its encodings and calling convention are defined by this project; it is not a binary-compatible implementation of the standard RISC-V ISA.
 
@@ -51,7 +46,7 @@ The processor uses a **custom ISA**. Its encodings and calling convention are de
 | Instruction issue model | In-order pipeline, at most one instruction retired per clock |
 | Forwarding | Enabled by default; can be disabled |
 | Control memory | 79 physical rows, shared across 28 opcode routines and common control paths |
-| Horizontal control word | 48 bits |
+| Horizontal control word | 42 bits |
 | Vertical control word | 16 bits; 22 micro-operation codes |
 | Control-memory address fields | 8 bits; encoded 255 represents END |
 | Runtime exceptions | Invalid memory access, integer divide-by-zero, illegal instruction |
@@ -210,7 +205,7 @@ The control memory contains actual signal bundles and sequencing information. It
 | `pc_write`, PC-source signals | Select control-transfer behavior |
 | `halt`, `trap` | Describe stopping and exception paths |
 
-Stack-specific signals are also represented by the control format. Current PUSH/POP behavior is produced through ordinary SUB/STORE and LOAD/ADD instructions rather than dedicated stack opcodes.
+PUSH/POP behavior is produced through ordinary SUB/STORE and LOAD/ADD instructions rather than dedicated stack control signals.
 
 ### 6.2 Shared front end and complete instruction flow
 
@@ -237,7 +232,7 @@ RET uses separate OF operand-read and EX redirect rows. Each executed row consum
 
 ### 6.3 Horizontal and vertical encoding
 
-The horizontal word is 48 bits. Individual bits encode control lines, while fields encode ALU selection, branch condition, and successor addresses. The recently added front-end controls occupy bits 44–47. The full bit assignment is recorded in the generated horizontal listing.
+The horizontal word is 42 bits. Individual bits encode control lines, while fields encode ALU selection, branch condition, and successor addresses. The front-end controls occupy bits 38–41. The full bit assignment is recorded in the generated horizontal listing.
 
 The vertical word is 16 bits. Operate words select a micro-operation from a 22-entry decoder and optionally an ALU function. Branch words encode a condition and taken address. Sequential successors are implicit; END terminates the current sequence. The dispatch control provides the dynamic transition from the common prefix to the decoded instruction's routine.
 
@@ -246,11 +241,11 @@ The vertical ROM is generated from the horizontal definitions and decoded back f
 | Encoded storage | Horizontal | Vertical |
 |---|---:|---:|
 | Physical rows | 86 | 86 |
-| Bits per row | 48 | 16 |
-| Total encoded bits | 4128 | 1376 |
-| Byte-equivalent encoded capacity | 516 | 172 |
+| Bits per row | 42 | 16 |
+| Total encoded bits | 3612 | 1376 |
+| Byte-equivalent encoded capacity | 451.5 | 172 |
 
-The vertical representation reduces encoded ROM capacity by two-thirds. These figures describe the logical packed ROM, not C++ object sizes or total hardware area. The decoder and dispatch structures also require storage/logic. The simulator does not model their electrical delay, so these numbers do not establish a clock-frequency advantage.
+The vertical representation reduces encoded ROM capacity by approximately 62%. These figures describe the logical packed ROM, not C++ object sizes or total hardware area. The decoder and dispatch structures also require storage/logic. The simulator does not model their electrical delay, so these numbers do not establish a clock-frequency advantage.
 
 ### 6.4 How ROM controls reach the pipeline
 
@@ -260,7 +255,7 @@ Every in-flight instruction owns a microPC. The CPU executes its current row, fo
 
 This is a ROM-row-clocked pipelined controller. An instruction executes at most one row per clock, while different instructions can execute rows in different slots during the same clock.
 
-The complete reference files are [horizontal control ROM](control_rom_horizontal.txt) and [vertical control ROM](control_rom_vertical.txt).
+The complete reference files are [horizontal control ROM](CONTROL_ROM/control_rom_horizontal.txt) and [vertical control ROM](CONTROL_ROM/control_rom_vertical.txt).
 
 ## 7. Datapath and pipeline execution
 
@@ -286,7 +281,7 @@ Instruction words, decoded fields, operand values, ALU results, loaded data, and
 
 ### 7.2 One simulation clock
 
-`Cpu::step()` advances one clock. In-flight instructions execute at most one ROM row each, oldest first, then move toward the slot containing their next row. An older branch or fault can suppress younger work during the same clock. A dependency holds its consumer until the producer has completed.
+`Cpu::step()` advances one clock. In-flight instructions execute at most one ROM row each, oldest first, then move toward the slot containing their next row. An older branch or fault can suppress younger work during the same clock. A dependency holds its consumer until the required result is available under the selected forwarding policy.
 
 `stepInstruction()` advances clocks until the next retirement or halt, subject to its internal guard. `run()` advances until fetching has stopped and the pipeline has drained. HALT itself is excluded from the retired-instruction count.
 
@@ -296,7 +291,7 @@ There are two useful PC views: `fetch_pc_` identifies the next word to fetch, wh
 
 ### 8.1 Data dependencies
 
-Readiness-based forwarding is still planned. Both `--no-forward` and the default setting currently use the same conservative dependency interlock. Register results are read after older writers retire.
+Forwarding is enabled by default. Operand reads use ready values from the youngest matching older producer; a dependency stalls while its result is unavailable. With `--no-forward`, consumers wait for older dependencies to complete. ALU results and completed loads can be forwarded to register operands and store data; return-address dependencies are also tracked.
 
 The reported `stalls` count covers these data interlocks. It does not include every clock spent waiting for a busy slot, and the four-stage FETCH slot's three row clocks are normal work rather than stalls.
 
@@ -398,18 +393,9 @@ The repeated microcode addresses in the trace are expected: the same ROM routine
 
 ## 12. Measured program behavior
 
-The current row-clock executor produces the following results. Forwarding on and off have the same timings while both settings use the conservative interlock. Horizontal and vertical ROMs produce the same architectural results.
+The row-clock executor supports forwarding and conservative interlock modes. Horizontal and vertical ROMs produce the same architectural results. Cycle counts depend on the selected pipeline layout and dependency pattern.
 
-| Program | Stages | Retired | Cycles | Data stalls | Flushes | Squashed |
-|---|---:|---:|---:|---:|---:|---:|
-| recursive_sum | 4 | 77 | 243 | 0 | 14 | 14 |
-| recursive_sum | 6 | 77 | 174 | 49 | 14 | 37 |
-| pointer_walk | 4 | 1793 | 5385 | 256 | 257 | 257 |
-| pointer_walk | 6 | 1793 | 4617 | 1794 | 257 | 514 |
-| branch_storm | 4 | 1201 | 3509 | 0 | 901 | 901 |
-| branch_storm | 6 | 1201 | 3409 | 201 | 901 | 1802 |
-
-The [archived measurement CSV](evaluation_results.csv) contains results from the earlier stage-clock executor. Its cycle counts and forwarding comparisons are historical and should not be used as current measurements. Clock counts alone do not establish hardware execution time because physical clock periods are not modeled.
+Clock counts alone do not establish hardware execution time because physical clock periods are not modeled.
 
 ## 13. Build and demonstration
 
@@ -451,7 +437,7 @@ Then inspect the pipeline and ROM separately:
 
 Use Enter to advance the microcode view or `q` to stop. Open the generated ROM files to compare the packed word representations and complete instruction paths.
 
-Demonstrate data hazards under the current conservative interlock:
+Compare data hazards with forwarding enabled and disabled:
 
 ```bash
 ./build/simulator_core/risc201-sim examples/pointer_walk.asm -4
@@ -480,7 +466,7 @@ To regenerate the documentation from the actual ROM:
 
 ```bash
 cmake --build build --target export_control_rom
-./build/control_unit/risc201-rom --check docs
+./build/control_unit/risc201-rom --check docs/CONTROL_ROM
 ```
 
 ### 13.2 Interactive debugger

@@ -26,7 +26,7 @@ A from-scratch 32-bit processor project: a custom instruction set (**risc201**),
 ## Highlights
 
 - **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword.
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 42-bit microword.
 - **ALU built from gate-level ideas:** a 32-bit carry-lookahead adder (eight chained 4-bit CLA blocks) and a radix-4 Booth multiplier.
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
@@ -82,7 +82,7 @@ usage: risc201-sim <program.asm|program.hex|program.bin> [options]
   -d, --decode    print the decoded instruction listing before running
   -m, --mem S:C   dump C data-memory words starting at word index S
       --trace         print the pipeline per clock, with hazard events
-      --no-forward select forwarding-off mode (currently the same conservative interlock)
+      --no-forward disable operand forwarding and stall on dependencies
       --horizontal use the horizontal microcode ROM (default)
       --vertical   use the vertical microcode ROM (same behaviour, narrower words)
   -h, --help      show help
@@ -235,8 +235,8 @@ six-stage pipeline keeps them in separate slots. A row-less stage is skipped.
 Generated ROM references show the physical ROM and each instruction's complete
 flow, repeating the shared prefix by address before its opcode-specific rows:
 
-- [Horizontal ROM](docs/control_rom_horizontal.txt): 48-bit packed words.
-- [Vertical ROM](docs/control_rom_vertical.txt): 16-bit words, 22 micro-op codes.
+- [Horizontal ROM](docs/CONTROL_ROM/control_rom_horizontal.txt): 42-bit packed words.
+- [Vertical ROM](docs/CONTROL_ROM/control_rom_vertical.txt): 16-bit words, 22 micro-op codes.
 
 Regenerate both files from the actual ROM definitions with:
 
@@ -294,7 +294,7 @@ RISCY-STUFF/
 
 ## Stress benchmarks
 
-Five longer, deterministic workloads are available in [processor_benchmark](processor_benchmark/README.md), with expected results, a runner for all eight CPU configurations, simulated counters, and average host runtime from five runs per configuration. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
+Five longer, deterministic workloads are available in [processor_benchmark](processor_benchmark/), with expected results, a runner for all eight CPU configurations, simulated counters, and average host runtime from five runs per configuration. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
 
 The standalone ALU algorithm benchmark writes per-operation timings to [alu_benchmark/alu_benchmark_results.csv](alu_benchmark/alu_benchmark_results.csv). From the project root, run `./build/risc201-alu-bench`; pass a CSV path as its first argument to choose another output file. Its columns are the algorithm name and average nanoseconds per operation for 2-, 4-, 8-, 16-, 32-, and 64-bit input cases, plus 128-bit operands when the compiler supports `__uint128_t`. The 2- and 4-bit cases mask inputs stored in `uint8_t`, so the algorithms still execute their 8-bit loops. No wider integer type is available to the unchanged algorithms; they therefore stop at 64 bits on standard C++17 compilers or 128 bits on this GCC build.
 
@@ -319,32 +319,6 @@ ctest --test-dir build --output-on-failure
 | `PipelineTest` | Variant equivalence, cycle accounting and hazard counters |
 
 All CTest targets pass. The TUI is exercised manually and is not covered by CTest.
-
-## Status and roadmap
-
-**Working**
-- [x] Shared ISA specification
-- [x] ALU with CLA adder and Booth multiplier
-- [x] Microcoded control unit (horizontal encoding)
-- [x] Stack bounds checks, reported as `INVALID_MEMORY_ACCESS`
-- [x] Two-pass assembler with `.bin` / `.hex` output
-- [x] Macro preprocessor (`.macro`/`.endm`, `@` local labels, built-in `PUSH`/`POP`) and `.literals:` float constants
-- [x] `CALL`/`RET` use `R14` as the link register; software saves it with `PUSH`/`POP` around nested calls
-- [x] Scalar floating-point arithmetic and `FTOI`/`ITOF` conversions with float literals
-- [x] Decoder, CPU execution loop and simulator CLI
-- [x] Pipelined datapath: 4-stage (`FETCH → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
-- [ ] Readiness-based operand forwarding; both forwarding settings currently use a conservative interlock
-- [x] Per-cycle pipeline trace and hazard counters (`--trace`); ROM rows now determine instruction latency
-- [x] Terminal UI (`risc201-tui`): pane focus, source editor with explicit `:assemble` and a stale-buffer indicator, memory navigation with SP-follow, configuration dialog and wrapped feedback
-- [x] Vertical microcode encoding, selectable at runtime alongside the horizontal ROM
-
-**In progress / planned**
-- [x] Debugger breakpoints, watchpoints, reset, and stepping
-- [x] Reconstructed microcode display: `--micro-trace` and `--micro-step` show microPC transitions, packed ROM words, signals and traps without changing pipeline timing
-- [ ] Wire the stack visualizer into the simulator output
-- [ ] Complete the ISA, with end to end implementation
-- [ ] Expose `MOV` in the assembler
-- [ ] Complete IEEE-754 special-case and rounding behavior
 
 ## Team
 
