@@ -1,5 +1,6 @@
 #include <assembler/assembler.h>
 #include <assembler/preprocessor.h>
+#include <utils/utils.h>
 
 #include <iostream>
 #include <fstream>
@@ -81,7 +82,7 @@ int main(int argc, char** argv) {
         encoded.push_back(word);
     }
 
-    bool is_hex = output_path.size() >= 4 && (output_path.compare(output_path.size() - 4, 4, ".hex") == 0);
+    bool is_hex = risc201::hasSuffix(output_path, ".hex");
 
     bool write_ok;
     if (is_hex) write_ok = assembler.writeHexFile(output_path, encoded);

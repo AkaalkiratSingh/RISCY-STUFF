@@ -21,6 +21,11 @@ namespace risc201 {
     };
 
     struct ControlWord {
+        bool ir_load = false;
+        bool instr_decode = false;
+        bool operand_read = false;
+        bool opcode_dispatch = false;
+
         bool    alu_enable = false;
         bool      mem_read = false;
         bool     mem_write = false;
@@ -38,14 +43,40 @@ namespace risc201 {
         bool  mem_addr_sp = false;
         bool  mem_data_pc = false;
         bool   pc_src_mem = false;
+        bool   pc_src_ra = false;
         bool  stack_check = false;
         bool  addr_check = false;    // memory guard validates the ALU-computed address THIS cycle,
                                      // before the LOAD/STORE access commits (out of bounds -> trap)
+        bool      ra_write = false;
 
         Opcode  alu_op = Opcode::NOP;
     };
 
-    inline constexpr int32_t kMicroEnd = -1;
+    inline bool condHolds(BranchCond c, const Flags& f) {
+        switch (c) {
+            case BranchCond::None:     return false;
+            case BranchCond::Zero:     return f.zero;
+            case BranchCond::NotZero:  return !f.zero;
+            case BranchCond::Negative: return f.negative;
+            case BranchCond::Carry:    return f.carry;
+            case BranchCond::Overflow: return f.overflow;
+            case BranchCond::GreaterThan: return f.greaterThan;
+        }
+        return false;
+    }
+
+    // A fault counts only in a cycle where the unit that reports it is checking.
+    inline bool faultApplies(const ControlWord& c, ExceptionCode e) {
+        switch (e) {
+            case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
+            case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check || c.stack_check;
+            case ExceptionCode::NONE:
+            case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
+        }
+        return false;
+    }
+
+    std::string controlSignalNames(const ControlWord& word);
 
     inline constexpr int kMicroAddrBits = 8;
     inline constexpr uint32_t kMicroEndField = 0xFF;
@@ -63,11 +94,12 @@ namespace risc201 {
         explicit ControlUnit(MicrocodeEncoding encoding = MicrocodeEncoding::Horizontal);
 
         // `fault` is the exception wire of whichever unit checks this cycle: the ALU
-        // (DIVIDE_BY_ZERO, honoured on alu_enable rows), the memory guard (INVALID_MEMORY_ACCESS,
-        // addr_check rows) or the stack guard (STACK_OVERFLOW / STACK_UNDERFLOW / INVALID_MEMORY_ACCESS,
-        // stack_check rows). A fault is honoured only in a cycle where its own checker is active,
-        // so the caller may leave it at its current level every cycle. When honoured it deletes
-        // that cycle's signals and sends the machine to the TRAP row.
+        // (DIVIDE_BY_ZERO, honoured on alu_enable rows), the memory guard
+        // (INVALID_MEMORY_ACCESS, addr_check rows) or the stack guard
+        // (INVALID_MEMORY_ACCESS, stack_check rows). A fault is honoured only in a cycle
+        // where its own checker is active, so the caller may leave it at its current
+        // level every cycle. When honoured it deletes that cycle's signals and sends the
+        // machine to the TRAP row.
         ControlWord step(Opcode op, const Flags& flags,
                          ExceptionCode fault = ExceptionCode::NONE);
 
@@ -82,6 +114,7 @@ namespace risc201 {
         MicrocodeEncoding encoding() const { return encoding_; }
 
         int routineEntry(Opcode op) const;
+        int frontendEntry() const { return frontend_entry_; }
         int trapEntry() const { return trap_entry_; }
 
         const std::vector<MicroOp>& controlMemory() const { return cm_; }
@@ -104,6 +137,7 @@ namespace risc201 {
 
         std::vector<MicroOp> cm_;
         std::unordered_map<uint8_t, int> entries_;
+        int frontend_entry_ = 0;
         int illegal_entry_ = 0;
         int trap_entry_ = 0;
         ExceptionCode pending_exception_ = ExceptionCode::NONE;

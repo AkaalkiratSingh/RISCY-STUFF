@@ -51,7 +51,7 @@ int main() {
         CHECK(!guard.checkPush(1).has_value());
 
         CHECK_EQ(guard.checkPush(0).value_or(ExceptionCode::NONE),
-                 ExceptionCode::STACK_OVERFLOW);
+                 ExceptionCode::INVALID_MEMORY_ACCESS);
     }
 
     std::cout << "StackGuard: POP boundary protection\n";
@@ -62,7 +62,7 @@ int main() {
         CHECK(!guard.checkPop(15).has_value());
 
         CHECK_EQ(guard.checkPop(16).value_or(ExceptionCode::NONE),
-                 ExceptionCode::STACK_UNDERFLOW);
+                 ExceptionCode::INVALID_MEMORY_ACCESS);
     }
 
     std::cout << "StackGuard: invalid stack configuration\n";

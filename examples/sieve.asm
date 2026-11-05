@@ -3,7 +3,7 @@
 ; Expected: R8=25 (primes below 100)
 
 .main:
-ADD R1, R0, 2
+MOV R1, 2
 outer:
     SUB R2, R1, 10
     BEQ count
@@ -12,8 +12,8 @@ outer:
     BEQ prime_i
     JMP next
 prime_i:
-    ADD R4, R0, 0
-    ADD R5, R1, 0
+    MOV R4, 0
+    MOV R5, R1
 sq:
     ADD R4, R4, R1
     SUB R5, R5, 1
@@ -23,7 +23,7 @@ marking:
     SUB R6, R4, 100
     SHR R6, R6, 31
     BEQ next
-    ADD R7, R0, 1
+    MOV R7, 1
     STORE R7, 0[R4]
     ADD R4, R4, R1
     JMP marking
@@ -31,8 +31,8 @@ next:
     ADD R1, R1, 1
     JMP outer
 count:
-    ADD R8, R0, 0
-    ADD R1, R0, 2
+    MOV R8, 0
+    MOV R1, 2
 cloop:
     SUB R2, R1, 100
     BEQ done

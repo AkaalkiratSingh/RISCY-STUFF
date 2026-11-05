@@ -10,12 +10,12 @@ std::optional<ExceptionCode> StackGuard::checkBounds(uint32_t sp) const {
 
     // SP above the stack base means the stack has been popped too far.
     if (sp > stack_base_) {
-        return ExceptionCode::STACK_UNDERFLOW;
+        return ExceptionCode::INVALID_MEMORY_ACCESS;
     }
 
     // SP below the stack limit means the stack has grown too far.
     if (sp < stack_limit_) {
-        return ExceptionCode::STACK_OVERFLOW;
+        return ExceptionCode::INVALID_MEMORY_ACCESS;
     }
 
     // SP is inside the valid stack range.
@@ -26,14 +26,14 @@ std::optional<ExceptionCode> StackGuard::checkPush(uint32_t current_sp) const {
     // A full-descending PUSH decreases SP by one word.
     // Check the new SP before changing the actual CPU SP.
     if (current_sp == 0) {
-        return ExceptionCode::STACK_OVERFLOW;
+        return ExceptionCode::INVALID_MEMORY_ACCESS;
     }
 
     const uint32_t new_sp = current_sp - 1;
 
     // The new SP must remain inside the stack boundary.
     if (new_sp < stack_limit_) {
-        return ExceptionCode::STACK_OVERFLOW;
+        return ExceptionCode::INVALID_MEMORY_ACCESS;
     }
 
     return std::nullopt;
@@ -43,7 +43,7 @@ std::optional<ExceptionCode> StackGuard::checkPop(uint32_t current_sp) const {
     // A full-descending POP increases SP by one word.
     // If SP is already at the stack base, there is nothing to pop.
     if (current_sp >= stack_base_) {
-        return ExceptionCode::STACK_UNDERFLOW;
+        return ExceptionCode::INVALID_MEMORY_ACCESS;
     }
 
     return std::nullopt;

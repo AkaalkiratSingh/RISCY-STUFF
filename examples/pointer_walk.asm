@@ -6,7 +6,7 @@
 ; Expected: MEM[0..255] = 1, stalls 256, flushes 257 (the entry JMP plus the loop's JMP)
 
 .main:
-ADD R2, R0, 0
+MOV R2, 0
 loop:
     LOAD R3, 0[R2]
     ADD R4, R3, 1

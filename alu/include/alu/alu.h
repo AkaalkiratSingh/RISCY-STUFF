@@ -10,6 +10,7 @@ namespace risc201 {
             int32_t value  = 0;
             int64_t value64 = 0;   
             Flags   flags;
+            ExceptionCode fault = ExceptionCode::NONE;
         };
 
         Result execute(Opcode op, int32_t lhs, int32_t rhs);
