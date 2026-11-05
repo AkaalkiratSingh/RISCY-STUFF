@@ -177,7 +177,7 @@ void testCallRetRows() {
     CHECK(!r[1].mem_read);
 }
 
-// Toy datapath: applies each ControlWord to PC / SP / one register / stack memory.
+// Toy datapath: applies each ControlWord to PC / one register
 // Every source in a cycle is the OLD state (like real registers).
 struct ToyMachine {
     static constexpr uint32_t kBase = 64, kLimit = 60;   // empty: SP == kBase; room for 4 words
@@ -250,7 +250,7 @@ void testControlMemoryWellFormed() {
         CHECK((ControlUnit::packHorizontal(r) >> 42) == 0);
         CHECK(!r.ctl.addr_check || ((r.ctl.mem_read || r.ctl.mem_write)));
         CHECK(static_cast<unsigned>(r.cond) <= 7u);               // cond field is 3 bits
-        CHECK(!r.ctl.trap || r.ctl.halt);                        // a trap always stops the machine
+        CHECK(!r.ctl.trap || r.ctl.halt);                         // a trap always stops the machine
     }
 }
 

@@ -1,10 +1,11 @@
 #include <iostream>
 #include <iomanip>
 #include <chrono>
+#include <vector>
 #include <cstdint>
 #include <cmath>
-#include <fstream>
-#include <string>
+#include <algorithm>
+#include <type_traits>
 
 // ============================================================
 //  BENCHMARKING UTILITIES
@@ -70,6 +71,24 @@ T add_cla(T a, T b) {
     return sum;
 }
 
+template <typename T>
+T add_kogge_stone(T a, T b) {
+    T G = a & b;           // Generate
+    T P_orig = a ^ b;      // Propagate
+    T P = P_orig;
+    
+    int bits = sizeof(T) * 8;
+    // Process the entire integer in parallel, log2(n) times
+    for (int i = 1; i < bits; i <<= 1) {
+        T G_shift = G << i;
+        T P_shift = P << i;
+        G = G | (P & G_shift);
+        P = P & P_shift;
+    }
+    
+    // Calculate final sum
+    return P_orig ^ (G << 1);
+}
 // ============================================================
 //  MULTIPLICATION ALGORITHMS
 // ============================================================
@@ -210,154 +229,92 @@ T div_newton_raphson(T N, T D) {
 //  MAIN BENCHMARK RUNNER
 // ============================================================
 
-template <typename F2, typename F4, typename F8, typename F16, typename F32, typename F64
-#if defined(__SIZEOF_INT128__)
-          , typename F128
-#endif
-          >
-void write_row(std::ostream& out, const char* algorithm, F2 f2, F4 f4,
-               F8 f8, F16 f16, F32 f32, F64 f64,
-#if defined(__SIZEOF_INT128__)
-               F128 f128,
-#endif
-               int iterations) {
-    out << algorithm << ',' << benchmark(f2, iterations) << ','
-        << benchmark(f4, iterations) << ',' << benchmark(f8, iterations) << ','
-        << benchmark(f16, iterations) << ',' << benchmark(f32, iterations) << ','
-        << benchmark(f64, iterations);
-#if defined(__SIZEOF_INT128__)
-    out << ',' << benchmark(f128, iterations);
-#endif
-    out << '\n';
+void run_integer_benchmarks() {
+    const int ITERATIONS = 1000000;
+    
+    std::cout << "=========================================================\n";
+    std::cout << "          INTEGER ALU BENCHMARK (Avg ns/op)              \n";
+    std::cout << "=========================================================\n";
+    std::cout << std::left << std::setw(12) << "Algorithm" 
+              << std::setw(12) << "8-bit" 
+              << std::setw(12) << "16-bit" 
+              << std::setw(12) << "32-bit" 
+              << std::setw(12) << "64-bit" << "\n";
+    std::cout << "---------------------------------------------------------\n";
+
+    // ADDITION
+    std::cout << std::left << std::setw(12) << "ADD (RCA)";
+    std::cout << std::setw(12) << benchmark([](int i){ return add_ripple_carry<uint8_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_ripple_carry<uint16_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_ripple_carry<uint32_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_ripple_carry<uint64_t>(i, i+1); }, ITERATIONS);
+    std::cout << "\n";
+
+    std::cout << std::left << std::setw(12) << "ADD (CLA)";
+    std::cout << std::setw(12) << benchmark([](int i){ return add_cla<uint8_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_cla<uint16_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_cla<uint32_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_cla<uint64_t>(i, i+1); }, ITERATIONS);
+    std::cout << "\n";
+
+    std::cout << std::left << std::setw(12) << "ADD (KS)";
+    std::cout << std::setw(12) << benchmark([](int i){ return add_kogge_stone<uint8_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_kogge_stone<uint16_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_kogge_stone<uint32_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return add_kogge_stone<uint64_t>(i, i+1); }, ITERATIONS);
+    std::cout << "\n---------------------------------------------------------\n";
+    // MULTIPLICATION
+    std::cout << std::left << std::setw(12) << "MUL (Shift)";
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_shift_add<uint8_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_shift_add<uint16_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_shift_add<uint32_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_shift_add<uint64_t>(i, i+1); }, ITERATIONS);
+    std::cout << "\n";
+
+    std::cout << std::left << std::setw(12) << "MUL (Booth2)";
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix2<uint8_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix2<uint16_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix2<uint32_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix2<uint64_t>(i, i+1); }, ITERATIONS);
+    std::cout << "\n";
+
+    std::cout << std::left << std::setw(12) << "MUL (Booth4)";
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix4<uint8_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix4<uint16_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix4<uint32_t>(i, i+1); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return mul_booth_radix4<uint64_t>(i, i+1); }, ITERATIONS);
+    std::cout << "\n---------------------------------------------------------\n";
+        // DIVISION
+    std::cout << std::left << std::setw(12) << "DIV (Restor)";
+    std::cout << std::setw(12) << benchmark([](int i){ return div_restoring<uint8_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_restoring<uint16_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_restoring<uint32_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_restoring<uint64_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << "\n";
+
+    std::cout << std::left << std::setw(12) << "DIV (NonRes)";
+    std::cout << std::setw(12) << benchmark([](int i){ return div_non_restoring<uint8_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_non_restoring<uint16_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_non_restoring<uint32_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_non_restoring<uint64_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << "\n";
+
+    std::cout << std::left << std::setw(12) << "DIV (Goldsch)";
+    std::cout << std::setw(12) << benchmark([](int i){ return div_goldschmidt<uint8_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_goldschmidt<uint16_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_goldschmidt<uint32_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_goldschmidt<uint64_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << "\n";
+
+    std::cout << std::left << std::setw(12) << "DIV (NR)";
+    std::cout << std::setw(12) << benchmark([](int i){ return div_newton_raphson<uint8_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_newton_raphson<uint16_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_newton_raphson<uint32_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << std::setw(12) << benchmark([](int i){ return div_newton_raphson<uint64_t>(i+100, i+3); }, ITERATIONS);
+    std::cout << "\n---------------------------------------------------------\n";
 }
 
-void run_integer_benchmarks(std::ostream& out) {
-    const int iterations = 1000000;
-    out << "algorithm,2_bit_input_ns_per_op,4_bit_input_ns_per_op,8_bit_ns_per_op,16_bit_ns_per_op,32_bit_ns_per_op,64_bit_ns_per_op";
-#if defined(__SIZEOF_INT128__)
-    out << ",128_bit_ns_per_op";
-#endif
-    out << '\n';
-    out << std::fixed << std::setprecision(3);
-
-    write_row(out, "ADD (RCA)",
-              [](int i){ return add_ripple_carry<uint8_t>(i & 3, (i+1) & 3); },
-              [](int i){ return add_ripple_carry<uint8_t>(i & 15, (i+1) & 15); },
-              [](int i){ return add_ripple_carry<uint8_t>(i, i+1); },
-              [](int i){ return add_ripple_carry<uint16_t>(i, i+1); },
-              [](int i){ return add_ripple_carry<uint32_t>(i, i+1); },
-              [](int i){ return add_ripple_carry<uint64_t>(i, i+1); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return add_ripple_carry<__uint128_t>(i, i+1); },
-#endif
-              iterations);
-    write_row(out, "ADD (CLA)",
-              [](int i){ return add_cla<uint8_t>(i & 3, (i+1) & 3); },
-              [](int i){ return add_cla<uint8_t>(i & 15, (i+1) & 15); },
-              [](int i){ return add_cla<uint8_t>(i, i+1); },
-              [](int i){ return add_cla<uint16_t>(i, i+1); },
-              [](int i){ return add_cla<uint32_t>(i, i+1); },
-              [](int i){ return add_cla<uint64_t>(i, i+1); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return add_cla<__uint128_t>(i, i+1); },
-#endif
-              iterations);
-    write_row(out, "MUL (Shift)",
-              [](int i){ return mul_shift_add<uint8_t>(i & 3, 1); },
-              [](int i){ return mul_shift_add<uint8_t>(i & 15, 5); },
-              [](int i){ return mul_shift_add<uint8_t>(i, 5); },
-              [](int i){ return mul_shift_add<uint16_t>(i, 5); },
-              [](int i){ return mul_shift_add<uint32_t>(i, 5); },
-              [](int i){ return mul_shift_add<uint64_t>(i, 5); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return mul_shift_add<__uint128_t>(i, 5); },
-#endif
-              iterations);
-    write_row(out, "MUL (Booth2)",
-              [](int i){ return mul_booth_radix2<uint8_t>(i & 3, 1); },
-              [](int i){ return mul_booth_radix2<uint8_t>(i & 15, 5); },
-              [](int i){ return mul_booth_radix2<uint8_t>(i, 5); },
-              [](int i){ return mul_booth_radix2<uint16_t>(i, 5); },
-              [](int i){ return mul_booth_radix2<uint32_t>(i, 5); },
-              [](int i){ return mul_booth_radix2<uint64_t>(i, 5); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return mul_booth_radix2<__uint128_t>(i, 5); },
-#endif
-              iterations);
-    write_row(out, "MUL (Booth4)",
-              [](int i){ return mul_booth_radix4<uint8_t>(i & 3, 1); },
-              [](int i){ return mul_booth_radix4<uint8_t>(i & 15, 5); },
-              [](int i){ return mul_booth_radix4<uint8_t>(i, 5); },
-              [](int i){ return mul_booth_radix4<uint16_t>(i, 5); },
-              [](int i){ return mul_booth_radix4<uint32_t>(i, 5); },
-              [](int i){ return mul_booth_radix4<uint64_t>(i, 5); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return mul_booth_radix4<__uint128_t>(i, 5); },
-#endif
-              iterations);
-    write_row(out, "DIV (Restor)",
-              [](int i){ return div_restoring<uint8_t>((i+100) & 3, 3); },
-              [](int i){ return div_restoring<uint8_t>((i+100) & 15, 3); },
-              [](int i){ return div_restoring<uint8_t>(i+100, 3); },
-              [](int i){ return div_restoring<uint16_t>(i+100, 3); },
-              [](int i){ return div_restoring<uint32_t>(i+100, 3); },
-              [](int i){ return div_restoring<uint64_t>(i+100, 3); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return div_restoring<__uint128_t>(i+100, 3); },
-#endif
-              iterations);
-    write_row(out, "DIV (NonRes)",
-              [](int i){ return div_non_restoring<uint8_t>((i+100) & 3, 3); },
-              [](int i){ return div_non_restoring<uint8_t>((i+100) & 15, 3); },
-              [](int i){ return div_non_restoring<uint8_t>(i+100, 3); },
-              [](int i){ return div_non_restoring<uint16_t>(i+100, 3); },
-              [](int i){ return div_non_restoring<uint32_t>(i+100, 3); },
-              [](int i){ return div_non_restoring<uint64_t>(i+100, 3); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return div_non_restoring<__uint128_t>(i+100, 3); },
-#endif
-              iterations);
-    write_row(out, "DIV (Goldsch)",
-              [](int i){ return div_goldschmidt<uint8_t>((i+100) & 3, 3); },
-              [](int i){ return div_goldschmidt<uint8_t>((i+100) & 15, 3); },
-              [](int i){ return div_goldschmidt<uint8_t>(i+100, 3); },
-              [](int i){ return div_goldschmidt<uint16_t>(i+100, 3); },
-              [](int i){ return div_goldschmidt<uint32_t>(i+100, 3); },
-              [](int i){ return div_goldschmidt<uint64_t>(i+100, 3); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return div_goldschmidt<__uint128_t>(i+100, 3); },
-#endif
-              iterations);
-    write_row(out, "DIV (NR)",
-              [](int i){ return div_newton_raphson<uint8_t>((i+100) & 3, 3); },
-              [](int i){ return div_newton_raphson<uint8_t>((i+100) & 15, 3); },
-              [](int i){ return div_newton_raphson<uint8_t>(i+100, 3); },
-              [](int i){ return div_newton_raphson<uint16_t>(i+100, 3); },
-              [](int i){ return div_newton_raphson<uint32_t>(i+100, 3); },
-              [](int i){ return div_newton_raphson<uint64_t>(i+100, 3); },
-#if defined(__SIZEOF_INT128__)
-              [](int i){ return div_newton_raphson<__uint128_t>(i+100, 3); },
-#endif
-              iterations);
-}
-
-int main(int argc, char** argv) {
-    if (argc > 2) {
-        std::cerr << "Usage: " << argv[0] << " [output.csv]\n";
-        return 1;
-    }
-    const std::string path = argc == 2 ? argv[1] : "alu_benchmark/alu_benchmark_results.csv";
-    std::ofstream out(path);
-    if (!out) {
-        std::cerr << "Cannot open " << path << " for writing\n";
-        return 1;
-    }
-    run_integer_benchmarks(out);
-    out.close();
-    if (!out) {
-        std::cerr << "Failed to write " << path << '\n';
-        return 1;
-    }
-    std::cout << "Wrote ALU timings to " << path << '\n';
+int main() {
+    run_integer_benchmarks();
     return 0;
 }

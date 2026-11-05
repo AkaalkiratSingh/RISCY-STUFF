@@ -205,7 +205,6 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { operandRow(), jumpRaRow() });
 
-
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
         appendRoutine(Opcode::MUL, aluRoutine(Opcode::MUL));
@@ -331,6 +330,8 @@ namespace risc201 {
     uint64_t ControlUnit::packHorizontal(const MicroOp& row) {
         const ControlWord& c = row.ctl;
         uint64_t w = 0;
+        
+        // Control Low Fields (Continuous 0-9)
         w |= static_cast<uint64_t>(c.alu_enable)  << 0;
         w |= static_cast<uint64_t>(c.mem_read)    << 1;
         w |= static_cast<uint64_t>(c.mem_write)   << 2;
@@ -386,9 +387,10 @@ namespace risc201 {
             if (r.cond == BranchCond::None || r.branch_target == kMicroEnd) os << std::setw(5) << "-";
             else os << std::setw(5) << r.branch_target;
 
+            // Adjusted setw to 11 to match 42-bit width
             os << "  0x" << std::right << std::hex << std::uppercase
-               << std::setfill('0') << std::setw(12) << packHorizontal(r)
-               << std::dec << std::setfill(' ') << std::left << "     "
+               << std::setfill('0') << std::setw(11) << packHorizontal(r)
+               << std::dec << std::setfill(' ') << std::left << "      "
                << signalList(r.ctl) << "\n";
         }
         return os.str();
