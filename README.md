@@ -22,8 +22,8 @@ A from-scratch 32-bit processor project: a custom instruction set, a two-pass as
 ## Highlights
 
 - **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 42-bit microword.
-- **ALU built from gate-level ideas:** A 32-bit Kogge-Stone parallel-prefix adder (O(logn) latency), a Radix-4 Booth multiplier, and a complete Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV using Newton-Raphson, FCMP, FTOI, ITOF).
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword.
+- **Optimized ALU:** A 32-bit Kogge-Stone parallel-prefix adder (O(logn) latency), a Radix-4 Booth multiplier, and a complete Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV using Newton-Raphson, FCMP, FTOI, ITOF) that reuses the integer datapath.
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
 - **Simulator CLI** with a decode listing, single-step mode and memory dumps.
@@ -134,7 +134,7 @@ CALL sum
 HALT
 
 sum:
-    ADD R2, R1, R0     ; R2 = n, sets Z when n == 0
+    mov R2, R1     ; R2 = n, sets Z when n == 0
     BEQ zero
     PUSH R14           ; save the return address across the recursive call
     PUSH R1            ; save n
@@ -150,7 +150,8 @@ zero:
 ```
 Result: `R2 = 15`, `SP` back at 4096.
 
-The `examples/` folder has 14 example assembly sources. 
+Every instruction executes at most one control-ROM row per clock. In the 4-stage variant, the FETCH slot serializes the IF, ID, and operand-read rows; row-less stages are skipped. The `pipeline:` line reports data stalls, redirects, and squashed instructions. The old stage-count cycle formula no longer applies.
+
 ## The ISA
 
 | Property | Value |
@@ -221,12 +222,6 @@ flow, repeating the shared prefix by address before its opcode-specific rows:
 
 - [Horizontal ROM](docs/CONTROL_ROM/control_rom_horizontal.txt): 42-bit packed words.
 - [Vertical ROM](docs/CONTROL_ROM/control_rom_vertical.txt): 16-bit words, 22 micro-op codes.
-
-Regenerate both files from the actual ROM definitions with:
-
-```bash
-cmake --build build --target export_control_rom
-```
 
 The CPU retains a per-opcode control bundle for dependency detection and advances
 each in-flight instruction through its own ROM rows. Several instructions overlap.
