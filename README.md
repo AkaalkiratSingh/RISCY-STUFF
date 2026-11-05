@@ -352,7 +352,3 @@ RISCY-STUFF is a team project.
 
 - **Akaalkirat Singh**: `Cpu` core (integrating the ALU, control unit and stack guard), decoder, simulator runner
 - _Add teammates and their modules here_
-
-## License
-
-_Not yet specified._
