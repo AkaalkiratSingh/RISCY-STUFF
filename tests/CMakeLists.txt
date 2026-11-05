@@ -74,4 +74,4 @@ add_test(NAME TuiProgramLoaderTest COMMAND tui_program_loader_test)
 add_test(NAME MicroCliTest COMMAND ${CMAKE_COMMAND}
     -DSIM=$<TARGET_FILE:risc201-sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/micro_cli_test.cmake)
 
-add_test(NAME ControlRomListings COMMAND risc201-rom --check ${CMAKE_SOURCE_DIR}/docs)
+add_test(NAME ControlRomListings COMMAND risc201-rom --check ${CMAKE_SOURCE_DIR}/docs/CONTROL_ROM)

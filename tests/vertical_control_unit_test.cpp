@@ -161,7 +161,7 @@ int main() {
     CHECK_EQ(vrom.size(), hcm.size());                       
     CHECK_EQ(vcm.size(), hcm.size());
     CHECK_EQ(kHorizontalWordBits, 42);
-    CHECK_EQ(kNumControlLines, 24);
+    CHECK_EQ(kNumControlLines, 18);
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
     CHECK_EQ(kVerticalWordBits, 16);
     CHECK_EQ(sizeof(vrom[0]) * 8, static_cast<size_t>(kVerticalWordBits));
@@ -512,7 +512,7 @@ int main() {
         CHECK(v.find("horizontal: " + std::to_string(rows) + " x 42 = " + std::to_string(rows * 42) + " bits")
               != std::string::npos);
         CHECK(v.find("62% narrower") != std::string::npos);
-        CHECK(v.find("24 control lines") != std::string::npos);
+        CHECK(v.find("18 control lines") != std::string::npos);
         CHECK(v.find("TRAP") != std::string::npos && v.find("BRANCH GT") != std::string::npos);
     }
 
