@@ -27,7 +27,9 @@ A from-scratch 32-bit processor project: a custom instruction set (**risc201**),
 
 - **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
 - **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword.
-- **ALU built from gate-level ideas:** a 32-bit carry-lookahead adder (eight chained 4-bit CLA blocks) and a radix-4 Booth multiplier.
+- **Optimized ALU:** A 32-bit Kogge-Stone parallel-prefix adder (O(logn) latency), a Radix-4 Booth multiplier, and a complete Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV using Newton-Raphson, FCMP, FTOI, ITOF) that reuses the integer datapath.
+
+2. Update the "Repository layout" Section
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
 - **Simulator CLI** with a decode listing, single-step mode and memory dumps.
@@ -279,7 +281,7 @@ All modules share a single header-only contract, `isa_spec/isa201.h`, so the ass
 ```
 RISCY-STUFF/
 ├── isa_spec/         # isa201.h: shared opcodes, registers, flags, exceptions
-├── alu/              # carry-lookahead adder, Booth multiplier, flag generation
+├── alu/              # Kogge-Stone adder, Booth multiplier, Soft-Float FPU, flag generation
 ├── control_unit/     # microcoded control unit and control memory
 ├── memory_safety/    # stack guard and ASCII stack visualizer
 ├── assembler/        # two-pass assembler, op table, CLI tools
@@ -324,7 +326,7 @@ All CTest targets pass. The TUI is exercised manually and is not covered by CTes
 
 **Working**
 - [x] Shared ISA specification
-- [x] ALU with CLA adder and Booth multiplier
+- [x]ALU with Kogge-Stone parallel-prefix adder, Radix-4 Booth multiplier, and full Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV via Newton-Raphson, FCMP, FTOI, ITOF)
 - [x] Microcoded control unit (horizontal encoding)
 - [x] Stack bounds checks, reported as `INVALID_MEMORY_ACCESS`
 - [x] Two-pass assembler with `.bin` / `.hex` output
@@ -354,3 +356,4 @@ RISCY-STUFF is a team project.
 - **Divyansh Singh**: Assembler, Disassembler, Debugger
 - **Vaibhav Vatsal**: Vertical Control unit, Memory Safety and Stack Visualiser
 - **Milan Mohane**: Horizontal Control Unit
+- **Arjun Phaneesh**: ALU implementation, ALU Benchmarking
