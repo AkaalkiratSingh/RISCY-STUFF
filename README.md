@@ -353,4 +353,4 @@ RISCY-STUFF is a team project.
 - **Akaalkirat Singh**: `Cpu` core (integrating the ALU, control unit and stack guard), decoder, simulator runner
 - **Divyansh Singh**: Assembler, Disassembler, Debugger
 - **Vaibhav Vatsal**: Vertical Control unit, Memory Safety and Stack Visualiser
-- **Milan Mohane**: Control Unit (Horizontal)
+- **Milan Mohane**: Horizontal Control Unit
