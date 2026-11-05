@@ -60,7 +60,7 @@ public:
     void drawText(int r, int c, const std::string& text, Style style = {}, int max_len = -1);
     void drawBox(int r, int c, int h, int w, const std::string& title = "", Style style = {}, Style title_style = {});
     void fill(int r, int c, int h, int w, const std::string& glyph = " ", Style style = {});
-    void recolour(int r, int c, int h, int w, int rgb);
+    void highlightBox(int r, int c, int h, int w, Color background);
 
     void flush();
 
