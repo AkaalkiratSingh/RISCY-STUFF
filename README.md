@@ -164,7 +164,7 @@ Result: `R2 = 15`, `SP` back at 4096.
 
 The `examples/` folder has 14 programs. Most are real algorithms running from hundreds to tens of thousands of cycles: Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, floating-point arithmetic with literals, plus recursion and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `INVALID_MEMORY_ACCESS` on purpose.
 
-Every run prints a `pipeline:` line counting stalls, flushes and flush bubbles, and `--trace` prints the pipeline clock by clock. Those explain the cycle count exactly: `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`.
+Every instruction executes at most one control-ROM row per clock. In the 4-stage variant, the FETCH slot serializes the IF, ID, and operand-read rows; row-less stages are skipped. The `pipeline:` line reports data stalls, redirects, and squashed instructions. The old stage-count cycle formula no longer applies.
 
 ## The ISA
 
@@ -334,8 +334,8 @@ All CTest targets pass. The TUI is exercised manually and is not covered by CTes
 - [x] Scalar IEEE-754 arithmetic (`FADD`/`FSUB`/`FMUL`/`FDIV`) with float literals
 - [x] Decoder, CPU execution loop and simulator CLI
 - [x] Pipelined datapath: 4-stage (`FETCH → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
-- [x] Operand forwarding (bypassing), with `--no-forward` as a stall-everything comparison mode
-- [x] Per-cycle pipeline trace and hazard counters (`--trace`), reconciling `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`
+- [ ] Readiness-based operand forwarding; both forwarding settings currently use a conservative interlock
+- [x] Per-cycle pipeline trace and hazard counters (`--trace`); ROM rows now determine instruction latency
 - [x] Terminal UI (`risc201-tui`): pane focus, source editor with explicit `:assemble` and a stale-buffer indicator, memory navigation with SP-follow, configuration dialog and wrapped feedback
 - [x] Vertical microcode encoding, selectable at runtime alongside the horizontal ROM
 

@@ -420,95 +420,20 @@ namespace risc201 {
     }
 
     std::vector<MicroPcView> Cpu::microSnapshot() const {
+        std::vector<MicroPcView> views;
         const StageLayout layout = layoutFor(variant_);
-
-        const auto snapshotFor = [&](const auto& unit) {
-            std::vector<MicroPcView> views;
-
-            const auto findRow = [](const std::vector<PathStep>& rows,
-                                    PipelineStage stage) -> const PathStep* {
-                const StageMask bit = stageBit(stage);
-                for (const PathStep& step : rows) {
-                    if (step.stages & bit) return &step;
-                }
-                return nullptr;
-            };
-
-            const auto appendFor = [&](const std::vector<PathStep>& rows,
-                                       PipelineStage stage, uint32_t pc) {
-                if (const PathStep* step = findRow(rows, stage)) {
-                    views.push_back({pc, pipelineStageName(stage), step->micro_pc,
-                                     step->signals});
-                    return true;
-                }
-                return false;
-            };
-
-            for (int i = 0; i < n_slots_; ++i) {
-                const Latch& l = regs_[static_cast<size_t>(i)];
-                if (!l.valid) continue;
-
-                const StageSlot& slot = layout[static_cast<size_t>(i)];
-                const std::vector<PathStep>& rows =
-                    opcodeLayout(unit, l.decoded ? l.instr.opcode : Opcode::NOP);
-
-                // The four-stage front end merges fetch, decode and operand read.
-                if (slot.IF && slot.ID && slot.OF) {
-                    const PathStep* chosen = nullptr;
-                    if (l.decoded) {
-                        for (PipelineStage stage : {PipelineStage::OF, PipelineStage::ID,
-                                                    PipelineStage::IF}) {
-                            chosen = findRow(rows, stage);
-                            if (chosen) break;
-                        }
-                    } else {
-                        chosen = findRow(rows, PipelineStage::IF);
-                    }
-                    if (chosen) {
-                        views.push_back({l.pc, "FETCH", chosen->micro_pc, chosen->signals});
-                    }
-                    continue;
-                }
-
-                bool found = false;
-                if (slot.IF) found |= appendFor(rows, PipelineStage::IF, l.pc);
-                if (!l.decoded) continue;
-                if (slot.ID)  found |= appendFor(rows, PipelineStage::ID, l.pc);
-                if (slot.OF)  found |= appendFor(rows, PipelineStage::OF, l.pc);
-                if (slot.EX)  found |= appendFor(rows, PipelineStage::EX, l.pc);
-                if (slot.MEM) found |= appendFor(rows, PipelineStage::MEM, l.pc);
-                if (slot.WB)  found |= appendFor(rows, PipelineStage::WB, l.pc);
-
-                // An instruction can occupy a stage with no row (an ALU op in MEM).
-                // Point at the next row that exists, then fall back to an earlier routine
-                // row, but always label the row with its own stage.
-                if (!found) {
-                    const int current =
-                        slot.WB ? 5 : slot.MEM ? 4 : slot.EX ? 3
-                        : slot.OF ? 2 : slot.ID ? 1 : 0;
-
-                    int chosen_stage = -1;
-                    for (int s = current; s <= 5 && chosen_stage < 0; ++s) {
-                        if (findRow(rows, static_cast<PipelineStage>(s))) chosen_stage = s;
-                    }
-                    for (int s = current - 1;
-                         s >= static_cast<int>(PipelineStage::OF) && chosen_stage < 0; --s) {
-                        if (findRow(rows, static_cast<PipelineStage>(s))) chosen_stage = s;
-                    }
-                    if (chosen_stage >= 0) {
-                        const PipelineStage stage = static_cast<PipelineStage>(chosen_stage);
-                        const PathStep* step = findRow(rows, stage);
-                        views.push_back({l.pc, pipelineStageName(stage),
-                                         step->micro_pc, step->signals});
-                    }
-                }
-            }
-
-            return views;
-        };
-
-        return encoding_ == MicrocodeEncoding::Vertical ? snapshotFor(vertical_unit_)
-                                                        : snapshotFor(control_unit_);
+        const auto& rom = controlMemory();
+        for (int i = 0; i < n_slots_; ++i) {
+            const Latch& latch = regs_[static_cast<size_t>(i)];
+            if (!latch.valid) continue;
+            const MicroOp& row = rom.at(latch.micro_pc);
+            const RowStage stage = rowStage(row);
+            const char* name = variant_ == PipelineVariant::FourStage && i == 0
+                ? "FETCH" : stage == RowStage::Terminal
+                    ? layout[static_cast<size_t>(i)].name : rowStageName(stage);
+            views.push_back({latch.pc, name, static_cast<int>(latch.micro_pc), row.ctl});
+        }
+        return views;
     }
 
     const std::vector<MicroOp>& Cpu::controlMemory() const {

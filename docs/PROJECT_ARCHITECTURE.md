@@ -375,7 +375,7 @@ A separate `StackGuard` supplies stack-bound checks, and `StackVisualizer` can r
 
 The microcode view includes the shared fetch/decode prefix, the selected instruction's routine, branch successors based on captured execution flags, and trap controls when applicable. It prints actual ROM words and signal definitions, but the sequence is reconstructed for explanation. Squashed instructions are omitted.
 
-The TUI does not run a serial global microPC. The assembled-binary pane annotates each in-flight instruction with a control-ROM row, using the stage projection of the same `controlPath` used by the sequencer listing, the collapse into `StageControls`, and the reconstruction. Each tag names the stage that owns the row, so an ALU op passing through MEM can show a `WB` row; if the pipeline stage itself has a row, that row is used. If one PC is active in several stages, all annotations are shown. The CONTROL ROM pane inserts a visual blank line after each instruction routine without changing any ROM address.
+The TUI does not run a serial global microPC. The assembled-binary pane reads each in-flight instruction's own microPC and shows its next ROM row. If one PC is active in several slots, all annotations are shown. The CONTROL ROM pane inserts a visual blank line after each instruction routine without changing any ROM address.
 
 ### 11.2 Why the first microcode output is labelled cycle 4
 
@@ -383,24 +383,24 @@ In `gcd.asm`, the first encoded instruction is the assembler-generated entry JMP
 
 | Clock | Action for the first JMP |
 |---:|---|
-| 1 | Fetch/decode in the combined front-end stage |
-| 2 | Resolve jump in EX |
-| 3 | Pass through MEM |
-| 4 | Reach WB; emit reconstructed microcode description |
+| 1 | Admit the instruction into FETCH |
+| 2 | Execute the IF row in FETCH |
+| 3 | Execute the ID row in FETCH |
+| 4 | Execute the jump row in EX; retire and emit the reconstructed path |
 
-Its reconstructed rows all carry the clock-4 label, including the fetch row. This label is the instruction's completion/fault clock, not the clock at which every displayed signal originally acted. In six-stage execution, the first instruction instead reaches WB at clock 6.
+Its reconstructed rows all carry the clock-4 label, including the fetch row. This label is the instruction's completion/fault clock, not the clock at which every displayed signal originally acted. The JMP skips MEM and WB because its routine has no rows there.
 
 For example:
 
 ```text
-completed/fault cycle=4 pc=0 JMP microPC=77 -> 78 ... signals: ir_load pc_inc
-completed/fault cycle=4 pc=0 JMP microPC=78 -> 29 ... signals: instr_decode opcode_dispatch
+completed/fault cycle=4 pc=0 JMP microPC=78 -> 79 ... signals: ir_load pc_inc
+completed/fault cycle=4 pc=0 JMP microPC=79 -> 29 ... signals: instr_decode opcode_dispatch
 completed/fault cycle=4 pc=0 JMP microPC=29 -> END ... signals: pc_write
 ```
 
 `pc` identifies the program instruction. `microPC` identifies a control-memory row. `END` ends the routine, not the program. The label `completed/fault` accommodates either event; its presence alone does not indicate an exception.
 
-Enter in `--micro-step` advances through these reconstructed rows. It does not execute one live datapath micro-operation. The simulator currently has no live per-stage control-signal timeline; `--trace` supplies pipeline-clock context, while microcode inspection supplies the ROM explanation.
+Enter in `--micro-step` advances through these reconstructed rows. The displayed cycle is the completion clock for the whole instruction; each row actually executed in its own clock. The `--trace` display supplies pipeline-clock context.
 
 ### 11.3 GCD control flow
 

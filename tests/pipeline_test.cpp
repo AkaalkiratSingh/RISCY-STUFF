@@ -2,6 +2,7 @@
 #include "assembler/preprocessor.h"
 #include "simulator_core/cpu.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <map>
@@ -122,6 +123,11 @@ int main() {
             CHECK(latch.valid && latch.pc == 0);
             CHECK_EQ(latch.micro_pc, static_cast<uint32_t>(rows[clock]));
             CHECK_EQ(latch.row_cycle, static_cast<uint64_t>(clock == 0 ? 0 : clock + 1));
+            const auto views = cpu.microSnapshot();
+            CHECK(std::any_of(views.begin(), views.end(), [&](const MicroPcView& view) {
+                return view.pc == latch.pc && view.micro_pc == static_cast<int>(latch.micro_pc) &&
+                       view.signals.ir_load == (clock == 0);
+            }));
         }
         cpu.step();
         CHECK_EQ(cpu.retired(), 1u);
