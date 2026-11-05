@@ -1,8 +1,8 @@
 #pragma once
 
 // Vertical-microcode control unit.
-// Compresses 40-bit horizontal rows into 16-bit words.
-// Decoder expands 5-bit codes back to 16 control lines.
+// Compresses 48-bit horizontal rows into 16-bit words.
+// Decoder expands 5-bit codes back to the 24 control lines.
 // Fully interchangeable with the horizontal unit.
 
 #include "control_unit/horizontal_control_unit.h"
@@ -15,13 +15,14 @@
 
 namespace risc201 {
 
-    inline constexpr int kHorizontalWordBits = 40;
-    inline constexpr int kVerticalWordBits   = 16;
+     inline constexpr int kHorizontalWordBits = 48;
+     inline constexpr int kVerticalWordBits   = 16;
+     inline constexpr int kNumControlLines    = 24;   // ControlWord bools, excluding alu_op
 
     // Decoder input: maps distinct control line combinations to 5-bit codes.
     enum class MicroOpCode : uint8_t {
         Idle = 0,       
-        Fetch,          
+        Operands,          
         Alu,            
         AluNoFlags,     
         AluImm,         
@@ -36,19 +37,25 @@ namespace risc201 {
         PushWrite,      
         CallWrite,      
         PopRead,        
-        Halt,           
+        Halt,
+        Trap,
+        RaWrite,
+        JumpRa,
+        InstructionFetch,
+        DecodeDispatch,
     };
-    inline constexpr size_t kNumMicroOpCodes = 17;   
+    inline constexpr size_t kNumMicroOpCodes = 22;   
 
     // ---- 16-bit vertical microword format -----------------------------------
     // Bit 15=0 (Operate): [14:10]=uop, [9:5]=func, [0]=END (drives datapath)
-    // Bit 15=1 (Branch):  [14:12]=cond, [11:4]=target, [0]=END (tests FLAGS)
+    // Bit 15=1 (Branch):  [14:12]=cond (1..6), [11:4]=target, [0]=END (tests FLAGS)
     // Successor is implicit (addr+1 or END) unless a branch is taken.
 
     // Returns true if row fits vertical format.
     bool canPackVertical(const MicroOp& row, int addr);
 
-    // Packs row into vertical word. Throws if unencodable.
+    // Packs row into vertical word. Throws if unencodable, or if decoding the word
+    // would not give back exactly the same row (a control line would be lost).
     uint16_t packVertical(const MicroOp& row, int addr);
 
     // Decodes word into row. Invalid inputs yield a halt row.
@@ -61,8 +68,14 @@ namespace risc201 {
     public:
         VerticalControlUnit();
 
-        // Executes one micro-cycle.
-        ControlWord step(Opcode op, const Flags& flags);
+        // Executes one micro-cycle. Same fault handling as ControlUnit::step: a fault is
+        // honoured only on a row whose checker is active; it deletes that cycle's signals
+        // and sends the unit to the TRAP row.
+        ControlWord step(Opcode op, const Flags& flags,
+                         ExceptionCode fault = ExceptionCode::NONE);
+
+        ExceptionCode pendingException() const { return pending_exception_; }
+        void clearException() { pending_exception_ = ExceptionCode::NONE; }
 
         bool routineDone() const { return done_; }
         void reset();
@@ -71,6 +84,8 @@ namespace risc201 {
         MicrocodeEncoding encoding() const { return MicrocodeEncoding::Vertical; }
 
         int routineEntry(Opcode op) const;
+        int frontendEntry() const { return frontend_entry_; }
+        int trapEntry() const { return trap_entry_; }
 
         // Decoded ROM words.
         const std::vector<MicroOp>& controlMemory() const { return cm_; }
@@ -83,7 +98,7 @@ namespace risc201 {
 
     private:
         MicroOp readRow(uint32_t addr) const;   // ROM read + decode
-
+        void restart();
         uint32_t micro_pc_ = 0;
         bool     done_ = false;
         bool     latched_ = false;
@@ -91,7 +106,10 @@ namespace risc201 {
         std::vector<uint16_t> vrom_;
         std::vector<MicroOp>  cm_;                 
         std::array<int, 256>  entries_{};          
+        int frontend_entry_ = 0;
         int illegal_entry_ = 0;
+        int trap_entry_ = 0;
+        ExceptionCode pending_exception_ = ExceptionCode::NONE;
     };
 
 }

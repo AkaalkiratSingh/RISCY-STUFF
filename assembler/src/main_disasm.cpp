@@ -1,4 +1,5 @@
 #include <assembler/disassembler.h>
+#include <utils/utils.h>
 
 #include <iostream>
 #include <fstream>
@@ -28,7 +29,7 @@ int main(int argc, char** argv) {
     }
     if (output_path.empty()) output_path = "a.asm";
 
-    bool is_hex = input_path.size() >= 4 && (input_path.compare(input_path.size() - 4, 4, ".hex") == 0);
+    bool is_hex = risc201::hasSuffix(input_path, ".hex");
 
     risc201::Disassembler disassembler;
     std::vector<uint32_t> words;
@@ -48,9 +49,9 @@ int main(int argc, char** argv) {
         std::cerr << "warning: word " << index << " (0x" << std::hex << word << std::dec << ") has an unrecognized opcode, emitted as '; unknown opcode'\n";
     }
 
-    std::vector<std::string> lines;
-    if (use_labels) lines = disassembler.disassembleWithLabels(program);
-    else lines = disassembler.disassemble(program);
+    std::vector<std::string> lines = disassembler.disassembleSource(program, use_labels);
+
+    for (const auto& lit_line : disassembler.formatLiterals()) lines.push_back(lit_line);
 
     std::ofstream out(output_path);
     if (!out) {

@@ -5,7 +5,8 @@ namespace risc201 {
         // Only these transfer the program counter through a whole-word offset;
         // every other opcode uses the RI layout.
         bool isJType(Opcode op) {
-            return op == Opcode::JMP || op == Opcode::BEQ || op == Opcode::CALL;
+            return op == Opcode::JMP || op == Opcode::BEQ ||
+                   op == Opcode::BGT || op == Opcode::CALL;
         }
 
         int32_t signExtend(uint32_t value, int bits) {

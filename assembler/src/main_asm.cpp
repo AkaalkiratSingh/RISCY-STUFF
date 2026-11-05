@@ -1,4 +1,6 @@
 #include <assembler/assembler.h>
+#include <assembler/preprocessor.h>
+#include <utils/utils.h>
 
 #include <iostream>
 #include <fstream>
@@ -31,19 +33,41 @@ int main(int argc, char** argv) {
     std::string line;
     while (std::getline(file, line)) lines.push_back(line);
 
+    risc201::Preprocessor preprocessor;
+    risc201::PreprocessResult expanded = preprocessor.expand(lines);
+
+    if (!expanded.errors.empty()) {
+        for (const auto& err : expanded.errors) {
+            std::cerr << input_path << ":" << err.line_number << ": error: " << err.message << "\n";
+        }
+        return 1;
+    }
+
+    auto originalLine = [&](int n) {
+        if (n >= 1 && n <= static_cast<int>(expanded.origin_line.size())) return expanded.origin_line[n - 1];
+        return n;
+    };
+
+    auto contextOf = [&](int n) -> std::string {
+        if (n >= 1 && n <= static_cast<int>(expanded.origin_context.size()) && !expanded.origin_context[n - 1].empty()) {
+            return " (" + expanded.origin_context[n - 1] + ")";
+        }
+        return "";
+    };
+
     risc201::Assembler assembler;
 
-    assembler.assemblePass1(lines);
+    assembler.assemblePass1(expanded.lines);
 
     std::vector<risc201::Instruction> program = assembler.assemblePass2();
 
     for (const auto& warn : assembler.warnings()) {
-        std::cerr << input_path << ":" << warn.line_number << ": warning: " << warn.message << "\n";
+        std::cerr << input_path << ":" << originalLine(warn.line_number) << ": warning: " << warn.message << contextOf(warn.line_number) << "\n";
     }
 
     if (!assembler.errors().empty()) {
         for (const auto& err : assembler.errors()) {
-            std::cerr << input_path << ":" << err.line_number << ": error: " << err.message << "\n";
+            std::cerr << input_path << ":" << originalLine(err.line_number) << ": error: " << err.message << contextOf(err.line_number) << "\n";
         }
         return 1;
     }
@@ -54,7 +78,11 @@ int main(int argc, char** argv) {
         encoded.push_back(assembler.encodeInstruction(instr));
     }
 
-    bool is_hex = output_path.size() >= 4 && (output_path.compare(output_path.size() - 4, 4, ".hex") == 0);
+    for (uint32_t word : assembler.literalSection()) {
+        encoded.push_back(word);
+    }
+
+    bool is_hex = risc201::hasSuffix(output_path, ".hex");
 
     bool write_ok;
     if (is_hex) write_ok = assembler.writeHexFile(output_path, encoded);

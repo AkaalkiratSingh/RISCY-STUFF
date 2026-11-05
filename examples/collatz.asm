@@ -2,9 +2,10 @@
 ; Tracks the step count and the peak value (signed compare via SHR 31).
 ; Expected: R2=111 (steps)  R3=9232 (peak)  R1=1
 
-ADD R1, R0, 27
-ADD R2, R0, 0
-ADD R3, R0, 27
+.main:
+MOV R1, 27
+MOV R2, 0
+MOV R3, 27
 loop:
     SUB R4, R1, 1
     BEQ done
@@ -16,7 +17,7 @@ loop:
     SUB R4, R3, R1
     SHR R4, R4, 31
     BEQ step
-    ADD R3, R1, 0
+    MOV R3, R1
     JMP step
 even:
     SHR R1, R1, 1

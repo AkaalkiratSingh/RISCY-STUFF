@@ -40,8 +40,10 @@ using namespace risc201;
 
 // Assemble one source program and encode it into a program image.
 std::vector<uint32_t> encodeProgram(const std::vector<std::string>& source) {
+    std::vector<std::string> source_lines = source;
+    source_lines.insert(source_lines.begin(), ".main:");
     Assembler assembler;
-    if (!assembler.assemblePass1(source)) {
+    if (!assembler.assemblePass1(source_lines)) {
         std::cerr << "  FAIL: assembly (pass 1) failed\n";
         for (const auto& e : assembler.errors()) {
             std::cerr << "    line " << e.line_number << ": " << e.message << "\n";
@@ -54,6 +56,7 @@ std::vector<uint32_t> encodeProgram(const std::vector<std::string>& source) {
     for (const auto& instr : assembler.assemblePass2()) {
         words.push_back(assembler.encodeInstruction(instr));
     }
+    if (!words.empty()) words.erase(words.begin());
     return words;
 }
 
@@ -117,6 +120,19 @@ int main() {
         CHECK(d.opcode == Opcode::JMP);
         CHECK(d.format == InstrFormat::J_TYPE);
         CHECK_EQ(d.imm, 4);  // target word 2 => byte 8; 8 - (0 + 4) = 4
+    }
+
+    section("Decoder: BGT is a J_TYPE branch");
+    {
+        const Instruction d = decodeInstruction(0x98000008u);
+        CHECK(d.opcode == Opcode::BGT);
+        CHECK(d.format == InstrFormat::J_TYPE);
+        CHECK_EQ(d.imm, 8);
+
+        const Instruction from_source = decodeFirst({"BGT target", "NOP", "target:", "HALT"});
+        CHECK(from_source.opcode == Opcode::BGT);
+        CHECK(from_source.format == InstrFormat::J_TYPE);
+        CHECK_EQ(from_source.imm, 4);
     }
 
     section("Decoder: no-operand instructions");

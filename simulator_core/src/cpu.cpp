@@ -1,24 +1,14 @@
 #include "simulator_core/cpu.h"
 
+#include "control_unit/control_path.h"
 #include "simulator_core/decoder.h"
 
 #include <cstddef>
+#include <stdexcept>
 
 namespace risc201 {
 
     namespace {
-
-        bool condHolds(BranchCond c, const Flags& f) {
-            switch (c) {
-            case BranchCond::None:     return false;
-            case BranchCond::Zero:     return f.zero;
-            case BranchCond::NotZero:  return !f.zero;
-            case BranchCond::Negative: return f.negative;
-            case BranchCond::Carry:    return f.carry;
-            case BranchCond::Overflow: return f.overflow;
-            }
-            return false;
-        }
 
         int stageWith(const StageLayout& layout, bool StageSlot::* which) {
             for (size_t i = 0; i < layout.count; ++i) {
@@ -34,19 +24,25 @@ namespace risc201 {
         encoding_(encoding),
         memory_(memory_words, 0),
         control_unit_(MicrocodeEncoding::Horizontal),
+        vertical_unit_(),
         stack_guard_(memory_words, 0),
         controls_(encoding == MicrocodeEncoding::Vertical
-                      ? buildStageControls(VerticalControlUnit{})
+                      ? buildStageControls(vertical_unit_)
                       : buildStageControls(control_unit_)) {
+        frontend_ = encoding == MicrocodeEncoding::Vertical
+            ? frontendControls(vertical_unit_) : frontendControls(control_unit_);
         state_.sp = memory_words;
+        state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         resetPipeline();
     }
 
     void Cpu::resetPipeline() {
         regs_.fill(Latch{});
         trace_.clear();
+        micro_trace_.clear();
         fetch_pc_ = 0;
         stop_fetch_ = false;
+        fetch_held_ = false;
 
         const StageLayout layout = layoutFor(variant_);
         n_slots_ = static_cast<int>(layout.count);
@@ -54,12 +50,45 @@ namespace risc201 {
     }
 
     void Cpu::loadWords(const std::vector<uint32_t>& words) {
-        code_ = words;
+        source_words_ = words;
+        code_.clear();
+
+        std::vector<uint32_t> literals;
+        bool in_literals = false;
+        for (uint32_t word : words) {
+            if (!in_literals && word == kLiteralsMarker) {
+                in_literals = true;
+                continue;
+            }
+            if (in_literals) literals.push_back(word);
+            else code_.push_back(word);
+        }
+
         state_ = CpuState{};
         state_.sp = static_cast<uint32_t>(memory_.size());
+        state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         cycles_ = 0;
         retired_ = 0;
         resetPipeline();
+
+        for (size_t i = 0; i < literals.size() && i < memory_.size(); ++i) {
+            memory_[i] = static_cast<int32_t>(literals[i]);
+        }
+    }
+
+    void Cpu::reconfigure(PipelineVariant variant, MicrocodeEncoding encoding) {
+        variant_ = variant;
+        encoding_ = encoding;
+        control_unit_ = ControlUnit(MicrocodeEncoding::Horizontal);
+        vertical_unit_ = VerticalControlUnit{};
+        controls_ = encoding == MicrocodeEncoding::Vertical
+                        ? buildStageControls(vertical_unit_)
+                        : buildStageControls(control_unit_);
+        frontend_ = encoding == MicrocodeEncoding::Vertical
+            ? frontendControls(vertical_unit_) : frontendControls(control_unit_);
+        routine_ends_valid_ = false;
+        memory_.assign(memory_.size(), 0);
+        loadWords(source_words_);
     }
 
     bool Cpu::pipelineEmpty() const {
@@ -89,7 +118,7 @@ namespace risc201 {
 
     Latch Cpu::fetchStage(bool stall) {
         Latch out;
-        if (stop_fetch_) return out;
+        if (stop_fetch_ || fetch_held_ || !frontend_.ir_load) return out;
 
         if (fetch_pc_ >= code_.size()) {
             out.valid = true;
@@ -104,7 +133,7 @@ namespace risc201 {
         out.valid = true;
         out.pc = fetch_pc_;
         out.word = code_[fetch_pc_];
-        if (!stall) fetch_pc_ += 1;
+        if (!stall && frontend_.pc_inc) fetch_pc_ += 1;
         return out;
     }
 
@@ -119,9 +148,18 @@ namespace risc201 {
             return true;
         }
 
+        if (o.ra_write &&
+            (c.pc_from_ra ||
+             candidate.instr.rs1 == Register::R14 ||
+             (!c.alu_src_imm && candidate.instr.rs2 == Register::R14) ||
+             candidate.instr.rd == Register::R14)) {
+            return true;
+        }
+
         if (!o.reg_write) return false;
 
         const Register dst = older.instr.rd;
+        if (c.pc_from_ra && dst == Register::R14) return true;
         if (c.alu_enable &&
             (candidate.instr.rs1 == dst || (!c.alu_src_imm && candidate.instr.rs2 == dst))) {
             return true;
@@ -135,6 +173,9 @@ namespace risc201 {
         const Latch& ex_mem = regs_[static_cast<size_t>(ex_slot_)];
         if (ex_mem.valid && ex_mem.decoded) {
             const StageControls& c = controls_[static_cast<uint8_t>(ex_mem.instr.opcode)];
+            if (src == Register::R14 && c.ra_write) {
+                return static_cast<int32_t>(ex_mem.pc + 1);
+            }
             if (c.reg_write && ex_mem.instr.rd == src) {
                 return c.mem_to_reg ? current : ex_mem.alu_result;
             }
@@ -143,6 +184,9 @@ namespace risc201 {
         const Latch& mem_wb = regs_[static_cast<size_t>(ex_slot_ + 1)];
         if (mem_wb.valid && mem_wb.decoded) {
             const StageControls& c = controls_[static_cast<uint8_t>(mem_wb.instr.opcode)];
+            if (src == Register::R14 && c.ra_write) {
+                return static_cast<int32_t>(mem_wb.pc + 1);
+            }
             if (c.reg_write && mem_wb.instr.rd == src) {
                 return c.mem_to_reg ? mem_wb.mem_data : mem_wb.alu_result;
             }
@@ -162,6 +206,8 @@ namespace risc201 {
     }
 
     bool Cpu::wouldStall(uint32_t* pc) const {
+        if (fetch_held_) return false;
+
         Latch candidate;
 
         if (ex_slot_ == 1) {
@@ -197,23 +243,37 @@ namespace risc201 {
     }
 
     void Cpu::applySlot(const StageSlot& slot, Latch& out, Effects& fx) {
-        if (out.fault) return;
+        if (out.fault) {
+            if (slot.EX) {
+                fx.fault = true;
+                fx.code = out.fault_code;
+            }
+            return;
+        }
 
-        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
-
-        if (slot.ID && !out.decoded) {
+        if (slot.ID && !out.decoded && frontend_.instr_decode && frontend_.opcode_dispatch) {
             out.instr = decodeInstruction(out.word);
             out.decoded = true;
+            if (control_unit_.routineEntry(out.instr.opcode) ==
+                control_unit_.routineEntry(static_cast<Opcode>(0xFF))) {
+                out.fault = true;
+                out.fault_code = ExceptionCode::ILLEGAL_INSTRUCTION;
+                return;
+            }
             if (controls_[static_cast<uint8_t>(out.instr.opcode)].halting) fx.stop_fetch = true;
         }
 
-        if (slot.OF && out.decoded) {
+        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
+
+        if (slot.OF && out.decoded && controls_[op].operand_read) {
             out.rs1_val = state_.registers[static_cast<size_t>(out.instr.rs1)];
             out.rs2_val = state_.registers[static_cast<size_t>(out.instr.rs2)];
             out.rd_val  = state_.registers[static_cast<size_t>(out.instr.rd)];
+            out.ra_val = state_.registers[static_cast<size_t>(Register::R14)];
         }
 
         if (slot.EX && out.decoded) {
+            out.execution_flags = state_.flags;
             const StageControls& c = controls_[op];
 
             if (forwarding_) {
@@ -225,6 +285,11 @@ namespace risc201 {
             if (c.alu_enable) {
                 const int32_t rhs = (c.alu_src_imm || out.instr.I) ? out.instr.imm : out.rs2_val;
                 const Alu::Result r = alu_.execute(c.alu_op, out.rs1_val, rhs);
+                if (r.fault != ExceptionCode::NONE) {
+                    fx.fault = true;
+                    fx.code = r.fault;
+                    return;
+                }
                 out.alu_result = r.value;
                 if (c.flag_update) state_.flags = r.flags;
             }
@@ -241,7 +306,15 @@ namespace risc201 {
                 out.writes_sp = true;
             }
 
-            if (c.pc_from_target && (!c.is_branch || condHolds(c.cond, state_.flags))) {
+            if (c.pc_from_ra) {
+                const int32_t ra = forwarding_
+                    ? bypass(Register::R14, out.ra_val)
+                    : out.ra_val;
+                out.redirect = true;
+                out.next_pc = static_cast<uint32_t>(ra);
+                fx.taken = true;
+                fx.target = out.next_pc;
+            } else if (c.pc_from_target && (!c.is_branch || condHolds(c.cond, state_.flags))) {
                 out.redirect = true;
                 out.next_pc = branchTarget(out.pc, out.instr);
                 fx.taken = true;
@@ -299,6 +372,8 @@ namespace risc201 {
 
         if (out.fault) {
             state_.pending_exception = out.fault_code;
+            state_.fault_info = FaultInfo{out.pc, n_slots_ - 1, out.pc};
+            ++trace_.faults;
             stop_fetch_ = true;
             return;
         }
@@ -306,10 +381,18 @@ namespace risc201 {
         const StageControls& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
 
         if (c.reg_write) {
-            state_.registers[static_cast<size_t>(out.instr.rd)] =
-                c.mem_to_reg ? out.mem_data : out.alu_result;
+            const int32_t value = c.mem_to_reg ? out.mem_data : out.alu_result;
+            state_.registers[static_cast<size_t>(out.instr.rd)] = value;
+            if (out.instr.rd == Register::R15) state_.sp = static_cast<uint32_t>(value);
         }
-        if (out.writes_sp) state_.sp = out.sp_commit;
+        if (out.writes_sp) {
+            state_.sp = out.sp_commit;
+            state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(out.sp_commit);
+        }
+        if (c.ra_write) {
+            state_.registers[static_cast<size_t>(Register::R14)] = static_cast<int32_t>(out.pc + 1);
+        }
+        recordMicroTrace(out);
         state_.pc = out.pc;
         if (!c.halting) ++retired_;
     }
@@ -365,6 +448,16 @@ namespace risc201 {
 
             if (!wrong_path && !have_effect &&
                 (here.fault || here.taken || here.stop_fetch)) {
+                if (here.fault) {
+                    FaultInfo info{out.pc, i, std::nullopt};
+                    if (here.code == ExceptionCode::INVALID_MEMORY_ACCESS) {
+                        const auto& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
+                        info.address = out.fault ? out.pc : (c.mem_addr_sp ? out.mem_sp_addr
+                                                   : static_cast<uint32_t>(out.alu_result));
+                    }
+                    state_.fault_info = info;
+                    recordMicroTrace(out, here.code);
+                }
                 oldest = here;
                 have_effect = true;
                 effect_slot = i;
@@ -415,7 +508,140 @@ namespace risc201 {
         if (stop_fetch_ && pipelineEmpty()) state_.halted = true;
     }
 
+    void Cpu::recordMicroTrace(const Latch& instruction, ExceptionCode fault) {
+        if (!micro_tracing_ || (instruction.fault &&
+            instruction.fault_code == ExceptionCode::INVALID_MEMORY_ACCESS)) return;
+
+        const auto record = [&](const auto& unit) {
+            const auto& cm = unit.controlMemory();
+            for (const ControlStep& step : controlPath(unit, instruction.instr.opcode,
+                                                       instruction.execution_flags, fault)) {
+                const MicroOp& row = cm[static_cast<size_t>(step.micro_pc)];
+                const uint64_t packed = encoding_ == MicrocodeEncoding::Vertical
+                    ? packVertical(row, step.micro_pc)
+                    : ControlUnit::packHorizontal(row);
+                micro_trace_.push_back({cycles_, instruction.pc, instruction.instr.opcode,
+                    static_cast<uint32_t>(step.micro_pc), step.next, packed, step.signals,
+                    step.condition, step.exception});
+            }
+        };
+
+        if (encoding_ == MicrocodeEncoding::Vertical) {
+            record(vertical_unit_);
+        } else {
+            record(control_unit_);
+        }
+    }
+
+    std::vector<MicroPcView> Cpu::microSnapshot() const {
+        const StageLayout layout = layoutFor(variant_);
+
+        const auto snapshotFor = [&](const auto& unit) {
+            std::vector<MicroPcView> views;
+
+            const auto findRow = [](const std::vector<PathStep>& rows,
+                                    PipelineStage stage) -> const PathStep* {
+                const StageMask bit = stageBit(stage);
+                for (const PathStep& step : rows) {
+                    if (step.stages & bit) return &step;
+                }
+                return nullptr;
+            };
+
+            const auto appendFor = [&](const std::vector<PathStep>& rows,
+                                       PipelineStage stage, uint32_t pc) {
+                if (const PathStep* step = findRow(rows, stage)) {
+                    views.push_back({pc, pipelineStageName(stage), step->micro_pc,
+                                     step->signals});
+                    return true;
+                }
+                return false;
+            };
+
+            for (int i = 0; i < n_slots_; ++i) {
+                const Latch& l = regs_[static_cast<size_t>(i)];
+                if (!l.valid) continue;
+
+                const StageSlot& slot = layout[static_cast<size_t>(i)];
+                const std::vector<PathStep>& rows =
+                    opcodeLayout(unit, l.decoded ? l.instr.opcode : Opcode::NOP);
+
+                // The four-stage front end merges fetch, decode and operand read.
+                if (slot.IF && slot.ID && slot.OF) {
+                    const PathStep* chosen = nullptr;
+                    if (l.decoded) {
+                        for (PipelineStage stage : {PipelineStage::OF, PipelineStage::ID,
+                                                    PipelineStage::IF}) {
+                            chosen = findRow(rows, stage);
+                            if (chosen) break;
+                        }
+                    } else {
+                        chosen = findRow(rows, PipelineStage::IF);
+                    }
+                    if (chosen) {
+                        views.push_back({l.pc, "FETCH", chosen->micro_pc, chosen->signals});
+                    }
+                    continue;
+                }
+
+                bool found = false;
+                if (slot.IF) found |= appendFor(rows, PipelineStage::IF, l.pc);
+                if (!l.decoded) continue;
+                if (slot.ID)  found |= appendFor(rows, PipelineStage::ID, l.pc);
+                if (slot.OF)  found |= appendFor(rows, PipelineStage::OF, l.pc);
+                if (slot.EX)  found |= appendFor(rows, PipelineStage::EX, l.pc);
+                if (slot.MEM) found |= appendFor(rows, PipelineStage::MEM, l.pc);
+                if (slot.WB)  found |= appendFor(rows, PipelineStage::WB, l.pc);
+
+                // An instruction can occupy a stage with no row (an ALU op in MEM).
+                // Point at the next row that exists, then fall back to an earlier routine
+                // row, but always label the row with its own stage.
+                if (!found) {
+                    const int current =
+                        slot.WB ? 5 : slot.MEM ? 4 : slot.EX ? 3
+                        : slot.OF ? 2 : slot.ID ? 1 : 0;
+
+                    int chosen_stage = -1;
+                    for (int s = current; s <= 5 && chosen_stage < 0; ++s) {
+                        if (findRow(rows, static_cast<PipelineStage>(s))) chosen_stage = s;
+                    }
+                    for (int s = current - 1;
+                         s >= static_cast<int>(PipelineStage::OF) && chosen_stage < 0; --s) {
+                        if (findRow(rows, static_cast<PipelineStage>(s))) chosen_stage = s;
+                    }
+                    if (chosen_stage >= 0) {
+                        const PipelineStage stage = static_cast<PipelineStage>(chosen_stage);
+                        const PathStep* step = findRow(rows, stage);
+                        views.push_back({l.pc, pipelineStageName(stage),
+                                         step->micro_pc, step->signals});
+                    }
+                }
+            }
+
+            return views;
+        };
+
+        return encoding_ == MicrocodeEncoding::Vertical ? snapshotFor(vertical_unit_)
+                                                        : snapshotFor(control_unit_);
+    }
+
+    const std::vector<MicroOp>& Cpu::controlMemory() const {
+        return encoding_ == MicrocodeEncoding::Vertical ? vertical_unit_.controlMemory()
+                                                        : control_unit_.controlMemory();
+    }
+
+    const std::vector<int>& Cpu::routineEnds() const {
+        if (!routine_ends_valid_) {
+            routine_ends_ = encoding_ == MicrocodeEncoding::Vertical
+                ? risc201::routineEnds(vertical_unit_)
+                : risc201::routineEnds(control_unit_);
+            routine_ends_valid_ = true;
+        }
+        return routine_ends_;
+    }
+
     void Cpu::step() {
+        micro_trace_.clear();
         if (state_.halted) return;
         ++cycles_;
         tick();
