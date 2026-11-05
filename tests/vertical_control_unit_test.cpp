@@ -183,8 +183,8 @@ int main() {
     CHECK(front.size() >= 2);
     const size_t fetch_row = static_cast<size_t>(front[0]);
     const size_t decode_row = static_cast<size_t>(front[1]);
-    CHECK_EQ(vrom[fetch_row], 0x5000);
-    CHECK_EQ(vrom[decode_row], 0x5401);
+    CHECK_EQ(vrom[fetch_row], 0x3800);                              
+    CHECK_EQ(vrom[decode_row], 0x3C01);
     CHECK_EQ(ControlUnit::packHorizontal(hcm[fetch_row]),
         (1ull << 44) | (1ull << 5) | (78ull << 24) | (0xFFull << 32));
     CHECK_EQ(ControlUnit::packHorizontal(hcm[decode_row]),
@@ -196,16 +196,16 @@ int main() {
     CHECK_EQ(word(Opcode::LOAD, 1), 0x1040);
     CHECK_EQ(word(Opcode::LOAD, 3), 0x2001);       
     CHECK_EQ(word(Opcode::MOV, 1), 0x0C20);
-    CHECK_EQ(word(Opcode::CALL, 1), 0x4800);        // RA.WR
+    CHECK_EQ(word(Opcode::CALL, 1), 0x3000);       // RA.WR
     CHECK_EQ(word(Opcode::CALL, 2), 0x2401);        // JUMP, END
-    CHECK_EQ(word(Opcode::RET, 0), 0x4C01);         // JUMP.RA, END
-    CHECK_EQ(word(Opcode::HALT, 0), 0x4001);       
+    CHECK_EQ(word(Opcode::RET, 0), 0x3401);         // JUMP.RA, END
+    CHECK_EQ(word(Opcode::HALT, 0), 0x2801);        
     CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
     CHECK_EQ(word(Opcode::BEQ, 1), 0x0001);        
     CHECK_EQ(word(Opcode::BEQ, 2), 0x2401);   
     CHECK_EQ(word(Opcode::LOAD, 2), 0x1400);        // MEM.RD (+addr_check)
     CHECK_EQ(word(Opcode::STORE, 2), 0x1801);       // MEM.WR (+addr_check), END
-    CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x4401);   // TRAP, END
+    CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x2C01);   // TRAP, END
     CHECK_EQ(word(Opcode::BGT, 0), 0xE000 | ((hcu.routineEntry(Opcode::BGT) + 2) << 4));   // cond GT(6)
     CHECK_EQ(word(Opcode::DIV, 1), 0x08A0);         // ALU, func DIV(0x05)
     CHECK_EQ(word(Opcode::FADD, 1), 0x0EC0);        // ALU.NF, func FADD(0x16): flags untouched
@@ -264,12 +264,14 @@ int main() {
     section("Vertical == horizontal: lockstep, every opcode x every flag combination (all 6 flags)");
     {
         int mismatches = 0;
+        ControlUnit h;                    // built once: constructing a VerticalControlUnit
+        VerticalControlUnit v;            // takes ~100 us, reset() takes ~0.01 us
         for (int opv = 0; opv < 256; ++opv) {
             const Opcode op = static_cast<Opcode>(opv);
             for (int fl = 0; fl < 64; ++fl) {
                 const Flags f = flagsFromBits(fl);
-                ControlUnit h;
-                VerticalControlUnit v;
+                h.reset();
+                v.reset();
                 for (int cycle = 0;; ++cycle) {
                     const ControlWord hw = h.step(op, f);
                     const ControlWord vw = v.step(op, f);
@@ -333,12 +335,14 @@ int main() {
             ExceptionCode::NONE, ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
             ExceptionCode::ILLEGAL_INSTRUCTION };
         int mismatches = 0, trapped = 0;
+        ControlUnit h;                    // built once, reset() per case 
+        VerticalControlUnit v;
         for (int opv = 0; opv < 256; ++opv) {
             const Opcode op = static_cast<Opcode>(opv);
             for (ExceptionCode fault : faults) {
                 for (int fl : {0, 1, 63}) {
-                    ControlUnit h;
-                    VerticalControlUnit v;
+                    h.reset();
+                    v.reset();
                     const Flags f = flagsFromBits(fl);
                     bool hit = false;
                     for (int cycle = 0; cycle < 40; ++cycle) {

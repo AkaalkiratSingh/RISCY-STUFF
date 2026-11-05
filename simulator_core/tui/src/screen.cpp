@@ -61,12 +61,20 @@ void Screen::drawText(int r, int c, const std::string& text, Style style, int ma
     }
 }
 
-void Screen::recolour(int r, int c, int h, int w, int rgb) {
-    for (int row = r; row < r + h; ++row) {
-        for (int col = c; col < c + w; ++col) {
-            if (row < 0 || row >= rows_ || col < 0 || col >= cols_) continue;
-            buffer_[row * cols_ + col].style.fg_rgb = rgb;
-        }
+void Screen::highlightBox(int r, int c, int h, int w, Color background) {
+    const auto paint = [&](int row, int col) {
+        if (row < 0 || row >= rows_ || col < 0 || col >= cols_) return;
+        buffer_[row * cols_ + col].style.bg = background;
+    };
+
+    if (h < 2 || w < 2) return;
+    for (int col = c; col < c + w; ++col) {
+        paint(r, col);
+        paint(r + h - 1, col);
+    }
+    for (int row = r + 1; row < r + h - 1; ++row) {
+        paint(row, c);
+        paint(row, c + w - 1);
     }
 }
 
@@ -142,7 +150,7 @@ void Screen::flush() {
                 }
                 if (cell.style.bg != Color::Default) {
                     out.append(";");
-                    out.append(std::to_string(static_cast<int>(cell.style.bg)));
+                    out.append(std::to_string(static_cast<int>(cell.style.bg) + 10));
                 }
                 out.append("m");
                 cur_style = cell.style;

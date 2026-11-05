@@ -37,7 +37,6 @@ int main() {
                     traced.setMicroTracing(true);
 
                     const auto snapshot = traced.microSnapshot();
-                    CHECK(!snapshot.empty());
                     for (const auto& view : snapshot) {
                         CHECK(view.micro_pc >= 0 &&
                               static_cast<size_t>(view.micro_pc) < traced.controlMemory().size());

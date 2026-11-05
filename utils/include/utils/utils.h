@@ -12,6 +12,8 @@ namespace risc201 {
 
     std::string formatInstruction(const Instruction& in);
 
+    bool parseRegisterAlias(const std::string& token, Register& out);
+
     const char* exceptionName(ExceptionCode code);
 
     bool hasSuffix(const std::string& path, const std::string& suffix);
