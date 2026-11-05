@@ -21,30 +21,24 @@ namespace risc201 {
 
     // Decoder input: maps distinct control line combinations to 5-bit codes.
     enum class MicroOpCode : uint8_t {
-        Idle = 0,       
-        Operands,          
-        Alu,            
-        AluNoFlags,     
-        AluImm,         
-        MemRead,        
-        MemWrite,       
-        Writeback,      
-        WritebackMem,   
-        Jump,           
-        JumpMem,        
-        SpDec,          
-        SpInc,          
-        PushWrite,      
-        CallWrite,      
-        PopRead,        
-        Halt,
-        Trap,
-        RaWrite,
-        JumpRa,
-        InstructionFetch,
-        DecodeDispatch,
+    Idle = 0,
+    Operands,
+    Alu,
+    AluNoFlags,
+    AluImm,
+    MemRead,
+    MemWrite,
+    Writeback,
+    WritebackMem,
+    Jump,
+    Halt,
+    Trap,
+    RaWrite,
+    JumpRa,
+    InstructionFetch,
+    DecodeDispatch,
     };
-    inline constexpr size_t kNumMicroOpCodes = 22;   
+    inline constexpr size_t kNumMicroOpCodes = 16;  
 
     // ---- 16-bit vertical microword format -----------------------------------
     // Bit 15=0 (Operate): [14:10]=uop, [9:5]=func, [0]=END (drives datapath)
