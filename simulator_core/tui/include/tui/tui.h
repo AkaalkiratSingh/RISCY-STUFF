@@ -34,6 +34,7 @@ private:
     void render();
     void handleKey(const KeyEvent& ev);
     void executeCommand(const std::string& cmd);
+    void resetCompletion();
 
     void cyclePane();
     void clampFocusedScroll();
@@ -77,6 +78,11 @@ private:
     Mode mode_ = Mode::Normal;
     Pane pane_ = Pane::Assembly;
     std::string command_buffer_;
+    std::vector<std::string> completion_matches_;
+    std::string completion_base_;
+    size_t completion_replace_start_ = 0;
+    size_t completion_replace_len_ = 0;
+    int completion_index_ = -1;
     std::string feedback_message_ = "Welcome to RISCY201 TUI! Press 's' to step, 'c' for clock, 'r' to run, '?' for help, 'q' to quit.";
     bool feedback_is_error_ = false;
 
@@ -86,7 +92,6 @@ private:
     bool mem_follow_sp_ = true;
     int asm_view_h_ = 0;
     int bin_view_h_ = 0;
-    int rom_view_h_ = 0;
     bool auto_scroll_ = true;
 
     bool editing_ = false;
@@ -97,7 +102,6 @@ private:
     int trace_scroll_ = 0;
 
     int rom_scroll_ = 0;
-    bool rom_follow_ = true;
 
     std::vector<DialogRow> dialog_rows_;
     int dialog_selected_ = 0;

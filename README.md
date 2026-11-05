@@ -96,19 +96,20 @@ build/simulator_core/tui/risc201-tui examples/recursive_sum.asm
 
 With no path the TUI starts empty — press `Tab` to focus the assembly pane and `e` to write a program from scratch. It accepts the same pipeline options as the simulator CLI: `-4`/`-6`, `--no-forward`, `--horizontal`/`--vertical` and `--trace`.
 
-The screen has panes for raw assembly, assembled binary, registers, extra stats, a live control-ROM cursor and memory, plus an optional hazard timeline. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
+The screen has panes for raw assembly, assembled binary, registers, extra stats, a control-ROM listing and memory, plus an optional hazard timeline. Long source and control-ROM rows wrap inside their panes. Each assembled-binary row with an active control row ends with that row's stage and ROM address, for example `◄[EX 29]`, or `<[WB 03] [FETCH 07]>` when the same PC is active in several stages at once. If the current pipeline stage has no row (an ALU op in MEM), the tag shows the next routine row and its real stage, such as `[WB 06]`. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
 
-**Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane follows the active control row of the oldest in-flight instruction, with blank separators between instruction routines (addresses are unchanged); `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
+**Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane is a scrollable listing with blank separators between instruction routines (addresses are unchanged); `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
 
-**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`; `:assemble` applies the buffer and clears it. A failed assembly reports the error and leaves the running program untouched.
+**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent. A failed assembly reports the error and leaves the running program untouched.
 
-Commands (type `:` in normal or inspect mode):
+Commands (type `:` in normal or inspect mode). While typing, `Tab` completes command names and `:load` paths, with the candidates listed in the feedback pane; `Tab` again cycles them.
 
 | Command | Effect |
 |---------|--------|
 | `:step [n]`, `:clock [n]`, `:run` | Advance execution |
 | `:load <path>` | Load `.asm`, `.hex` or `.bin` |
 | `:assemble`, `:asm` | Reassemble the editor buffer and reset the run |
+| `:save [path]`, `:w` | Write the editor buffer to the loaded file (or `path`) |
 | `:reset` | Reset CPU state and re-run the loaded program |
 | `:break <pc>`, `:clearbreak` | Toggle or clear breakpoints |
 | `:config [stage 4\|6] [rom horiz\|vert] [forward on\|off]` | Change configuration; bare `:config` opens a dialog |
@@ -228,9 +229,10 @@ are needed, followed by ALU, memory, branch and writeback signals. RET's combine
 `operand_read pc_write pc_src_ra` row reads R14 in OF and redirects in EX.
 
 The CPU gates IF and ID with the selected ROM's shared controls, and OF with the
-decoded instruction's `operand_read` control. The four-stage pipeline combines
-IF/ID/OF in one slot; the six-stage pipeline keeps them separate. These signals
-change who authorizes each operation without adding pipeline clocks.
+decoded instruction's `operand_read` control. The four-stage pipeline merges
+fetch, decode and operand read into one FETCH slot; the six-stage pipeline keeps
+them separate. These signals change who authorizes each operation without adding
+pipeline clocks.
 
 Generated ROM references show the physical ROM and each instruction's complete
 flow, repeating the shared prefix by address before its opcode-specific rows:
@@ -331,7 +333,7 @@ All CTest targets pass. The TUI is exercised manually and is not covered by CTes
 - [x] `CALL`/`RET` use `R14` as the link register; software saves it with `PUSH`/`POP` around nested calls
 - [x] Scalar IEEE-754 arithmetic (`FADD`/`FSUB`/`FMUL`/`FDIV`) with float literals
 - [x] Decoder, CPU execution loop and simulator CLI
-- [x] Pipelined datapath: 4-stage (`IF/ID/OF → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
+- [x] Pipelined datapath: 4-stage (`FETCH → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
 - [x] Operand forwarding (bypassing), with `--no-forward` as a stall-everything comparison mode
 - [x] Per-cycle pipeline trace and hazard counters (`--trace`), reconciling `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`
 - [x] Terminal UI (`risc201-tui`): pane focus, source editor with explicit `:assemble` and a stale-buffer indicator, memory navigation with SP-follow, configuration dialog and wrapped feedback
