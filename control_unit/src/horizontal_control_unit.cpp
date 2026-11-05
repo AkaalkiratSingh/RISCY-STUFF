@@ -147,13 +147,7 @@ namespace risc201 {
             add(w.mem_to_reg,   "mem_to_reg");
             add(w.pc_inc,       "pc_inc");
             add(w.pc_write,     "pc_write");
-            add(w.sp_dec,       "sp_dec");
-            add(w.sp_inc,       "sp_inc");
-            add(w.mem_addr_sp,  "mem_addr_sp");
-            add(w.mem_data_pc,  "mem_data_pc");
-            add(w.pc_src_mem,   "pc_src_mem");
             add(w.pc_src_ra,    "pc_src_ra");
-            add(w.stack_check,  "stack_check");
             add(w.addr_check,   "addr_check");
             add(w.ra_write,     "ra_write");
             add(w.halt,         "halt");
@@ -212,11 +206,6 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { pcFromRARow() });
 
-        // appendRoutine(Opcode::PUSH, { operandRow(), spDecRow(), pushWriteRow() });
-
-        // appendRoutine(Opcode::POP,
-        //     { operandRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
-
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
         appendRoutine(Opcode::MUL, aluRoutine(Opcode::MUL));
@@ -228,16 +217,11 @@ namespace risc201 {
         appendRoutine(Opcode::DIV, aluRoutine(Opcode::DIV));
         appendRoutine(Opcode::REM, aluRoutine(Opcode::REM));
 
-        // BGT target: conditional micro-branch on flags.greaterThan (set by CMP), built exactly
-        // like BEQ. Appended last so no existing routine moves.
         appendBranchRoutine(Opcode::BGT, BranchCond::GreaterThan, jumpRow(), MicroOp{});
 
-        // Floating point (IEEE-754 single, held in the ordinary 32-bit registers; one ALU cycle each).
-        // FADD/FSUB/FMUL/FDIV: fetch -> execute -> writeback, FLAGS untouched (see aluRowKeepFlags).
         for (Opcode op : { Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV }) {
             appendRoutine(op, { operandRow(), aluRowKeepFlags(op), writebackRow() });
         }
-        // FCMP rs1, rs2: sets zero/equal/greaterThan only, no writeback (like CMP), so BGT/BEQ can follow.
         appendRoutine(Opcode::FCMP, { operandRow(), aluRow(Opcode::FCMP) });
 
         MicroOp fetch, decode;
@@ -344,6 +328,8 @@ namespace risc201 {
     uint64_t ControlUnit::packHorizontal(const MicroOp& row) {
         const ControlWord& c = row.ctl;
         uint64_t w = 0;
+        
+        // Control Low Fields (Continuous 0-9)
         w |= static_cast<uint64_t>(c.alu_enable)  << 0;
         w |= static_cast<uint64_t>(c.mem_read)    << 1;
         w |= static_cast<uint64_t>(c.mem_write)   << 2;
@@ -352,26 +338,25 @@ namespace risc201 {
         w |= static_cast<uint64_t>(c.pc_inc)      << 5;
         w |= static_cast<uint64_t>(c.alu_src_imm) << 6;
         w |= static_cast<uint64_t>(c.mem_to_reg)  << 7;
-        w |= static_cast<uint64_t>(c.sp_dec)      << 8;
-        w |= static_cast<uint64_t>(c.sp_inc)      << 9;
-        w |= static_cast<uint64_t>(c.flag_update) << 10;
-        w |= static_cast<uint64_t>(c.halt)        << 11;
-        w |= static_cast<uint64_t>(c.mem_addr_sp) << 12;
-        w |= static_cast<uint64_t>(c.mem_data_pc) << 13;
-        w |= static_cast<uint64_t>(c.pc_src_mem)  << 14;
-        w |= static_cast<uint64_t>(c.stack_check) << 15;
-        w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 16;
-        w |= (static_cast<uint64_t>(row.cond) & 0x7u) << 21;
-        w |= static_cast<uint64_t>(addrField(row.next))          << 24;
-        w |= static_cast<uint64_t>(addrField(row.branch_target)) << 32;
-        w |= static_cast<uint64_t>(c.trap)        << 40;
-        w |= static_cast<uint64_t>(c.addr_check)  << 41;
-        w |= static_cast<uint64_t>(c.ra_write)    << 42;
-        w |= static_cast<uint64_t>(c.pc_src_ra)   << 43;
-        w |= static_cast<uint64_t>(c.ir_load) << 44;
-        w |= static_cast<uint64_t>(c.instr_decode) << 45;
-        w |= static_cast<uint64_t>(c.operand_read) << 46;
-        w |= static_cast<uint64_t>(c.opcode_dispatch) << 47;
+        w |= static_cast<uint64_t>(c.flag_update) << 8;  // Shifted down
+        w |= static_cast<uint64_t>(c.halt)        << 9;  // Shifted down
+        
+        // Sequencing & ALU Operation
+        w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 10;
+        w |= (static_cast<uint64_t>(row.cond) & 0x7u)  << 15;
+        w |= static_cast<uint64_t>(addrField(row.next))          << 18;
+        w |= static_cast<uint64_t>(addrField(row.branch_target)) << 26;
+        
+        // Control High Fields
+        w |= static_cast<uint64_t>(c.trap)            << 34;
+        w |= static_cast<uint64_t>(c.addr_check)      << 35;
+        w |= static_cast<uint64_t>(c.ra_write)        << 36;
+        w |= static_cast<uint64_t>(c.pc_src_ra)       << 37;
+        w |= static_cast<uint64_t>(c.ir_load)         << 38;
+        w |= static_cast<uint64_t>(c.instr_decode)    << 39;
+        w |= static_cast<uint64_t>(c.operand_read)    << 40;
+        w |= static_cast<uint64_t>(c.opcode_dispatch) << 41;
+        
         return w;
     }
 
@@ -405,9 +390,10 @@ namespace risc201 {
             if (r.cond == BranchCond::None || r.branch_target == kMicroEnd) os << std::setw(5) << "-";
             else os << std::setw(5) << r.branch_target;
 
+            // Adjusted setw to 11 to match 42-bit width
             os << "  0x" << std::right << std::hex << std::uppercase
-               << std::setfill('0') << std::setw(12) << packHorizontal(r)
-               << std::dec << std::setfill(' ') << std::left << "     "
+               << std::setfill('0') << std::setw(11) << packHorizontal(r)
+               << std::dec << std::setfill(' ') << std::left << "      "
                << signalList(r.ctl) << "\n";
         }
         return os.str();
