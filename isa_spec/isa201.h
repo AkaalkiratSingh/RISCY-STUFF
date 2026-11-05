@@ -9,6 +9,8 @@ constexpr int kWordSizeBits         = 32;
 constexpr int kNumGPRegisters       = 16;
 constexpr int kInstructionBits      = 32;
 constexpr int kDefaultMemoryWords   = 4096; // TODO: confirm final size w/ Core Engine + Memory leads
+constexpr uint32_t kLiteralsMarker  = 0xFFFFFFFFu;
+constexpr int32_t  kMicroEnd        = -1;
 
 enum class Register : uint8_t {
     R0 = 0, R1, R2, R3, R4, R5, R6, R7,
@@ -31,35 +33,36 @@ enum class InstrFormat : uint8_t {
 
 enum class Opcode : uint8_t {
     NOP  = 0x00,
-    ADD  = 0x01,
-    SUB  = 0x02,
-    AND  = 0x03,
-    OR   = 0x04,
-    XOR  = 0x05,
-    SHL  = 0x06,
-    SHR  = 0x07,
-    LOAD = 0x08,
-    STORE= 0x09,
-    JMP  = 0x0A,
-    BEQ  = 0x0B,
-    CALL = 0x0C,
-    RET  = 0x0D,
-    // PUSH = 0x0E,
-    // POP  = 0x0F,
-    NOT  = 0x10, 
-    SAR  = 0x11, 
-    CMP  = 0x12,//
-    MOV  = 0x13,//
-    MUL  = 0x14,
-    DIV  = 0x15,
-    REM  = 0x16,
-    FADD = 0x17,  
-    FSUB = 0x18,  
-    FMUL = 0x19,  
-    FDIV = 0x1A,
-    FCMP = 0x1B,  
-    BGT  = 0x1C,
-    HALT = 0x1F,
+    MOV  = 0x01,
+    ADD  = 0x02,
+    SUB  = 0x03,
+    MUL  = 0x04,
+    DIV  = 0x05,
+    REM  = 0x06,
+    AND  = 0x07,
+    OR   = 0x08,
+    XOR  = 0x09, //
+    NOT  = 0x0A,
+    SHL  = 0x0B,
+    SHR  = 0x0C,
+    SAR  = 0x0D, //
+    LOAD = 0x0E,
+    STORE= 0x0F,
+    CMP  = 0x10,
+    JMP  = 0x11,
+    BEQ  = 0x12,
+    BGT  = 0x13,
+    CALL = 0x14,
+    RET  = 0x15,
+    FADD = 0x16,//
+    FSUB = 0x17,//
+    FMUL = 0x18,//
+    FDIV = 0x19,//
+    FCMP = 0x1A,//
+    // TODO : FTOI = 0x1B,
+    // TODO : ITOF = 0x1C,
+
+    HALT = 0x1F, //
 };
 
 // 32-bit fixed-width instruction word. Encoding/decoding helpers belong in
@@ -78,8 +81,6 @@ struct Instruction {
 // TODO(Milestone 0 — coordinate with Vaibhav): confirm final exception code set.
 enum class ExceptionCode : uint8_t {
     NONE = 0,
-    STACK_OVERFLOW,
-    STACK_UNDERFLOW,
     INVALID_MEMORY_ACCESS,
     DIVIDE_BY_ZERO,
     ILLEGAL_INSTRUCTION,

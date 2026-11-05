@@ -46,6 +46,10 @@ namespace risc201 {
                 reg_out = Register::R15;
                 return true;
             }
+            if (toUpper(token) == "RA") {
+                reg_out = Register::R14;
+                return true;
+            }
 
             char first = static_cast<char>(std::toupper(token[0]));
             if (first != 'R') return false;
@@ -200,6 +204,7 @@ namespace risc201 {
             if (!has_label) addError(line_num, "literal needs a name, expected 'name: 1.0f'");
             else if (line.empty()) addError(line_num, "literal '" + label + "' has no value");
             else if (!parseFloatLiteral(line, bits)) addError(line_num, "invalid float literal '" + line + "' (expected e.g. 3.14f)");
+            if (has_label && !literal_index_.count(label)) literal_index_[label] = static_cast<uint32_t>(literal_words_.size());
             literal_words_.push_back(bits);
             return true;
         }
@@ -218,15 +223,24 @@ namespace risc201 {
             return true;
        }
 
-       if (out.operands.size() != valid->second.operand_kinds.size()) addError(line_num, "'" + out.op + "' expects " + std::to_string(valid->second.operand_kinds.size()) + " operand(s), got " + std::to_string(out.operands.size()));
+       if (out.operands.size() != writtenOperandCount(valid->second)) addError(line_num, "'" + out.op + "' expects " + std::to_string(writtenOperandCount(valid->second)) + " operand(s), got " + std::to_string(out.operands.size()));
 
        out.emits_word = true;
 
        return true;
     }
 
+    bool Assembler::resolveLiteralOperand(const std::string& token, int32_t& imm_out, Register& reg_out) const {
+        auto it = literal_index_.find(token);
+        if (it == literal_index_.end()) return false;
+
+        reg_out = Register::R0;
+        imm_out = static_cast<int32_t>(it->second);
+        return true;
+    }
+
     bool Assembler::resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out) {
-        if (pl.operands.size() != info.operand_kinds.size()) {
+        if (pl.operands.size() != writtenOperandCount(info)) {
             return false;
         }
 
@@ -241,10 +255,17 @@ namespace risc201 {
         size_t reg_slot_idx = 0;
         bool have_imm_or_label = false;
         std::string imm_token;
+        size_t operand_idx = 0;
 
         for (size_t i = 0; i < info.operand_kinds.size(); ++i) {
-            const std::string& token = pl.operands[i];
             OperandKind kind = info.operand_kinds[i];
+
+            if (kind == OperandKind::EMPTY) {
+                ++reg_slot_idx;
+                continue;
+            }
+
+            const std::string& token = pl.operands[operand_idx++];
 
             switch (kind) {
                 case OperandKind::REG: {
@@ -304,8 +325,8 @@ namespace risc201 {
                 case OperandKind::MEM: {
                     int32_t mem_imm;
                     Register base_reg;
-                    if (!parseMemOperand(token, mem_imm, base_reg)) {
-                        addError(pl.line_number, "malformed memory operand '" + token + "' (expected imm[reg])");
+                    if (!resolveLiteralOperand(token, mem_imm, base_reg) && !parseMemOperand(token, mem_imm, base_reg)) {
+                        addError(pl.line_number, "malformed memory operand '" + token + "' (expected imm[reg] or a literal name)");
                         return false;
                     }
                     out.rs1 = base_reg;
@@ -331,7 +352,15 @@ namespace risc201 {
 
                     break;
                 }
+
+                case OperandKind::EMPTY:
+                    break;
             }
+        }
+
+        if (writesDestination(info.op) && out.rd == Register::R0) {
+            addError(pl.line_number, "'" + pl.op + "' cannot write to R0 (R0 is always zero)");
+            return false;
         }
 
         if (have_imm_or_label) {
@@ -364,6 +393,7 @@ namespace risc201 {
         errors_.clear();
         parsed_lines_.clear();
         literal_words_.clear();
+        literal_index_.clear();
         in_literals_ = false;
         location_counter_ = 0;
 
@@ -499,6 +529,49 @@ namespace risc201 {
             if (!out) return false;
         }
         
+        return true;
+    }
+
+    bool readHexWords(const std::string& path, std::vector<uint32_t>& out) {
+        out.clear();
+        std::ifstream in(path);
+        if (!in) return false;
+
+        std::string line;
+        while (std::getline(in, line)) {
+            std::string token = trim(line);
+            if (token.empty()) continue;
+            if (token.rfind("0x", 0) == 0 || token.rfind("0X", 0) == 0) {
+                token = token.substr(2);
+            }
+            try {
+                size_t consumed = 0;
+                const unsigned long value = std::stoul(token, &consumed, 16);
+                if (consumed != token.size() || value > 0xFFFFFFFFul) return false;
+                out.push_back(static_cast<uint32_t>(value));
+            } catch (...) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out) {
+        out.clear();
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+
+        unsigned char bytes[4];
+        while (true) {
+            in.read(reinterpret_cast<char*>(bytes), 4);
+            const std::streamsize got = in.gcount();
+            if (got == 0) break;
+            if (got != 4) return false;
+            out.push_back((static_cast<uint32_t>(bytes[0]) << 24) |
+                          (static_cast<uint32_t>(bytes[1]) << 16) |
+                          (static_cast<uint32_t>(bytes[2]) << 8) |
+                          static_cast<uint32_t>(bytes[3]));
+        }
         return true;
     }
 

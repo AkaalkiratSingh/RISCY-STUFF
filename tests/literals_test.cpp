@@ -366,6 +366,35 @@ void testLiteralTextRoundtrip() {
     std::cout << "testLiteralTextRoundtrip passed\n";
 }
 
+void testLiteralOperandResolvesToPoolIndex() {
+    Assembler a;
+    std::vector<std::string> src = {
+        ".main:",
+        "LOAD R1, pi",
+        "LOAD R2, half",
+        "LOAD R4, 4[R5]",
+        "HALT",
+        ".literals:",
+        "pi: 3.14f",
+        "half: 0.5f",
+    };
+    auto program = assemble(a, src);
+    printErrors(a);
+    assert(a.errors().empty());
+    // program[0] is the implicit JMP .main
+    assert(program[1].opcode == Opcode::LOAD);
+    assert(program[1].rs1 == Register::R0 && program[1].imm == 0 && program[1].I);   // pi   -> 0[R0]
+    assert(program[2].rs1 == Register::R0 && program[2].imm == 1 && program[2].I);   // half -> 1[R0]
+    assert(program[3].rs1 == Register::R5 && program[3].imm == 4);                   // plain imm[reg] still works
+    std::cout << "testLiteralOperandResolvesToPoolIndex passed\n";
+}
+
+void testUnknownLiteralOperandIsError() {
+    expectSingleError({ ".main:", "LOAD R1, nope", "HALT", ".literals:", "pi: 3.14f" }, 2);
+    expectSingleError({ ".main:", "LOAD R1, pi[R2]", "HALT", ".literals:", "pi: 3.14f" }, 2);   // indexed literals not supported
+    std::cout << "testUnknownLiteralOperandIsError passed\n";
+}
+
 int main() {
     // assembler side
     testLiteralsParsedToFloatBits();
@@ -396,6 +425,9 @@ int main() {
     testLiteralsFileRoundtrip(true);
     testLiteralsFileRoundtrip(false);
     testLiteralTextRoundtrip();
+
+    testLiteralOperandResolvesToPoolIndex();
+    testUnknownLiteralOperandIsError();
 
     std::cout << "All literals tests passed.\n";
     return 0;

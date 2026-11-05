@@ -22,12 +22,15 @@ namespace risc201 {
         int32_t  rs1_val = 0;
         int32_t  rs2_val = 0;
         int32_t  rd_val = 0;
+        int32_t  ra_val = 0;
         int32_t  alu_result = 0;
         int32_t  mem_data = 0;
 
         uint32_t mem_sp_addr = 0;
         uint32_t sp_commit = 0;
         bool     writes_sp = false;
+
+        Flags    execution_flags{};
 
         bool     redirect = false;
         uint32_t next_pc = 0;

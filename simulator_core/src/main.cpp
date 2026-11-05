@@ -32,23 +32,12 @@ void printUsage(const char* prog) {
         << "  -d, --decode    print the decoded instruction listing before running\n"
         << "  -m, --mem S:C   dump C data-memory words starting at word index S\n"
         << "      --trace         print the pipeline per clock, with hazard events\n"
+        << "      --micro-trace reconstruct each completed/faulting instruction's microcode path\n"
+        << "      --micro-step  pause between reconstructed microcode rows (Enter/q)\n"
         << "      --no-forward stall on every dependency instead of bypassing\n"
         << "      --horizontal use the horizontal microcode ROM (default)\n"
         << "      --vertical   use the vertical microcode ROM (same behaviour, narrower words)\n"
         << "  -h, --help      show this message\n";
-}
-
-const char* exceptionName(risc201::ExceptionCode code) {
-    using risc201::ExceptionCode;
-    switch (code) {
-        case ExceptionCode::NONE:                  return "NONE";
-        case ExceptionCode::STACK_OVERFLOW:        return "STACK_OVERFLOW";
-        case ExceptionCode::STACK_UNDERFLOW:       return "STACK_UNDERFLOW";
-        case ExceptionCode::INVALID_MEMORY_ACCESS: return "INVALID_MEMORY_ACCESS";
-        case ExceptionCode::DIVIDE_BY_ZERO:        return "DIVIDE_BY_ZERO";
-        case ExceptionCode::ILLEGAL_INSTRUCTION:   return "ILLEGAL_INSTRUCTION";
-    }
-    return "UNKNOWN";
 }
 
 void printRegisters(const risc201::CpuState& st) {
@@ -75,99 +64,12 @@ bool parseRange(const std::string& text, uint32_t& start, uint32_t& count) {
     return true;
 }
 
-std::string regName(int r) { return "R" + std::to_string(r); }
-
-std::string formatInstruction(const risc201::Instruction& in) {
-    using risc201::Opcode;
-    const std::string name = risc201::opcodeName(in.opcode);
-    const int rd  = static_cast<int>(in.rd);
-    const int rs1 = static_cast<int>(in.rs1);
-    const int rs2 = static_cast<int>(in.rs2);
-
-    switch (in.opcode) {
-        case Opcode::NOP:
-        case Opcode::RET:
-        case Opcode::HALT:
-            return name;
-        case Opcode::JMP:
-        case Opcode::BEQ:
-        case Opcode::CALL:
-            return name + " " + std::to_string(in.imm);
-        // case Opcode::PUSH:
-        // case Opcode::POP:
-        //     return name + " " + regName(rd);
-        case Opcode::LOAD:
-        case Opcode::STORE:
-            return name + " " + regName(rd) + ", " + std::to_string(in.imm) +
-                   "[" + regName(rs1) + "]";
-        default: {
-            const std::string third = in.I ? std::to_string(in.imm) : regName(rs2);
-            return name + " " + regName(rd) + ", " + regName(rs1) + ", " + third;
-        }
-    }
-}
-
 enum class InputKind { Assembly, Hex, Binary };
 
-bool hasSuffix(const std::string& path, const std::string& suffix) {
-    return path.size() >= suffix.size() &&
-           path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
 InputKind kindFromPath(const std::string& path) {
-    if (hasSuffix(path, ".hex")) return InputKind::Hex;
-    if (hasSuffix(path, ".bin")) return InputKind::Binary;
+    if (risc201::hasSuffix(path, ".hex")) return InputKind::Hex;
+    if (risc201::hasSuffix(path, ".bin")) return InputKind::Binary;
     return InputKind::Assembly;
-}
-
-std::string trim(const std::string& s) {
-    const size_t a = s.find_first_not_of(" \t\r\n");
-    if (a == std::string::npos) return "";
-    const size_t b = s.find_last_not_of(" \t\r\n");
-    return s.substr(a, b - a + 1);
-}
-
-// One 8-digit hex word per line (Assembler::writeHexFile format); "0x" tolerated.
-bool readHexWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path);
-    if (!in) return false;
-
-    std::string line;
-    while (std::getline(in, line)) {
-        std::string token = trim(line);
-        if (token.empty()) continue;
-        if (token.rfind("0x", 0) == 0 || token.rfind("0X", 0) == 0) {
-            token = token.substr(2);
-        }
-        try {
-            size_t consumed = 0;
-            const unsigned long value = std::stoul(token, &consumed, 16);
-            if (consumed != token.size() || value > 0xFFFFFFFFul) return false;
-            out.push_back(static_cast<uint32_t>(value));
-        } catch (...) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Big-endian 4-byte words (Assembler::writeBinaryFile format).
-bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
-
-    unsigned char bytes[4];
-    while (true) {
-        in.read(reinterpret_cast<char*>(bytes), 4);
-        const std::streamsize got = in.gcount();
-        if (got == 0) break;
-        if (got != 4) return false;  // trailing partial word
-        out.push_back((static_cast<uint32_t>(bytes[0]) << 24) |
-                      (static_cast<uint32_t>(bytes[1]) << 16) |
-                      (static_cast<uint32_t>(bytes[2]) << 8) |
-                      static_cast<uint32_t>(bytes[3]));
-    }
-    return true;
 }
 
 std::string slotText(const risc201::Latch& l) {
@@ -213,6 +115,35 @@ void printTraceLine(const risc201::Cpu& cpu, size_t& event_cursor) {
     std::cout << "\n";
 }
 
+bool printMicroTrace(const risc201::Cpu& cpu, bool interactive) {
+    for (const auto& row : cpu.microTrace()) {
+        std::cout << "  completed/fault cycle=" << row.cycle << " pc=" << row.pc
+                  << " " << risc201::opcodeName(row.opcode)
+                  << " microPC=" << row.micro_pc << " -> ";
+        if (row.next == risc201::kMicroEnd) std::cout << "END";
+        else std::cout << row.next;
+        std::cout << " word=0x" << std::right << std::hex << std::uppercase << std::setfill('0')
+                  << std::setw(cpu.encoding() == risc201::MicrocodeEncoding::Vertical
+                          ? 4 : risc201::kHorizontalWordBits / 4)
+                  << row.packed << std::dec << std::setfill(' ')
+                  << " signals: " << risc201::controlSignalNames(row.signals);
+        if (row.condition != risc201::BranchCond::None) {
+            const char* conditions[] = {"none", "Z", "!Z", "N", "C", "V", "GT"};
+            std::cout << " condition=" << conditions[static_cast<size_t>(row.condition)];
+        }
+        if (row.exception != risc201::ExceptionCode::NONE) {
+            std::cout << " exception=" << risc201::exceptionName(row.exception);
+        }
+        std::cout << "\n";
+        if (interactive) {
+            std::cout << "Enter: next microcode row; q: stop > " << std::flush;
+            std::string command;
+            if (!std::getline(std::cin, command) || command == "q") return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -223,6 +154,9 @@ int main(int argc, char** argv) {
     bool dump_mem = false;
     bool forwarding = true;
     bool trace_mode = false;
+    bool micro_trace = false;
+    bool micro_step = false;
+    bool interrupted = false;
     risc201::MicrocodeEncoding encoding = risc201::MicrocodeEncoding::Horizontal;
     uint32_t mem_start = 0;
     uint32_t mem_count = 0;
@@ -247,6 +181,11 @@ int main(int argc, char** argv) {
             encoding = risc201::MicrocodeEncoding::Horizontal;
         } else if (arg == "--vertical") {
             encoding = risc201::MicrocodeEncoding::Vertical;
+        } else if (arg == "--micro-trace") {
+            micro_trace = true;
+        } else if (arg == "--micro-step") {
+            micro_trace = true;
+            micro_step = true;
         } else if (arg == "--trace") {
             trace_mode = true;
         } else if (arg == "-m" || arg == "--mem") {
@@ -277,6 +216,7 @@ int main(int argc, char** argv) {
     risc201::Cpu cpu(variant, risc201::kDefaultMemoryWords, encoding);
     cpu.setForwarding(forwarding);
     cpu.setTracing(trace_mode);
+    cpu.setMicroTracing(micro_trace);
 
     // --- load -------------------------------------------------------------
     if (kind == InputKind::Assembly) {
@@ -334,11 +274,14 @@ int main(int argc, char** argv) {
         for (const auto& instr : program) {
             words.push_back(assembler.encodeInstruction(instr));
         }
+        for (uint32_t word : assembler.literalSection()) {
+            words.push_back(word);
+        }
         cpu.loadWords(words);
     } else {
         const bool ok = (kind == InputKind::Hex)
-            ? readHexWords(input_path, words)
-            : readBinaryWords(input_path, words);
+            ? risc201::readHexWords(input_path, words)
+            : risc201::readBinaryWords(input_path, words);
         if (!ok) {
             std::cerr << "error: failed to parse encoded image " << input_path << "\n";
             return 1;
@@ -351,29 +294,41 @@ int main(int argc, char** argv) {
     }
 
     if (decode_listing) {
-        std::cout << "\nDecoded program (" << words.size() << " instruction(s)):\n";
-        for (size_t i = 0; i < words.size(); ++i) {
-            const risc201::Instruction instr = risc201::decodeInstruction(words[i]);
+        const auto& code = cpu.codeWords();
+        std::cout << "\nDecoded program (" << code.size() << " instruction(s)):\n";
+        for (size_t i = 0; i < code.size(); ++i) {
+            const risc201::Instruction instr = risc201::decodeInstruction(code[i]);
             std::cout << "  [" << std::setw(4) << i << "]  0x" << std::hex
-                      << std::uppercase << std::setfill('0') << std::setw(8) << words[i]
+                      << std::uppercase << std::setfill('0') << std::setw(8) << code[i]
                       << std::dec << std::setfill(' ')
-                      << "  " << formatInstruction(instr) << "\n";
+                      << "  " << risc201::formatInstruction(instr) << "\n";
         }
     }
 
     // --- run --------------------------------------------------------------
-    if (trace_mode) {
+    if (micro_trace) {
+        std::cout << "\nMicrocode reconstruction: rows are replayed at retirement or fault.\n"
+                  << "The cycle label is the pipeline completion/fault clock; rows do not add clocks.\n"
+                  << "Squashed instructions are omitted; signals are sequencer outputs, not live pipeline wires.\n";
+    }
+    if (trace_mode || micro_trace) {
         std::cout << "\n--- pipeline trace: " << risc201::variantName(variant)
                   << (forwarding ? " (forwarding)" : " (no forwarding)") << " ---\n";
-        printTraceHeader(variant);
+        if (trace_mode) printTraceHeader(variant);
         size_t event_cursor = 0;
         uint64_t clock = 0;
         while (!cpu.state().halted && clock < kMaxTraceCycles) {
+            const uint64_t retired_before = cpu.retired();
             cpu.step();
             ++clock;
-            printTraceLine(cpu, event_cursor);
+            if (trace_mode) printTraceLine(cpu, event_cursor);
+            if (micro_trace && !printMicroTrace(cpu, micro_step)) {
+                interrupted = true;
+                break;
+            }
+            if (step_mode && cpu.retired() != retired_before) printRegisters(cpu.state());
         }
-        if (!cpu.state().halted) {
+        if (!cpu.state().halted && !interrupted) {
             std::cout << "  (trace stopped after " << kMaxTraceCycles << " cycles)\n";
         }
     } else if (step_mode) {
@@ -408,7 +363,14 @@ int main(int argc, char** argv) {
 
     if (cpu.state().pending_exception) {
         std::cout << "EXCEPTION: "
-                  << exceptionName(*cpu.state().pending_exception) << "\n";
+                  << risc201::exceptionName(*cpu.state().pending_exception);
+        if (cpu.state().fault_info) {
+            const auto& fault = *cpu.state().fault_info;
+            std::cout << " pc=" << fault.pc << " stage="
+                      << risc201::layoutFor(cpu.variant())[static_cast<size_t>(fault.slot)].name;
+            if (fault.address) std::cout << " address=" << *fault.address;
+        }
+        std::cout << "\n";
     }
 
     std::cout << "\nFinal register file:\n";
@@ -424,5 +386,5 @@ int main(int argc, char** argv) {
         }
     }
 
-    return 0;
+    return cpu.state().pending_exception ? 1 : (!cpu.state().halted ? 2 : 0);
 }

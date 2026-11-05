@@ -5,8 +5,8 @@
 ; Expected: MEM[0..31] = 1 2 3 ... 32
 
 .main:
-ADD R1, R0, 0
-ADD R2, R0, 32
+MOV R1, 0
+MOV R2, 32
 init:
     STORE R2, 0[R1]
     SUB R2, R2, 1
@@ -15,12 +15,12 @@ init:
     BEQ initdone
     JMP init
 initdone:
-    ADD R1, R0, 1
+    MOV R1, 1
 outer:
     SUB R2, R1, 32
     BEQ sorted
     LOAD R3, 0[R1]
-    ADD R4, R1, 0
+    MOV R4, R1
 inner:
     ADD R5, R4, 0
     BEQ place
@@ -33,7 +33,7 @@ inner:
     JMP place
 shift:
     STORE R7, 0[R4]
-    ADD R4, R6, 0
+    MOV R4, R6
     JMP inner
 place:
     STORE R3, 0[R4]

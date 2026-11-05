@@ -374,6 +374,132 @@ void testDisassembleWithLabels() {
     std::cout << "testDisassembleWithLabels passed\n";
 }
 
+// ---------- EMPTY operand slots (MOV / NOT / CMP) and BGT ----------
+
+namespace {
+
+Instruction makeRI(Opcode op, bool i_bit, Register rd, Register rs1, Register rs2, int32_t imm) {
+    Instruction instr;
+    instr.opcode = op;
+    instr.format = InstrFormat::RI_TYPE;
+    instr.I = i_bit;
+    instr.rd = rd;
+    instr.rs1 = rs1;
+    instr.rs2 = rs2;
+    instr.imm = imm;
+    return instr;
+}
+
+}  // namespace
+
+void testFormatEmptyOperandForms() {
+    Disassembler disasm;
+    const Register R0 = Register::R0;
+
+    assert(disasm.formatInstruction(makeRI(Opcode::MOV, false, Register::R1, R0, Register::R2, 0)) == "MOV R1, R2");
+    assert(disasm.formatInstruction(makeRI(Opcode::MOV, true,  Register::R3, R0, R0, 5)) == "MOV R3, 5");
+    assert(disasm.formatInstruction(makeRI(Opcode::NOT, false, Register::R4, R0, Register::R5, 0)) == "NOT R4, R5");
+    assert(disasm.formatInstruction(makeRI(Opcode::NOT, true,  Register::R6, R0, R0, 255)) == "NOT R6, 255");
+
+    // CMP's empty slot is rd: the printed operands are rs1 and rs2/imm.
+    assert(disasm.formatInstruction(makeRI(Opcode::CMP, false, R0, Register::R7, Register::R8, 0)) == "CMP R7, R8");
+    assert(disasm.formatInstruction(makeRI(Opcode::CMP, true,  R0, Register::R9, R0, -3)) == "CMP R9, -3");
+    std::cout << "testFormatEmptyOperandForms passed\n";
+}
+
+void testFormatEmptySlotIgnoresStrayBits() {
+    // Whatever sits in the unused slot is not printed.
+    Disassembler disasm;
+    assert(disasm.formatInstruction(makeRI(Opcode::MOV, false, Register::R1, Register::R9, Register::R2, 0)) == "MOV R1, R2");
+    assert(disasm.formatInstruction(makeRI(Opcode::CMP, false, Register::R5, Register::R7, Register::R8, 0)) == "CMP R7, R8");
+    std::cout << "testFormatEmptySlotIgnoresStrayBits passed\n";
+}
+
+void testDecodeEmptyOperandWords() {
+    Assembler asmblr;
+    Disassembler disasm;
+
+    uint32_t mov_word = (static_cast<uint32_t>(Opcode::MOV) << 27) | (1u << 22) | (2u << 14);
+    Instruction mov;
+    assert(disasm.decodeWord(mov_word, mov));
+    assert(mov.opcode == Opcode::MOV);
+    assert(mov.I == false);
+    assert(mov.rd == Register::R1);
+    assert(mov.rs1 == Register::R0);
+    assert(mov.rs2 == Register::R2);
+
+    uint32_t cmp_word = (static_cast<uint32_t>(Opcode::CMP) << 27) | (7u << 18) | (8u << 14);
+    Instruction cmp;
+    assert(disasm.decodeWord(cmp_word, cmp));
+    assert(cmp.opcode == Opcode::CMP);
+    assert(cmp.rd == Register::R0);
+    assert(cmp.rs1 == Register::R7);
+    assert(cmp.rs2 == Register::R8);
+    std::cout << "testDecodeEmptyOperandWords passed\n";
+}
+
+void testEmptyOperandSourceRoundtrip() {
+    const std::vector<std::string> body = {
+        "MOV R1, R2", "MOV R3, 5", "MOV R4, -7",
+        "NOT R4, R5", "NOT R6, 255",
+        "CMP R7, R8", "CMP R9, -3",
+        "ADD R1, R2, R3",
+        "HALT",
+    };
+    std::vector<std::string> src = { ".main:" };
+    src.insert(src.end(), body.begin(), body.end());
+
+    Assembler asmblr;
+    auto program = assembleProgram(src, asmblr);
+    printErrors(asmblr);
+    assert(asmblr.errors().empty());
+
+    std::vector<uint32_t> words;
+    for (const auto& instr : program) words.push_back(asmblr.encodeInstruction(instr));
+
+    // binary -> instructions -> text: the output is exactly the source we started from.
+    Disassembler disasm;
+    auto decoded = disasm.decodeProgram(words);
+    assert(disasm.decodeErrors().empty());
+    auto lines = disasm.disassemble(decoded);
+    assert(lines.size() == body.size() + 1);        // + the JMP .main prelude
+    for (size_t i = 0; i < body.size(); ++i) assert(lines[i + 1] == body[i]);
+
+    // text -> binary: reassembling the disassembly gives identical words.
+    std::vector<std::string> again = { ".main:" };
+    again.insert(again.end(), lines.begin() + 1, lines.end());
+    Assembler second;
+    auto program2 = assembleProgram(again, second);
+    assert(second.errors().empty());
+    std::vector<uint32_t> words2;
+    for (const auto& instr : program2) words2.push_back(second.encodeInstruction(instr));
+    assert(words2 == words);
+    std::cout << "testEmptyOperandSourceRoundtrip passed\n";
+}
+
+void testDisassembleBgtWithLabels() {
+    Assembler asmblr;
+    std::vector<std::string> src = { ".main:", "CMP R1, R2", "BGT end", "ADD R1, R1, 1", "end: HALT" };
+    auto program = assembleProgram(src, asmblr);
+    assert(asmblr.errors().empty());
+
+    Disassembler disasm;
+    auto lines = disasm.disassembleWithLabels(program);
+
+    size_t bgt = lines.size();
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (lines[i].rfind("BGT ", 0) == 0) bgt = i;
+    }
+    assert(bgt < lines.size());
+
+    // BGT names a generated label, and that label line exists right before HALT.
+    std::string label = lines[bgt].substr(4);
+    assert(label.size() > 1 && label[0] == 'L');
+    assert(lines.back() == "HALT");
+    assert(lines[lines.size() - 2] == label + ":");
+    std::cout << "testDisassembleBgtWithLabels passed\n";
+}
+
 int main() {
     testDecodeRType();
     testDecodeIType();
@@ -396,6 +522,12 @@ int main() {
     testFileRoundtripHex();
 
     testDisassembleWithLabels();
+
+    testFormatEmptyOperandForms();
+    testFormatEmptySlotIgnoresStrayBits();
+    testDecodeEmptyOperandWords();
+    testEmptyOperandSourceRoundtrip();
+    testDisassembleBgtWithLabels();
 
     std::cout << "All disassembler tests passed.\n";
     return 0;

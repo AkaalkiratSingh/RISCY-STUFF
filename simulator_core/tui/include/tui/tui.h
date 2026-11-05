@@ -1,18 +1,18 @@
 #pragma once
 
 #include "simulator_core/cpu.h"
+#include "simulator_core/debugger.h"
 #include "tui/screen.h"
 #include "tui/terminal.h"
 
 #include <cstdint>
-#include <set>
 #include <string>
 #include <vector>
 
 namespace risc201 {
 
 enum class Mode { Normal, Inspect, Command, Dialog };
-enum class Pane { Assembly, Binary, Registers, Stats, Memory, Timeline };
+enum class Pane { Assembly, Binary, Registers, Stats, ControlRom, Memory, Timeline };
 
 struct DialogRow {
     std::string label;
@@ -23,7 +23,7 @@ class Tui {
 public:
     Tui(Cpu& cpu,
         std::vector<std::string> raw_assembly,
-        std::vector<uint32_t> code_words,
+        std::vector<uint32_t> program_words,
         const std::string& filename = "",
         bool show_trace = false);
 
@@ -53,14 +53,17 @@ private:
     void renderAssembledBinary(int r, int c, int h, int w);
     void renderRegisters(int r, int c, int h, int w);
     void renderExtraStats(int r, int c, int h, int w);
+    void renderControlRom(int r, int c, int h, int w);
     void renderMemory(int r, int c, int h, int w);
     void renderHazardTimeline(int r, int c, int h, int w);
     void renderCommandLine(int r, int c, int h, int w);
     void renderFeedback(int r, int c, int h, int w);
 
     std::string formatActiveStage(uint32_t pc) const;
+    std::string describeStop(const StopInfo& info) const;
 
     Cpu& cpu_;
+    Debugger debugger_;
     std::vector<std::string> raw_assembly_;
     std::vector<uint32_t> code_words_;
     std::vector<uint32_t> original_words_;
@@ -83,6 +86,7 @@ private:
     bool mem_follow_sp_ = true;
     int asm_view_h_ = 0;
     int bin_view_h_ = 0;
+    int rom_view_h_ = 0;
     bool auto_scroll_ = true;
 
     bool editing_ = false;
@@ -92,10 +96,12 @@ private:
     bool show_trace_ = false;
     int trace_scroll_ = 0;
 
+    int rom_scroll_ = 0;
+    bool rom_follow_ = true;
+
     std::vector<DialogRow> dialog_rows_;
     int dialog_selected_ = 0;
 
-    std::set<uint32_t> breakpoints_;
 };
 
 } // namespace risc201

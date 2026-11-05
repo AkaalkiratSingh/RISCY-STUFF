@@ -2,6 +2,10 @@ add_executable(horizontal_control_unit_test horizontal_control_unit_test.cpp)
 target_link_libraries(horizontal_control_unit_test PRIVATE control_unit)
 add_test(NAME HorizontalControlUnitTest COMMAND horizontal_control_unit_test)
 
+add_executable(control_unit_alu_integration control_unit_alu_integration.cpp)
+target_link_libraries(control_unit_alu_integration PRIVATE control_unit alu)
+add_test(NAME ControlUnitAluIntegration COMMAND control_unit_alu_integration)
+
 add_executable(vertical_control_unit_test vertical_control_unit_test.cpp)
 target_link_libraries(vertical_control_unit_test PRIVATE simulator_core_lib assembler_lib)
 target_compile_definitions(vertical_control_unit_test PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples")
@@ -54,3 +58,16 @@ add_test(NAME LiteralsTest COMMAND literals_test)
 add_executable(preprocessor_test preprocessor_test.cpp)
 target_link_libraries(preprocessor_test PRIVATE assembler_lib)
 add_test(NAME PreprocessorTest COMMAND preprocessor_test)
+
+add_executable(debugger_test debugger_test.cpp)
+target_link_libraries(debugger_test PRIVATE simulator_core_lib assembler_lib)
+add_test(NAME DebuggerTest COMMAND debugger_test)
+
+add_executable(micro_trace_test micro_trace_test.cpp)
+target_link_libraries(micro_trace_test PRIVATE simulator_core_lib)
+add_test(NAME MicroTraceTest COMMAND micro_trace_test)
+
+add_test(NAME MicroCliTest COMMAND ${CMAKE_COMMAND}
+    -DSIM=$<TARGET_FILE:risc201-sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/micro_cli_test.cmake)
+
+add_test(NAME ControlRomListings COMMAND risc201-rom --check ${CMAKE_SOURCE_DIR}/docs)

@@ -8,10 +8,10 @@
 ; Expected: MEM[128]=28  MEM[135]=28  MEM[191]=476
 
 .main:
-ADD R1, R0, 0
+MOV R1, 0
 init:
     STORE R1, 0[R1]
-    ADD R2, R0, 1
+    MOV R2, 1
     ADD R3, R1, 64
     STORE R2, 0[R3]
     ADD R1, R1, 1
@@ -19,12 +19,12 @@ init:
     BEQ initdone
     JMP init
 initdone:
-    ADD R9, R0, 0
+    MOV R9, 0
 iloop:
-    ADD R10, R0, 0
+    MOV R10, 0
 jloop:
-    ADD R8, R0, 0
-    ADD R11, R0, 0
+    MOV R8, 0
+    MOV R11, 0
 kloop:
     SHL R5, R9, 3
     ADD R5, R5, R11
@@ -58,7 +58,7 @@ done:
 
 ; mul: R3 = R1 * R2, clobbers R1, R2, R4
 mul:
-    ADD R3, R0, 0
+    MOV R3, 0
 mloop:
     ADD R4, R2, 0
     BEQ mdone

@@ -1,8 +1,8 @@
 #pragma once
 
 // Vertical-microcode control unit.
-// Compresses 42-bit horizontal rows into 16-bit words.
-// Decoder expands 5-bit codes back to the 18 control lines.
+// Compresses 48-bit horizontal rows into 16-bit words.
+// Decoder expands 5-bit codes back to the 24 control lines.
 // Fully interchangeable with the horizontal unit.
 
 #include "control_unit/horizontal_control_unit.h"
@@ -15,14 +15,14 @@
 
 namespace risc201 {
 
-     inline constexpr int kHorizontalWordBits = 42;
+     inline constexpr int kHorizontalWordBits = 48;
      inline constexpr int kVerticalWordBits   = 16;
-     inline constexpr int kNumControlLines    = 18;   // ControlWord bools, excluding alu_op
+     inline constexpr int kNumControlLines    = 24;   // ControlWord bools, excluding alu_op
 
     // Decoder input: maps distinct control line combinations to 5-bit codes.
     enum class MicroOpCode : uint8_t {
         Idle = 0,       
-        Fetch,          
+        Operands,          
         Alu,            
         AluNoFlags,     
         AluImm,         
@@ -39,8 +39,12 @@ namespace risc201 {
         PopRead,        
         Halt,
         Trap,
+        RaWrite,
+        JumpRa,
+        InstructionFetch,
+        DecodeDispatch,
     };
-    inline constexpr size_t kNumMicroOpCodes = 18;   
+    inline constexpr size_t kNumMicroOpCodes = 22;   
 
     // ---- 16-bit vertical microword format -----------------------------------
     // Bit 15=0 (Operate): [14:10]=uop, [9:5]=func, [0]=END (drives datapath)
@@ -80,6 +84,7 @@ namespace risc201 {
         MicrocodeEncoding encoding() const { return MicrocodeEncoding::Vertical; }
 
         int routineEntry(Opcode op) const;
+        int frontendEntry() const { return frontend_entry_; }
         int trapEntry() const { return trap_entry_; }
 
         // Decoded ROM words.
@@ -101,6 +106,7 @@ namespace risc201 {
         std::vector<uint16_t> vrom_;
         std::vector<MicroOp>  cm_;                 
         std::array<int, 256>  entries_{};          
+        int frontend_entry_ = 0;
         int illegal_entry_ = 0;
         int trap_entry_ = 0;
         ExceptionCode pending_exception_ = ExceptionCode::NONE;

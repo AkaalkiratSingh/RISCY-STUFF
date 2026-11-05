@@ -4,6 +4,12 @@
 
 namespace risc201 {
 
+    namespace {
+        std::string regName(int r) {
+            return "R" + std::to_string(r);
+        }
+    }
+
     const char* opcodeName(Opcode op) {
         switch (op) {
             case Opcode::NOP:   return "NOP";
@@ -17,6 +23,7 @@ namespace risc201 {
             case Opcode::FSUB:  return "FSUB";
             case Opcode::FMUL:  return "FMUL";
             case Opcode::FDIV:  return "FDIV";
+            case Opcode::FCMP:  return "FCMP";
             case Opcode::OR:    return "OR";
             case Opcode::XOR:   return "XOR";
             case Opcode::SHL:   return "SHL";
@@ -27,17 +34,63 @@ namespace risc201 {
             case Opcode::BEQ:   return "BEQ";
             case Opcode::CALL:  return "CALL";
             case Opcode::RET:   return "RET";
-            // case Opcode::PUSH:  return "PUSH";
-            // case Opcode::POP:   return "POP";
             case Opcode::NOT:   return "NOT";
             case Opcode::SAR:   return "SAR";
             case Opcode::CMP:   return "CMP";
             case Opcode::MOV:   return "MOV";
-            case Opcode::FCMP:  return "FCMP";
             case Opcode::BGT:   return "BGT";
             case Opcode::HALT:  return "HALT";
         }
         return "?";
+    }
+
+    std::string formatInstruction(const Instruction& in) {
+        const std::string name = opcodeName(in.opcode);
+        const int rd  = static_cast<int>(in.rd);
+        const int rs1 = static_cast<int>(in.rs1);
+        const int rs2 = static_cast<int>(in.rs2);
+
+        switch (in.opcode) {
+            case Opcode::NOP:
+            case Opcode::RET:
+            case Opcode::HALT:
+                return name;
+            case Opcode::JMP:
+            case Opcode::BEQ:
+            case Opcode::BGT:
+            case Opcode::CALL:
+                return name + " " + std::to_string(in.imm);
+            case Opcode::MOV:
+            case Opcode::NOT:
+                return name + " " + regName(rd) + ", " +
+                       (in.I ? std::to_string(in.imm) : regName(rs2));
+            case Opcode::CMP:
+                return name + " " + regName(rs1) + ", " +
+                       (in.I ? std::to_string(in.imm) : regName(rs2));
+            case Opcode::LOAD:
+            case Opcode::STORE:
+                return name + " " + regName(rd) + ", " + std::to_string(in.imm) +
+                       "[" + regName(rs1) + "]";
+            default: {
+                const std::string third = in.I ? std::to_string(in.imm) : regName(rs2);
+                return name + " " + regName(rd) + ", " + regName(rs1) + ", " + third;
+            }
+        }
+    }
+
+    const char* exceptionName(ExceptionCode code) {
+        switch (code) {
+            case ExceptionCode::NONE:                  return "NONE";
+            case ExceptionCode::INVALID_MEMORY_ACCESS: return "INVALID_MEMORY_ACCESS";
+            case ExceptionCode::DIVIDE_BY_ZERO:        return "DIVIDE_BY_ZERO";
+            case ExceptionCode::ILLEGAL_INSTRUCTION:   return "ILLEGAL_INSTRUCTION";
+        }
+        return "UNKNOWN";
+    }
+
+    bool hasSuffix(const std::string& path, const std::string& suffix) {
+        return path.size() >= suffix.size() &&
+               path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
     }
 
     uint32_t floatToBits(float value) {
