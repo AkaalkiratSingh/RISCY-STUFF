@@ -146,6 +146,54 @@ void testBgtOperandCount() {
     std::cout << "testBgtOperandCount passed\n";
 }
 
+// ---------- label names: no leading digit or '-' ----------
+
+void testLabelCannotStartWithDigit() {
+    for (const std::string label : { "1loop", "4", "9pi", "0x10", "-x", "-4" }) {
+        risc201::Assembler asmblr;
+        std::vector<std::string> src = { ".main:", label + ": NOP", "HALT" };
+        bool ok = asmblr.assemblePass1(src);
+        assert(!ok);
+        assert(asmblr.errors().size() == 1);
+        assert(asmblr.errors()[0].line_number == 2);
+        assert(asmblr.errors()[0].message ==
+               "invalid label '" + label + "': label names cannot start with a digit or '-'");
+        assert(asmblr.symbolTable().count(label) == 0);     // a rejected label is not defined
+    }
+    std::cout << "testLabelCannotStartWithDigit passed\n";
+}
+
+void testLabelOnItsOwnLineCannotStartWithDigit() {
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = { ".main:", "4:", "HALT" };
+    assert(!asmblr.assemblePass1(src));
+    assert(asmblr.errors().size() == 1);
+    assert(asmblr.errors()[0].line_number == 2);
+    std::cout << "testLabelOnItsOwnLineCannotStartWithDigit passed\n";
+}
+
+void testLiteralNameCannotStartWithDigit() {
+    // Literal names are labels too, so the same rule applies.
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = { ".main:", "HALT", ".literals:", "1pi: 3.14f" };
+    assert(!asmblr.assemblePass1(src));
+    assert(asmblr.errors().size() == 1);
+    assert(asmblr.errors()[0].line_number == 4);
+    assert(asmblr.errors()[0].message.find("invalid label '1pi'") != std::string::npos);
+    std::cout << "testLiteralNameCannotStartWithDigit passed\n";
+}
+
+void testLabelsContainingDigitsStillAllowed() {
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = { ".main:", "a1: NOP", "_1: NOP", "L4: NOP", "loop_2: NOP", ".x9: NOP", "HALT" };
+    assert(asmblr.assemblePass1(src));
+    assert(asmblr.errors().empty());
+    for (const char* name : { "a1", "_1", "L4", "loop_2", ".x9" }) {
+        assert(asmblr.symbolTable().count(name) == 1);
+    }
+    std::cout << "testLabelsContainingDigitsStillAllowed passed\n";
+}
+
 void printErrorsDemo() {
     risc201::Assembler assembler;
     std::vector<std::string> src = {
@@ -186,6 +234,10 @@ int main() {
     testEmptyOperandWrongCount();
     testEmptyOperandErrorReportsWrittenCount();
     testBgtOperandCount();
+    testLabelCannotStartWithDigit();
+    testLabelOnItsOwnLineCannotStartWithDigit();
+    testLiteralNameCannotStartWithDigit();
+    testLabelsContainingDigitsStillAllowed();
     printErrorsDemo();
     std::cout << "All Pass 1 tests passed.\n";
     return 0;

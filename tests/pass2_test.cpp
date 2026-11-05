@@ -502,6 +502,119 @@ void testR0AllowedWhereNotADestination() {
     std::cout << "testR0AllowedWhereNotADestination passed\n";
 }
 
+// ---------- numeric jump targets are raw offsets ----------
+// "JMP 4" is not a label: the number is the byte offset from the NEXT instruction,
+// i.e. exactly the value a label would resolve to.
+
+void testJumpRawOffset() {
+    using namespace risc201;
+    struct Case { const char* mnemonic; Opcode op; };
+    const Case cases[] = {
+        { "JMP", Opcode::JMP }, { "BEQ", Opcode::BEQ }, { "BGT", Opcode::BGT }, { "CALL", Opcode::CALL },
+    };
+    for (const Case& c : cases) {
+        Assembler asmblr;
+        const std::string m = c.mnemonic;
+        auto program = assembleSource(asmblr, { ".main:", m + " 4", m + " -8", m + " 0", m + " 0x10", "HALT" });
+        assert(asmblr.errors().empty());
+        assert(asmblr.warnings().empty());
+        assert(program.size() == kUser + 5);
+        for (size_t i = 0; i < 4; ++i) {
+            assert(program[kUser + i].opcode == c.op);
+            assert(program[kUser + i].format == InstrFormat::J_TYPE);
+        }
+        assert(program[kUser].imm == 4);
+        assert(program[kUser + 1].imm == -8);
+        assert(program[kUser + 2].imm == 0);
+        assert(program[kUser + 3].imm == 16);
+    }
+    std::cout << "testJumpRawOffset passed\n";
+}
+
+void testRawOffsetEqualsLabelOffset() {
+    using namespace risc201;
+    Assembler by_label;
+    auto labelled = assembleSource(by_label, { ".main:", "JMP end", "NOP", "end: HALT" });
+    Assembler by_number;
+    auto numbered = assembleSource(by_number, { ".main:", "JMP 4", "NOP", "HALT" });
+
+    assert(labelled[kUser].imm == 4);
+    assert(numbered[kUser].imm == 4);
+    assert(by_label.encodeInstruction(labelled[kUser]) == by_number.encodeInstruction(numbered[kUser]));
+    std::cout << "testRawOffsetEqualsLabelOffset passed\n";
+}
+
+void testRawOffsetIsRelativeToNextInstruction() {
+    using namespace risc201;
+    Assembler asmblr;
+    // "JMP 0" lands on the very next instruction; the offset is not measured from the jump itself.
+    auto program = assembleSource(asmblr, { ".main:", "JMP 0", "HALT" });
+    assert(asmblr.errors().empty());
+    assert(program[kUser].imm == 0);
+    std::cout << "testRawOffsetIsRelativeToNextInstruction passed\n";
+}
+
+void testLabelWithDigitsStillResolvesAsLabel() {
+    using namespace risc201;
+    Assembler asmblr;
+    auto program = assembleSource(asmblr, { ".main:", "L4: NOP", "JMP L4", "HALT" });
+    assert(asmblr.errors().empty());
+    // L4 is at address 4, the JMP at 8: 4 - (8 + 4) = -8
+    assert(program[kUser + 1].opcode == Opcode::JMP);
+    assert(program[kUser + 1].imm == -8);
+    std::cout << "testLabelWithDigitsStillResolvesAsLabel passed\n";
+}
+
+void testRawOffsetMisalignedWarns() {
+    using namespace risc201;
+    for (const char* operand : { "6", "-2", "1" }) {
+        Assembler asmblr;
+        auto program = assembleSource(asmblr, { ".main:", std::string("JMP ") + operand, "HALT" });
+        assert(asmblr.errors().empty());
+        assert(asmblr.warnings().size() == 1);
+        assert(asmblr.warnings()[0].line_number == 2);
+        assert(asmblr.warnings()[0].message.find("not a multiple of 4") != std::string::npos);
+        assert(program.size() == kUser + 2);       // still assembles
+    }
+    std::cout << "testRawOffsetMisalignedWarns passed\n";
+}
+
+void testRawOffsetOutOfRangeWarns() {
+    using namespace risc201;
+    Assembler asmblr;
+    auto program = assembleSource(asmblr, { ".main:", "JMP 200000000", "HALT" });
+    assert(asmblr.errors().empty());
+    assert(asmblr.warnings().size() == 1);
+    assert(asmblr.warnings()[0].message.find("out of range for 27-bit field") != std::string::npos);
+    assert(program[kUser].imm == 65782272);        // 200000000 truncated to 27 bits
+    std::cout << "testRawOffsetOutOfRangeWarns passed\n";
+}
+
+void testInvalidJumpOffset() {
+    using namespace risc201;
+    // Anything that starts like a number but is not one is a bad offset, not an "undefined label".
+    for (const char* bad : { "4x", "-x", "12abc", "1.5", "0xZZ" }) {
+        Assembler asmblr;
+        auto program = assembleSource(asmblr, { ".main:", std::string("BEQ ") + bad, "HALT" });
+        assert(asmblr.errors().size() == 1);
+        assert(asmblr.errors()[0].line_number == 2);
+        assert(asmblr.errors()[0].message == std::string("invalid jump offset '") + bad + "'");
+        assert(program.empty());
+    }
+    std::cout << "testInvalidJumpOffset passed\n";
+}
+
+void testNumberOperandsOutsideJumpsUnchanged() {
+    using namespace risc201;
+    // Only jump operands got the raw-offset rule; immediates elsewhere behave as before.
+    Assembler asmblr;
+    auto program = assembleSource(asmblr, { ".main:", "ADD R1, R2, 5", "LOAD R3, 8[R4]" });
+    assert(asmblr.errors().empty());
+    assert(program[kUser].I == true && program[kUser].imm == 5);
+    assert(program[kUser + 1].imm == 8);
+    std::cout << "testNumberOperandsOutsideJumpsUnchanged passed\n";
+}
+
 int main() {
     testResolveRegisters();
     testResolveRegOrImm();
@@ -535,6 +648,15 @@ int main() {
     testResolveBgtLabel();
     testResolveBgtBackwardLabel();
     testBgtUndefinedLabel();
+
+    testJumpRawOffset();
+    testRawOffsetEqualsLabelOffset();
+    testRawOffsetIsRelativeToNextInstruction();
+    testLabelWithDigitsStillResolvesAsLabel();
+    testRawOffsetMisalignedWarns();
+    testRawOffsetOutOfRangeWarns();
+    testInvalidJumpOffset();
+    testNumberOperandsOutsideJumpsUnchanged();
 
     testWriteToR0Rejected();
     testWriteToR0RejectedMovNotLoad();
