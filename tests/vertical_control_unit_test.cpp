@@ -57,11 +57,8 @@ bool sameWord(const ControlWord& a, const ControlWord& b) {
            a.alu_enable == b.alu_enable && a.mem_read == b.mem_read &&
            a.mem_write == b.mem_write && a.reg_write == b.reg_write &&
            a.pc_write == b.pc_write && a.pc_inc == b.pc_inc &&
-           a.alu_src_imm == b.alu_src_imm && a.mem_to_reg == b.mem_to_reg &&
-           a.sp_dec == b.sp_dec && a.sp_inc == b.sp_inc &&
+           a.alu_src_imm == b.alu_src_imm && a.mem_to_reg == b.mem_to_reg &&       
            a.flag_update == b.flag_update && a.halt == b.halt &&
-           a.mem_addr_sp == b.mem_addr_sp && a.mem_data_pc == b.mem_data_pc &&
-           a.pc_src_mem == b.pc_src_mem && a.stack_check == b.stack_check &&
            a.trap == b.trap && a.addr_check == b.addr_check &&
            a.alu_op == b.alu_op;
 }
@@ -166,8 +163,8 @@ int main() {
     CHECK(vcu.encoding() == MicrocodeEncoding::Vertical);
     CHECK_EQ(vrom.size(), hcm.size());                       
     CHECK_EQ(vcm.size(), hcm.size());
-    CHECK_EQ(kHorizontalWordBits, 48);
-    CHECK_EQ(kNumControlLines, 24);
+    CHECK_EQ(kHorizontalWordBits, 42);
+    CHECK_EQ(kNumControlLines, 18);
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
     CHECK_EQ(kVerticalWordBits, 16);
     CHECK_EQ(sizeof(vrom[0]) * 8, static_cast<size_t>(kVerticalWordBits));
@@ -511,10 +508,10 @@ int main() {
         const size_t rows = hcm.size();
         CHECK(v.find(std::to_string(rows) + " rows x 16 bits = " + std::to_string(rows * 16) + " bits")
               != std::string::npos);
-        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 48 = " + std::to_string(rows * 48) + " bits")
+        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 42 = " + std::to_string(rows * 42) + " bits")
               != std::string::npos);
-        CHECK(v.find("67% narrower") != std::string::npos);
-        CHECK(v.find("24 control lines") != std::string::npos);
+        CHECK(v.find("62% narrower") != std::string::npos);
+        CHECK(v.find("18 control lines") != std::string::npos);
         CHECK(v.find("TRAP") != std::string::npos && v.find("BRANCH GT") != std::string::npos);
     }
 
