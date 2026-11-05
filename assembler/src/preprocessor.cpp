@@ -61,8 +61,9 @@ bool isIdentifier(const std::string& s) {
 }
 
 bool looksLikeRegister(const std::string& s) {
+    Register alias;
+    if (parseRegisterAlias(s, alias)) return true;
     std::string u = toUpper(s);
-    if (u == "SP") return true;
     if (u.size() < 2 || u[0] != 'R') return false;
     for (size_t i = 1; i < u.size(); ++i) {
         if (!std::isdigit(static_cast<unsigned char>(u[i]))) return false;

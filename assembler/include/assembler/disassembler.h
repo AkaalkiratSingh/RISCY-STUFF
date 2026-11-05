@@ -14,6 +14,8 @@ public:
     std::vector<std::string> disassemble(const std::vector<Instruction>& program);
     std::vector<std::string> disassembleWithLabels(const std::vector<Instruction>& program);
 
+    std::vector<std::string> disassembleSource(const std::vector<Instruction>& program, bool use_labels);
+
     bool decodeWord(uint32_t word, Instruction& out);
     std::vector<Instruction> decodeProgram(const std::vector<uint32_t>& words);
 
@@ -30,6 +32,7 @@ private:
     std::vector<std::pair<size_t, uint32_t>> decode_errors_;
     std::vector<uint32_t> literal_words_;
 
+    std::unordered_map<int32_t, std::string> buildLabelMap(const std::vector<Instruction>& program, size_t first_index, int32_t min_target) const;
     std::string formatInstructionWithLabels(const Instruction& instr, int32_t address, const std::unordered_map<int32_t, std::string>& label_map);
 };
 

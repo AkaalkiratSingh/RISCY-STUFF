@@ -49,9 +49,7 @@ int main(int argc, char** argv) {
         std::cerr << "warning: word " << index << " (0x" << std::hex << word << std::dec << ") has an unrecognized opcode, emitted as '; unknown opcode'\n";
     }
 
-    std::vector<std::string> lines;
-    if (use_labels) lines = disassembler.disassembleWithLabels(program);
-    else lines = disassembler.disassemble(program);
+    std::vector<std::string> lines = disassembler.disassembleSource(program, use_labels);
 
     for (const auto& lit_line : disassembler.formatLiterals()) lines.push_back(lit_line);
 
