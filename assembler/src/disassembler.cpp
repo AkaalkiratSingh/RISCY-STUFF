@@ -8,13 +8,22 @@
 #include <sstream>
 #include <cmath>
 #include <cstdlib>
+#include <optional>
 
 namespace risc201 {
 
     namespace {
 
-        std::string regName(Register r) {
-            return "R" + std::to_string(static_cast<int>(r));
+        bool usesLabelOperand(const OpInfo& info) {
+            return std::find(info.operand_kinds.begin(), info.operand_kinds.end(), OperandKind::LABEL) != info.operand_kinds.end();
+        }
+
+        std::optional<int32_t> entryTarget(const std::vector<Instruction>& program) {
+            if (program.empty() || program[0].opcode != Opcode::JMP) return std::nullopt;
+            const int32_t target = 4 + program[0].imm;
+            if (target < 4 || target % 4 != 0) return std::nullopt;
+            if (target >= static_cast<int32_t>(program.size()) * 4) return std::nullopt;
+            return target;
         }
 
     }
@@ -97,75 +106,10 @@ namespace risc201 {
     }
 
     std::string Disassembler::formatInstruction(const Instruction& instr) {
-        auto name_it = opcodeToMnemonic().find(instr.opcode);
-        if (name_it == opcodeToMnemonic().end()) {
+        if (opcodeToMnemonic().find(instr.opcode) == opcodeToMnemonic().end()) {
             return "; unknown opcode";
         }
-        const std::string& mnemonic = name_it->second;
-
-        auto info_it = opTable().find(mnemonic);
-        const OpInfo& info = info_it->second;
-
-        std::vector<std::string> operand_strs;
-        size_t reg_slot_idx = 0;
-
-        for (OperandKind kind : info.operand_kinds) {
-            switch (kind) {
-                case OperandKind::REG: {
-                    Register r;
-                    if (reg_slot_idx == 0) r = instr.rd;
-                    else if (reg_slot_idx == 1) r = instr.rs1;
-                    else r = instr.rs2;
-                    operand_strs.push_back(regName(r));
-                    ++reg_slot_idx;
-
-                    break;
-                }
-                case OperandKind::REG_OR_IMM: {
-                    if (instr.I) {
-                        operand_strs.push_back(std::to_string(instr.imm));
-                    }
-                    else {
-                        Register r;
-                        if (reg_slot_idx == 0) r = instr.rd;
-                        else if (reg_slot_idx == 1) r = instr.rs1;
-                        else r = instr.rs2;
-                        operand_strs.push_back(regName(r));
-                        ++reg_slot_idx;
-                    }
-
-                    break;
-                }
-                case OperandKind::IMM: {
-                    operand_strs.push_back(std::to_string(instr.imm));
-
-                    break;
-                }
-                case OperandKind::MEM: {
-                    operand_strs.push_back(std::to_string(instr.imm) + "[" + regName(instr.rs1) + "]");
-
-                    break;
-                }
-                case OperandKind::LABEL: {
-                    operand_strs.push_back(std::to_string(instr.imm));
-
-                    break;
-                }
-                case OperandKind::EMPTY: {
-                    ++reg_slot_idx;
-                    break;
-                }
-            }
-        }
-
-        std::string result = mnemonic;
-        for (size_t i = 0; i < operand_strs.size(); ++i) {
-            if (i == 0) result += " ";
-            else result += ", ";
-            result += operand_strs[i];
-        }
-
-        return result;
+        return risc201::formatInstruction(instr);
     }
 
     std::string Disassembler::formatInstructionWithLabels(const Instruction& instr, int32_t address, const std::unordered_map<int32_t, std::string>& label_map) {
@@ -173,78 +117,39 @@ namespace risc201 {
         if (name_it == opcodeToMnemonic().end()) {
             return "; unknown opcode";
         }
-        const std::string& mnemonic = name_it->second;
 
-        auto info_it = opTable().find(mnemonic);
-        const OpInfo& info = info_it->second;
-
-        std::vector<std::string> operand_strs;
-        size_t reg_slot_idx = 0;
-
-        for (OperandKind kind : info.operand_kinds) {
-            switch (kind) {
-                case OperandKind::REG: {
-                    Register r;
-                    if (reg_slot_idx == 0) r = instr.rd;
-                    else if (reg_slot_idx == 1) r = instr.rs1;
-                    else r = instr.rs2;
-                    operand_strs.push_back(regName(r));
-                    ++reg_slot_idx;
-
-                    break;
-                }
-                case OperandKind::REG_OR_IMM: {
-                    if (instr.I) {
-                        operand_strs.push_back(std::to_string(instr.imm));
-                    }
-                    else {
-                        Register r;
-                        if (reg_slot_idx == 0) r = instr.rd;
-                        else if (reg_slot_idx == 1) r = instr.rs1;
-                        else r = instr.rs2;
-                        operand_strs.push_back(regName(r));
-                        ++reg_slot_idx;
-                    }
-
-                    break;
-                }
-                case OperandKind::IMM: {
-                    operand_strs.push_back(std::to_string(instr.imm));
-
-                    break;
-                }
-                case OperandKind::MEM: {
-                    operand_strs.push_back(std::to_string(instr.imm) + "[" + regName(instr.rs1) + "]");
-
-                    break;
-                }
-                case OperandKind::LABEL: {
-                    int32_t target = address + 4 + instr.imm;
-                    auto label_it = label_map.find(target);
-                    if (label_it != label_map.end()) {
-                        operand_strs.push_back(label_it->second);
-                    }
-                    else {
-                        operand_strs.push_back(std::to_string(instr.imm));
-                    }
-
-                    break;
-                }
-                case OperandKind::EMPTY: {
-                    ++reg_slot_idx;
-                    break;
-                }
-            }
+        if (usesLabelOperand(opTable().at(name_it->second))) {
+            auto label_it = label_map.find(address + 4 + instr.imm);
+            if (label_it != label_map.end()) return name_it->second + " " + label_it->second;
         }
 
-        std::string result = mnemonic;
-        for (size_t i = 0; i < operand_strs.size(); ++i) {
-            if (i == 0) result += " ";
-            else result += ", ";
-            result += operand_strs[i];
+        return formatInstruction(instr);
+    }
+
+    std::unordered_map<int32_t, std::string> Disassembler::buildLabelMap(const std::vector<Instruction>& program, size_t first_index, int32_t min_target) const {
+        const int32_t end_address = static_cast<int32_t>(program.size()) * 4;
+
+        std::vector<int32_t> targets;
+        for (size_t i = first_index; i < program.size(); ++i) {
+            auto name_it = opcodeToMnemonic().find(program[i].opcode);
+            if (name_it == opcodeToMnemonic().end()) continue;
+            if (!usesLabelOperand(opTable().at(name_it->second))) continue;
+
+            const int32_t target = static_cast<int32_t>(i * 4) + 4 + program[i].imm;
+            if (target < min_target || target >= end_address || target % 4 != 0) continue;
+            targets.push_back(target);
         }
 
-        return result;
+        std::sort(targets.begin(), targets.end());
+        targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+
+        std::unordered_map<int32_t, std::string> label_map;
+        for (int32_t address : targets) {
+            std::ostringstream name;
+            name << "L" << std::setfill('0') << std::setw(4) << std::hex << address;
+            label_map[address] = name.str();
+        }
+        return label_map;
     }
 
     std::vector<std::string> Disassembler::formatLiterals() const {
@@ -288,43 +193,7 @@ namespace risc201 {
     }
 
     std::vector<std::string> Disassembler::disassembleWithLabels(const std::vector<Instruction>& program) {
-        std::vector<int32_t> target_addresses;
-        std::unordered_map<int32_t, bool> seen_target;
-
-        for (size_t i = 0; i < program.size(); ++i) {
-            const Instruction& instr = program[i];
-            int32_t address = static_cast<int32_t>(i * 4);
-
-            auto name_it = opcodeToMnemonic().find(instr.opcode);
-            if (name_it == opcodeToMnemonic().end()) continue;
-
-            auto info_it = opTable().find(name_it->second);
-            const OpInfo& info = info_it->second;
-
-            bool uses_label = false;
-            for (OperandKind kind : info.operand_kinds) {
-                if (kind == OperandKind::LABEL) {
-                    uses_label = true;
-                    break;
-                }
-            }
-            if (!uses_label) continue;
-
-            int32_t target = address + 4 + instr.imm;
-            if (!seen_target[target]) {
-                seen_target[target] = true;
-                target_addresses.push_back(target);
-            }
-        }
-
-        std::sort(target_addresses.begin(), target_addresses.end());
-
-        std::unordered_map<int32_t, std::string> label_map;
-        for (size_t i = 0; i < target_addresses.size(); ++i) {
-            std::ostringstream name;
-            name << "L" << std::setfill('0') << std::setw(4) << std::hex << target_addresses[i];
-            label_map[target_addresses[i]] = name.str();
-        }
+        const auto label_map = buildLabelMap(program, 0, 0);
 
         std::vector<std::string> lines;
         for (size_t i = 0; i < program.size(); ++i) {
@@ -338,6 +207,38 @@ namespace risc201 {
             lines.push_back(formatInstructionWithLabels(program[i], address, label_map));
         }
 
+        return lines;
+    }
+
+    std::vector<std::string> Disassembler::disassembleSource(const std::vector<Instruction>& program, bool use_labels) {
+        const std::optional<int32_t> entry = entryTarget(program);
+        const size_t first = entry ? 1 : 0;
+        const int32_t main_address = entry ? *entry : 0;
+
+        std::unordered_map<int32_t, std::string> label_map;
+        if (use_labels) label_map = buildLabelMap(program, first, static_cast<int32_t>(first * 4));
+        label_map[main_address] = ".main";   // wins over a generated name at the same address
+
+        std::vector<std::string> lines;
+        if (!entry && !program.empty()) {
+            lines.push_back("; no entry JMP at word 0, so .main is placed on the first instruction");
+        }
+
+        bool main_emitted = false;
+        for (size_t i = first; i < program.size(); ++i) {
+            const int32_t address = static_cast<int32_t>(i * 4);
+
+            auto label_it = label_map.find(address);
+            if (label_it != label_map.end()) {
+                lines.push_back(label_it->second + ":");
+                if (address == main_address) main_emitted = true;
+            }
+
+            lines.push_back(use_labels ? formatInstructionWithLabels(program[i], address, label_map)
+                                       : formatInstruction(program[i]));
+        }
+
+        if (!main_emitted) lines.push_back(".main:");   // empty program
         return lines;
     }
 

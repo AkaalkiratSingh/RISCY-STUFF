@@ -42,14 +42,7 @@ namespace risc201 {
         bool parseRegister(const std::string& token, Register& reg_out) {
             if (token.size() < 2) return false;
 
-            if (toUpper(token) == "SP") {
-                reg_out = Register::R15;
-                return true;
-            }
-            if (toUpper(token) == "RA") {
-                reg_out = Register::R14;
-                return true;
-            }
+            if (parseRegisterAlias(token, reg_out)) return true;
 
             char first = static_cast<char>(std::toupper(token[0]));
             if (first != 'R') return false;
@@ -362,6 +355,10 @@ namespace risc201 {
                         auto symbol = symbol_table_.find(token);
                         if (symbol == symbol_table_.end()) {
                             addError(pl.line_number, "undefined label '" + token + "'");
+                            return false;
+                        }
+                        if (literal_index_.count(token) || token == ".literals") {
+                            addError(pl.line_number, "cannot jump to '" + token + "': it is in the literal section (data)");
                             return false;
                         }
                         int32_t target = static_cast<int32_t>(symbol->second);

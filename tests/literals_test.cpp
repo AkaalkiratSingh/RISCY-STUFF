@@ -395,6 +395,32 @@ void testUnknownLiteralOperandIsError() {
     std::cout << "testUnknownLiteralOperandIsError passed\n";
 }
 
+void testJumpToLiteralIsError() {
+    const char* jumps[] = { "JMP", "BEQ", "BGT", "CALL" };
+    for (const char* jump : jumps) {
+        Assembler a;
+        auto program = assemble(a, { ".main:", std::string(jump) + " pi", "HALT", ".literals:", "pi: 3.14f" });
+        printErrors(a);
+        assert(a.errors().size() == 1);
+        assert(a.errors()[0].line_number == 2);
+        assert(a.errors()[0].message.find("cannot jump to 'pi'") != std::string::npos);
+        assert(program.empty());
+    }
+
+    // The pool's own label is data too.
+    Assembler a;
+    assemble(a, { ".main:", "JMP .literals", "HALT", ".literals:", "pi: 3.14f" });
+    assert(a.errors().size() == 1 && a.errors()[0].message.find("cannot jump to '.literals'") != std::string::npos);
+
+    // Ordinary labels and raw offsets are unaffected.
+    Assembler ok;
+    auto program = assemble(ok, { ".main:", "JMP done", "NOP", "done: JMP 0", "HALT", ".literals:", "pi: 3.14f" });
+    printErrors(ok);
+    assert(ok.errors().empty());
+    assert(program.size() == 5);
+    std::cout << "testJumpToLiteralIsError passed\n";
+}
+
 int main() {
     // assembler side
     testLiteralsParsedToFloatBits();
@@ -428,6 +454,7 @@ int main() {
 
     testLiteralOperandResolvesToPoolIndex();
     testUnknownLiteralOperandIsError();
+    testJumpToLiteralIsError();
 
     std::cout << "All literals tests passed.\n";
     return 0;

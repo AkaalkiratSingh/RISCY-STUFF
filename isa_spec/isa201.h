@@ -28,7 +28,7 @@ struct Flags {
 
 enum class InstrFormat : uint8_t {
     RI_TYPE,    // opcode + reg-reg-reg/immediate
-    J_TYPE,     // opcode + 26-bit address/offset
+    J_TYPE,     // opcode + 27-bit address/offset
 };
 
 enum class Opcode : uint8_t {
