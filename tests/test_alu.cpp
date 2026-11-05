@@ -35,6 +35,9 @@ static void check(const Alu::Result& r, int32_t value,
 int main() {
     Alu alu;
 
+    assert(static_cast<uint32_t>(alu.execute(Opcode::ITOF, 0, -3).value) == 0xC0400000u);
+    assert(alu.execute(Opcode::FTOI, 0, static_cast<int32_t>(0x40E00000u)).value == 7);
+
     // ==========================================
     // 1. INTEGER TESTS
     // ==========================================
@@ -130,6 +133,6 @@ int main() {
     std::cout << "All tests passed successfully!\n";
     std::cout << " - Integer ALU (ADD, SUB, MUL, DIV, REM) OK\n";
     std::cout << " - Float ALU (FADD, FSUB, FMUL, FDIV via Newton-Raphson,FCMP) OK\n";
-    
+    std::cout << " - Conversions (FTOI, ITOF) OK\n";
     return 0;
 }

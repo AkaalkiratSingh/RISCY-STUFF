@@ -1,5 +1,3 @@
-// Stack overflow/underflow detection + runtime exception framework (PRD §5.5).
-
 #pragma once
 
 #include "isa201.h"

@@ -12,41 +12,33 @@ constexpr uint32_t SIGN_BIT = 0x80000000u;
 //  ARITHMETIC CIRCUITS
 // ============================================================
 
-uint32_t Alu::cla4(uint32_t a, uint32_t b, bool carry_in, bool& carry_out) {
-    uint32_t g = (a & b) & 0xFu;
-    uint32_t p = (a ^ b) & 0xFu;
+// 32-bit Kogge-Stone Parallel Prefix Adder
+// Uses bitwise parallelism to achieve true O(log n) time complexity
+uint32_t Alu::koggeStoneAdder(uint32_t a, uint32_t b, bool carry_in, bool& carry_out) {
+    uint32_t G = a & b;           // Generate
+    uint32_t P_orig = a ^ b;      // Propagate
+    uint32_t P = P_orig;
 
-    bool c0 = carry_in;
-    bool c1 = ((g >> 0) & 1) || (((p >> 0) & 1) && c0);
-    bool c2 = ((g >> 1) & 1) || (((p >> 1) & 1) && ((g >> 0) & 1))
-                              || (((p >> 1) & 1) && ((p >> 0) & 1) && c0);
-    bool c3 = ((g >> 2) & 1) || (((p >> 2) & 1) && ((g >> 1) & 1))
-                              || (((p >> 2) & 1) && ((p >> 1) & 1) && ((g >> 0) & 1))
-                              || (((p >> 2) & 1) && ((p >> 1) & 1) && ((p >> 0) & 1) && c0);
-    carry_out = ((g >> 3) & 1) || (((p >> 3) & 1) && ((g >> 2) & 1))
-                                || (((p >> 3) & 1) && ((p >> 2) & 1) && ((g >> 1) & 1))
-                                || (((p >> 3) & 1) && ((p >> 2) & 1) && ((p >> 1) & 1) && ((g >> 0) & 1))
-                                || (((p >> 3) & 1) && ((p >> 2) & 1) && ((p >> 1) & 1) && ((p >> 0) & 1) && c0);
-
-    uint32_t sum = 0;
-    if ( ((p >> 0) & 1) ^ c0 ) sum |= 0x1;
-    if ( ((p >> 1) & 1) ^ c1 ) sum |= 0x2;
-    if ( ((p >> 2) & 1) ^ c2 ) sum |= 0x4;
-    if ( ((p >> 3) & 1) ^ c3 ) sum |= 0x8;
-
-    return sum;
-}
-
-uint32_t Alu::carryLookaheadAdder(uint32_t a, uint32_t b, bool carry_in, bool& carry_out) {
-    uint32_t sum = 0;
-    bool carry = carry_in;
-    for (int i = 0; i < 32; i += 4) {
-        bool c_out;
-        uint32_t s = cla4((a >> i) & 0xF, (b >> i) & 0xF, carry, c_out);
-        sum |= (s << i);
-        carry = c_out;
+    // Incorporate carry-in into the first bit's Generate
+    if (carry_in) {
+        G |= P & 1u;
     }
-    carry_out = carry;
+
+    // Kogge-Stone parallel prefix computation (5 stages for 32-bit)
+    for (int i = 1; i < 32; i <<= 1) {
+        uint32_t G_shift = G << i;
+        uint32_t P_shift = P << i;
+        G = G | (P & G_shift);
+        P = P & P_shift;
+    }
+
+    // Sum is P_orig XORed with the shifted carry-in for each bit
+    // We also XOR with carry_in to handle the 0th bit correctly
+    uint32_t sum = P_orig ^ (G << 1) ^ carry_in;
+
+    // Carry out is the generate of the 31st bit
+    carry_out = (G >> 31) & 1;
+
     return sum;
 }
 
@@ -110,18 +102,21 @@ uint32_t Alu::floatAdd(uint32_t a, uint32_t b) {
     bool carry_out;
 
     if (sign_a == sign_b) {
-        result_mant = carryLookaheadAdder(mant_a, mant_b, false, carry_out);
+        // Use Kogge-Stone Adder
+        result_mant = koggeStoneAdder(mant_a, mant_b, false, carry_out);
         result_sign = sign_a;
-        if (result_mant & 0x01000000) {
+        
+        // CRITICAL FIX: Check bit 24 directly, not just carry_out!
+        if (result_mant & 0x01000000) { 
             result_mant >>= 1;
             exp_a++;
         }
     } else {
         if (mant_a > mant_b) {
-            result_mant = carryLookaheadAdder(mant_a, ~mant_b, true, carry_out);
+            result_mant = koggeStoneAdder(mant_a, ~mant_b, true, carry_out);
             result_sign = sign_a;
         } else if (mant_b > mant_a) {
-            result_mant = carryLookaheadAdder(mant_b, ~mant_a, true, carry_out);
+            result_mant = koggeStoneAdder(mant_b, ~mant_a, true, carry_out);
             result_sign = sign_b;
         } else {
             return 0;
@@ -129,6 +124,8 @@ uint32_t Alu::floatAdd(uint32_t a, uint32_t b) {
     }
 
     if (result_mant == 0) return 0;
+    
+    // Normalize
     while ((result_mant & 0x00800000) == 0 && exp_a > 0) {
         result_mant <<= 1;
         exp_a--;
@@ -233,6 +230,69 @@ Alu::Result Alu::floatCmp(uint32_t a, uint32_t b) {
 }
 
 // ============================================================
+//  TYPE CONVERSIONS (FTOI / ITOF)
+// ============================================================
+
+uint32_t Alu::floatToInt(uint32_t a) {
+    uint32_t sign = (a >> 31) & 1;
+    int32_t  exp  = (a >> 23) & 0xFF;
+    uint32_t mant = (a & 0x007FFFFF) | 0x00800000; // Add implicit 1
+
+    // If exponent < 127, the value is < 1.0, so integer part is 0
+    if (exp < 127) return 0; 
+
+    // If exponent is too large, we overflow a 32-bit int.
+    // Clamp to INT_MAX (0x7FFFFFFF) or INT_MIN (0x80000000)
+    if (exp >= 127 + 31) {
+        return sign ? 0x80000000 : 0x7FFFFFFF;
+    }
+
+    int shift = exp - 127;
+    uint32_t res;
+
+    // Shift the mantissa to get the integer part
+    if (shift >= 23) {
+        res = mant << (shift - 23);
+    } else {
+        res = mant >> (23 - shift);
+    }
+
+    // Apply two's complement if negative
+    if (sign) {
+        res = ~res + 1;
+    }
+
+    return res;
+}
+
+uint32_t Alu::intToFloat(uint32_t a) {
+    if (a == 0) return 0;
+
+    uint32_t sign = (a >> 31) & 1;
+    
+    // Get absolute value
+    uint32_t abs_a = sign ? (~a + 1) : a;
+
+    // Find the position of the Most Significant Bit (MSB)
+    int msb = 31;
+    while (msb >= 0 && !((abs_a >> msb) & 1)) {
+        msb--;
+    }
+
+    int32_t exp = 127 + msb; // Calculate biased exponent
+    uint32_t mant;
+
+    // Extract the 23-bit mantissa after the implicit 1
+    if (msb <= 23) {
+        mant = (abs_a << (23 - msb)) & 0x007FFFFF;
+    } else {
+        mant = (abs_a >> (msb - 23)) & 0x007FFFFF;
+    }
+
+    return packFloat(sign, exp, mant);
+}
+
+// ============================================================
 //  EXECUTE
 // ============================================================
 
@@ -245,18 +305,20 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
 
     switch (op) {
         case Opcode::ADD: {
-            res = carryLookaheadAdder(a, b, false, carry_out);
+            res = koggeStoneAdder(a, b, false, carry_out); 
             r.flags.carry    = carry_out;
             r.flags.overflow = ((a ^ res) & (b ^ res) & SIGN_BIT) != 0;
             break;
         }
         case Opcode::SUB: 
         case Opcode::CMP: {
-            res = carryLookaheadAdder(a, ~b, true, carry_out);
+            res = koggeStoneAdder(a, ~b, true, carry_out); 
             r.flags.carry    = carry_out;
             r.flags.overflow = ((a ^ b) & (a ^ res) & SIGN_BIT) != 0;
             break;
         }
+        
+        
         case Opcode::MUL: {
             int64_t prod = multiply(lhs, rhs);
             r.value64 = prod;
@@ -285,7 +347,7 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
                 quotient = quotient << 1;
                 if (remainder >= u_rhs) {
                     bool c_out_div;
-                    remainder = carryLookaheadAdder(remainder, ~u_rhs, true, c_out_div);
+                    remainder = koggeStoneAdder(remainder, ~u_rhs, true, c_out_div);
                     quotient |= 1;
                 }
             }
@@ -353,8 +415,16 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             break;
         }
         default: res = 0; break;
-    }
+        case Opcode::FTOI:
+            r.value = static_cast<int32_t>(floatToInt(b));
+            return r;
 
+        case Opcode::ITOF:
+            r.value = static_cast<int32_t>(intToFloat(b));
+            return r;
+
+    }
+            
     if (op != Opcode::MUL) {
         r.value = static_cast<int32_t>(res);
     }

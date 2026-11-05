@@ -26,6 +26,9 @@ namespace risc201 {
         // 32-bit Carry-Lookahead Adder (8 chained 4-bit CLA blocks).
         static uint32_t carryLookaheadAdder(uint32_t a, uint32_t b,
                                             bool carry_in, bool& carry_out);
+        static uint32_t koggeStoneAdder(uint32_t a, uint32_t b,
+                                bool carry_in, bool& carry_out);
+
 
         // --- Soft-Float Helpers ---
         static uint32_t packFloat(uint32_t sign, int32_t exp, uint32_t mantissa);
@@ -33,6 +36,8 @@ namespace risc201 {
         static uint32_t floatMul(uint32_t a, uint32_t b);
         static uint32_t floatDiv(uint32_t a, uint32_t b);
         static Result floatCmp(uint32_t a, uint32_t b);
+        static uint32_t floatToInt(uint32_t a); 
+        static uint32_t intToFloat(uint32_t a); 
         static uint32_t reciprocalNR(uint32_t D_fp);
     };
 

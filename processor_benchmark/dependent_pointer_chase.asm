@@ -1,7 +1,7 @@
 ; Load-use stress: build a 1024-node ring, then follow 65536 links and accumulate
 ; their indices. Each LOAD is immediately consumed by a dependent ADD.
 ; Expected: R1=0  R2=33521664  MEM[0..1023]=(i+37)%1024  stalls 65536 with forwarding
-; Run with: risc201-sim examples/benchmarks/dependent_pointer_chase.asm -6 --vertical
+; Run with: risc201-sim processor_benchmark/dependent_pointer_chase.asm -6 --vertical
 
 .main:
 MOV R1, 0

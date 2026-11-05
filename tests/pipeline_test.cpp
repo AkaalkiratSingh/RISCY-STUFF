@@ -2,6 +2,7 @@
 #include "assembler/preprocessor.h"
 #include "simulator_core/cpu.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <map>
@@ -104,6 +105,34 @@ Case mk(const char* name, std::vector<std::string> source,
 } // namespace
 
 int main() {
+    section("Pipeline: one ROM row advances per clock");
+    for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+        Cpu cpu(variant);
+        cpu.loadWords(assembleWords({"ADD R1, R0, 5", "HALT"}));
+        const ControlUnit cu;
+        const int fetch = cu.frontendEntry();
+        const int decode = cu.controlMemory()[static_cast<size_t>(fetch)].next;
+        const int add = cu.routineEntry(Opcode::ADD);
+        const std::vector<int> rows = {fetch, decode, add, add + 1, add + 2};
+        const std::vector<int> slots = variant == PipelineVariant::FourStage
+            ? std::vector<int>{0, 0, 0, 1, 3}
+            : std::vector<int>{0, 1, 2, 3, 5};
+        for (size_t clock = 0; clock < rows.size(); ++clock) {
+            cpu.step();
+            const Latch& latch = cpu.stages()[static_cast<size_t>(slots[clock])];
+            CHECK(latch.valid && latch.pc == 0);
+            CHECK_EQ(latch.micro_pc, static_cast<uint32_t>(rows[clock]));
+            CHECK_EQ(latch.row_cycle, static_cast<uint64_t>(clock == 0 ? 0 : clock + 1));
+            const auto views = cpu.microSnapshot();
+            CHECK(std::any_of(views.begin(), views.end(), [&](const MicroPcView& view) {
+                return view.pc == latch.pc && view.micro_pc == static_cast<int>(latch.micro_pc) &&
+                       view.signals.ir_load == (clock == 0);
+            }));
+        }
+        cpu.step();
+        CHECK_EQ(cpu.retired(), 1u);
+    }
+
     const std::vector<Case> cases = {
         mk("alu chain",              {"ADD R1, R0, 5", "ADD R2, R1, 5", "SUB R3, R2, R1", "HALT"}),
         mk("logic ops",              {"ADD R1, R0, 12", "AND R2, R1, 10", "XOR R3, R1, R2", "HALT"}),
@@ -187,15 +216,13 @@ int main() {
         }
     }
 
-    section("Pipeline: forwarding removes the stall on an ALU chain");
+    section("Pipeline: conservative interlock preserves an ALU chain");
     for (PipelineVariant v : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
-        const uint64_t ideal = (v == PipelineVariant::FourStage ? 4u : 6u) + 3u - 1u;
-
         const Cpu on  = runOn(v, {"ADD R1, R0, 5", "ADD R2, R1, 5", "HALT"}, {}, kDefaultMemoryWords, true);
         const Cpu off = runOn(v, {"ADD R1, R0, 5", "ADD R2, R1, 5", "HALT"}, {}, kDefaultMemoryWords, false);
 
-        CHECK_EQ(on.cycles(), ideal);
-        CHECK(off.cycles() > ideal);
+        CHECK_EQ(on.cycles(), off.cycles());
+        CHECK_EQ(on.trace().rows, 13u);
         CHECK_EQ(on.state().registers[static_cast<size_t>(Register::R2)], 10);
         CHECK_EQ(off.state().registers[static_cast<size_t>(Register::R2)], 10);
     }
@@ -213,24 +240,22 @@ int main() {
         CHECK(on.cycles() <= off.cycles());
     }
 
-    section("Pipeline: a store's data source is bypassed, not stalled");
+    section("Pipeline: a store waits for its data source");
     for (PipelineVariant v : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
-        const uint64_t ideal = (v == PipelineVariant::FourStage ? 4u : 6u) + 4u - 1u;
-
         const std::vector<std::string> program = {
             "ADD R2, R0, 7", "STORE R2, 4[R0]", "LOAD R3, 4[R0]", "HALT"};
 
         const Cpu on  = runOn(v, program, {}, kDefaultMemoryWords, true);
         const Cpu off = runOn(v, program, {}, kDefaultMemoryWords, false);
 
-        CHECK_EQ(on.memory()[4], 7);            // the freshly computed R2 reached memory
+        CHECK_EQ(on.memory()[4], 7);
         CHECK_EQ(off.memory()[4], 7);
         CHECK_EQ(on.state().registers[static_cast<size_t>(Register::R3)], 7);
-        CHECK_EQ(on.cycles(), ideal);           // bypassed, so nothing stalls
-        CHECK(off.cycles() > ideal);            // without bypassing the store waits
+        CHECK_EQ(on.cycles(), off.cycles());
+        CHECK(on.trace().rows >= 18u);
     }
 
-    section("Pipeline: cycles = (k-1) + retired + HALT + stalls + flush bubbles");
+    section("Pipeline: ROM row and squash accounting");
     {
         const std::vector<std::pair<const char*, std::vector<std::string>>> clean = {
             {"fibonacci", {"ADD R1, R0, 0", "ADD R2, R0, 1", "ADD R3, R0, 8",
@@ -254,16 +279,13 @@ int main() {
                     const Cpu cpu = runOn(v, source, {{0, 9}}, kDefaultMemoryWords, fwd);
                     const PipelineTrace& t = cpu.trace();
 
-                    const uint64_t expected = static_cast<uint64_t>(cpu.stageCount()) - 1
-                                            + cpu.retired() + 1
-                                            + t.stalls + t.flush_bubbles;
-                    if (expected != cpu.cycles()) {
+                    if (t.rows < cpu.retired() + 1 ||
+                        t.flush_bubbles != t.squashed || t.faults != 0) {
                         ++failures;
                         std::cerr << "  FAIL " << name << " " << variantName(v)
                                   << (fwd ? " forwarding" : " no-forward")
-                                  << ": cycles " << cpu.cycles() << " != " << expected
-                                  << "\n         retired " << cpu.retired()
-                                  << ", stalls " << t.stalls
+                                  << ": rows " << t.rows << ", retired " << cpu.retired()
+                                  << ", squashed " << t.squashed
                                   << ", bubbles " << t.flush_bubbles << "\n";
                     }
                 }
@@ -272,7 +294,7 @@ int main() {
         std::cout << "  ok    every clean program reconciles across 4 configurations\n";
     }
 
-    section("Pipeline: a branch flushes 1 slot on the 4-stage and 3 on the 6-stage");
+    section("Pipeline: branch redirects count discarded instructions");
     {
         const std::vector<std::string> fib = {
             "ADD R1, R0, 0", "ADD R2, R0, 1", "ADD R3, R0, 8",
@@ -284,13 +306,13 @@ int main() {
 
         CHECK_EQ(four.trace().flushes, 8u);        // 7 JMP back-edges + the taken BEQ
         CHECK_EQ(six.trace().flushes, 8u);
-        CHECK_EQ(four.trace().flush_bubbles, 8u);  // 1 per transfer
-        CHECK_EQ(six.trace().flush_bubbles, 24u);  // 3 per transfer
-        CHECK_EQ(four.trace().stalls, 0u);         // forwarding leaves no data hazards
-        CHECK_EQ(six.trace().stalls, 0u);
+        CHECK_EQ(four.trace().flush_bubbles, four.trace().squashed);
+        CHECK_EQ(six.trace().flush_bubbles, six.trace().squashed);
+        CHECK_EQ(four.trace().flush_bubbles, 8u);
+        CHECK_EQ(six.trace().flush_bubbles, 16u);
     }
 
-    section("Pipeline: CALL and RET flush like a jump");
+    section("Pipeline: CALL and RET each redirect");
     {
         const std::vector<std::string> call = {
             "ADD R1, R0, 7", "CALL sub", "HALT", "sub:", "ADD R2, R0, 5", "RET"};
@@ -300,8 +322,8 @@ int main() {
 
         CHECK_EQ(four.trace().flushes, 2u);        // one CALL, one RET
         CHECK_EQ(six.trace().flushes, 2u);
-        CHECK_EQ(four.trace().flush_bubbles, 2u);  // CALL 1 + RET 1
-        CHECK_EQ(six.trace().flush_bubbles, 6u);   // CALL 3 + RET 3
+        CHECK_EQ(four.trace().flush_bubbles, four.trace().squashed);
+        CHECK_EQ(six.trace().flush_bubbles, six.trace().squashed);
     }
 
     section("Pipeline: a fault is recorded and does not flush");

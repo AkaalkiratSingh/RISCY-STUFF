@@ -26,18 +26,12 @@ namespace risc201 {
         Opcode     alu_op = Opcode::NOP;
         bool       alu_src_imm = false;
         bool       flag_update = false;
-        bool       sp_dec = false;
-        bool       sp_inc = false;
         bool       pc_from_target = false;
         bool       pc_from_ra = false;
         bool       ra_write = false;
 
         bool       mem_read = false;
         bool       mem_write = false;
-        bool       mem_addr_sp = false;
-        bool       mem_data_pc = false;
-        bool       stack_check = false;
-        bool       pc_from_mem = false;
 
         bool       reg_write = false;
         bool       mem_to_reg = false;
@@ -53,6 +47,11 @@ namespace risc201 {
 
     std::vector<int> reachableRows(const ControlUnit& cu, Opcode op);
     std::string controlProblem(const ControlUnit& cu, Opcode op);
+
+    enum class RowStage : uint8_t { IF, ID, OF, EX, MEM, WB, Terminal };
+    RowStage rowStage(const MicroOp& row);
+    const char* rowStageName(RowStage stage);
+    int slotForRow(PipelineVariant variant, RowStage stage);
 
     enum class PipelineStage : uint8_t { IF = 0, ID, OF, EX, MEM, WB };
     inline constexpr size_t kPipelineStageCount = 6;

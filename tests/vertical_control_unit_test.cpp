@@ -58,10 +58,7 @@ bool sameWord(const ControlWord& a, const ControlWord& b) {
            a.mem_write == b.mem_write && a.reg_write == b.reg_write &&
            a.pc_write == b.pc_write && a.pc_inc == b.pc_inc &&
            a.alu_src_imm == b.alu_src_imm && a.mem_to_reg == b.mem_to_reg &&
-           a.sp_dec == b.sp_dec && a.sp_inc == b.sp_inc &&
            a.flag_update == b.flag_update && a.halt == b.halt &&
-           a.mem_addr_sp == b.mem_addr_sp && a.mem_data_pc == b.mem_data_pc &&
-           a.pc_src_mem == b.pc_src_mem && a.stack_check == b.stack_check &&
            a.trap == b.trap && a.addr_check == b.addr_check &&
            a.alu_op == b.alu_op;
 }
@@ -78,11 +75,8 @@ bool sameControls(const StageControls& a, const StageControls& b) {
            a.halting == b.halting && a.is_branch == b.is_branch && a.cond == b.cond &&
            a.pc_inc == b.pc_inc && a.alu_enable == b.alu_enable && a.alu_op == b.alu_op &&
            a.alu_src_imm == b.alu_src_imm && a.flag_update == b.flag_update &&
-           a.sp_dec == b.sp_dec && a.sp_inc == b.sp_inc &&
            a.pc_from_target == b.pc_from_target && a.mem_read == b.mem_read &&
-           a.mem_write == b.mem_write && a.mem_addr_sp == b.mem_addr_sp &&
-           a.mem_data_pc == b.mem_data_pc && a.stack_check == b.stack_check &&
-           a.pc_from_mem == b.pc_from_mem && a.reg_write == b.reg_write &&
+           a.mem_write == b.mem_write && a.reg_write == b.reg_write &&
            a.mem_to_reg == b.mem_to_reg;
 }
 
@@ -166,7 +160,7 @@ int main() {
     CHECK(vcu.encoding() == MicrocodeEncoding::Vertical);
     CHECK_EQ(vrom.size(), hcm.size());                       
     CHECK_EQ(vcm.size(), hcm.size());
-    CHECK_EQ(kHorizontalWordBits, 48);
+    CHECK_EQ(kHorizontalWordBits, 42);
     CHECK_EQ(kNumControlLines, 24);
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
     CHECK_EQ(kVerticalWordBits, 16);
@@ -183,12 +177,12 @@ int main() {
     CHECK(front.size() >= 2);
     const size_t fetch_row = static_cast<size_t>(front[0]);
     const size_t decode_row = static_cast<size_t>(front[1]);
-    CHECK_EQ(vrom[fetch_row], 0x5000);
-    CHECK_EQ(vrom[decode_row], 0x5401);
+    CHECK_EQ(vrom[fetch_row], 0x3800);                              
+    CHECK_EQ(vrom[decode_row], 0x3C01);
     CHECK_EQ(ControlUnit::packHorizontal(hcm[fetch_row]),
-        (1ull << 44) | (1ull << 5) | (78ull << 24) | (0xFFull << 32));
+        (1ull << 38) | (1ull << 5) | (85ull << 18) | (0xFFull << 26));
     CHECK_EQ(ControlUnit::packHorizontal(hcm[decode_row]),
-        (1ull << 45) | (1ull << 47) | (0xFFull << 24) | (0xFFull << 32));
+        (1ull << 39) | (1ull << 41) | (0xFFull << 18) | (0xFFull << 26));
     CHECK_EQ(word(Opcode::ADD, 0), 0x0400);        
     CHECK_EQ(word(Opcode::ADD, 1), 0x0840);
     CHECK_EQ(word(Opcode::SUB, 1), 0x0860);
@@ -196,21 +190,24 @@ int main() {
     CHECK_EQ(word(Opcode::LOAD, 1), 0x1040);
     CHECK_EQ(word(Opcode::LOAD, 3), 0x2001);       
     CHECK_EQ(word(Opcode::MOV, 1), 0x0C20);
-    CHECK_EQ(word(Opcode::CALL, 1), 0x4800);        // RA.WR
-    CHECK_EQ(word(Opcode::CALL, 2), 0x2401);        // JUMP, END
-    CHECK_EQ(word(Opcode::RET, 0), 0x4C01);         // JUMP.RA, END
-    CHECK_EQ(word(Opcode::HALT, 0), 0x4001);       
+    CHECK_EQ(word(Opcode::CALL, 1), 0x2400);
+    CHECK_EQ(word(Opcode::CALL, 2), 0x3001);
+    CHECK_EQ(word(Opcode::RET, 0), 0x0400);
+    CHECK_EQ(word(Opcode::RET, 1), 0x3401);
+    CHECK_EQ(word(Opcode::HALT, 0), 0x2801);        
     CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
     CHECK_EQ(word(Opcode::BEQ, 1), 0x0001);        
     CHECK_EQ(word(Opcode::BEQ, 2), 0x2401);   
     CHECK_EQ(word(Opcode::LOAD, 2), 0x1400);        // MEM.RD (+addr_check)
     CHECK_EQ(word(Opcode::STORE, 2), 0x1801);       // MEM.WR (+addr_check), END
-    CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x4401);   // TRAP, END
+    CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x2C01);   // TRAP, END
     CHECK_EQ(word(Opcode::BGT, 0), 0xE000 | ((hcu.routineEntry(Opcode::BGT) + 2) << 4));   // cond GT(6)
     CHECK_EQ(word(Opcode::DIV, 1), 0x08A0);         // ALU, func DIV(0x05)
     CHECK_EQ(word(Opcode::FADD, 1), 0x0EC0);        // ALU.NF, func FADD(0x16): flags untouched
     CHECK_EQ(word(Opcode::FADD, 2), 0x1C01);        // WB, END
     CHECK_EQ(word(Opcode::FCMP, 1), 0x0B41);        // ALU, func FCMP(0x1A), END: no writeback
+    CHECK_EQ(word(Opcode::FTOI, 1), 0x0F60);
+    CHECK_EQ(word(Opcode::ITOF, 1), 0x0F80);
     CHECK_EQ(packVertical(MicroOp{}, 0), 0x0001);   
     {
         MicroOp idle;
@@ -310,7 +307,8 @@ int main() {
     {
         const int illegal = hcu.routineEntry(static_cast<Opcode>(0xFF));
         for (Opcode op : {Opcode::DIV, Opcode::REM, Opcode::BGT, Opcode::FADD, Opcode::FSUB,
-                          Opcode::FMUL, Opcode::FDIV, Opcode::FCMP}) {
+                          Opcode::FMUL, Opcode::FDIV, Opcode::FCMP,
+                          Opcode::FTOI, Opcode::ITOF}) {
             CHECK(hcu.routineEntry(op) != illegal);          // the horizontal ROM has the routine
             CHECK_EQ(vcu.routineEntry(op), hcu.routineEntry(op));
         }
@@ -511,9 +509,9 @@ int main() {
         const size_t rows = hcm.size();
         CHECK(v.find(std::to_string(rows) + " rows x 16 bits = " + std::to_string(rows * 16) + " bits")
               != std::string::npos);
-        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 48 = " + std::to_string(rows * 48) + " bits")
+        CHECK(v.find("horizontal: " + std::to_string(rows) + " x 42 = " + std::to_string(rows * 42) + " bits")
               != std::string::npos);
-        CHECK(v.find("67% narrower") != std::string::npos);
+        CHECK(v.find("62% narrower") != std::string::npos);
         CHECK(v.find("24 control lines") != std::string::npos);
         CHECK(v.find("TRAP") != std::string::npos && v.find("BRANCH GT") != std::string::npos);
     }
@@ -543,13 +541,19 @@ int main() {
 
             Preprocessor preprocessor;
             PreprocessResult expanded = preprocessor.expand(lines);
-            CHECK(expanded.errors.empty());
-
             Assembler as;
-            CHECK(as.assemblePass1(expanded.lines));
+            if (!expanded.errors.empty() || !as.assemblePass1(expanded.lines)) {
+                std::cerr << "  FAIL  " << path.filename().string() << ": source does not assemble\n";
+                ++failures;
+                continue;
+            }
             std::vector<uint32_t> words;
             for (const auto& instr : as.assemblePass2()) words.push_back(as.encodeInstruction(instr));
-            CHECK(!words.empty());
+            if (words.empty()) {
+                std::cerr << "  FAIL  " << path.filename().string() << ": no encoded instructions\n";
+                ++failures;
+                continue;
+            }
 
             int bad = 0;
             for (PipelineVariant pv : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {

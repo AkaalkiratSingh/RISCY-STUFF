@@ -1,8 +1,8 @@
 #pragma once
 
 // Vertical-microcode control unit.
-// Compresses 48-bit horizontal rows into 16-bit words.
-// Decoder expands 5-bit codes back to the 24 control lines.
+// Compresses 42-bit horizontal rows into 16-bit words.
+// Decoder expands 5-bit codes back to the 16 control lines.
 // Fully interchangeable with the horizontal unit.
 
 #include "control_unit/horizontal_control_unit.h"
@@ -15,36 +15,30 @@
 
 namespace risc201 {
 
-     inline constexpr int kHorizontalWordBits = 48;
+     inline constexpr int kHorizontalWordBits = 42;
      inline constexpr int kVerticalWordBits   = 16;
-     inline constexpr int kNumControlLines    = 24;   // ControlWord bools, excluding alu_op
+     inline constexpr int kNumControlLines    = 18;   // ControlWord bools, excluding alu_op
 
     // Decoder input: maps distinct control line combinations to 5-bit codes.
     enum class MicroOpCode : uint8_t {
-        Idle = 0,       
-        Operands,          
-        Alu,            
-        AluNoFlags,     
-        AluImm,         
-        MemRead,        
-        MemWrite,       
-        Writeback,      
-        WritebackMem,   
-        Jump,           
-        JumpMem,        
-        SpDec,          
-        SpInc,          
-        PushWrite,      
-        CallWrite,      
-        PopRead,        
-        Halt,
-        Trap,
-        RaWrite,
-        JumpRa,
-        InstructionFetch,
-        DecodeDispatch,
+    Idle = 0,
+    Operands,
+    Alu,
+    AluNoFlags,
+    AluImm,
+    MemRead,
+    MemWrite,
+    Writeback,
+    WritebackMem,
+    Jump,
+    Halt,
+    Trap,
+    RaWrite,
+    JumpRa,
+    InstructionFetch,
+    DecodeDispatch,
     };
-    inline constexpr size_t kNumMicroOpCodes = 22;   
+    inline constexpr size_t kNumMicroOpCodes = 16;  
 
     // ---- 16-bit vertical microword format -----------------------------------
     // Bit 15=0 (Operate): [14:10]=uop, [9:5]=func, [0]=END (drives datapath)

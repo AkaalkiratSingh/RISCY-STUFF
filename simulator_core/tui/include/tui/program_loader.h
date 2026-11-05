@@ -14,6 +14,7 @@ enum class SourceKind { Assembly, Words };
 struct AssemblyResult {
     std::vector<uint32_t> words;
     std::vector<AssemblyError> errors;
+    std::vector<AssemblyError> warnings;
 };
 
 struct ProgramFile {
@@ -25,6 +26,8 @@ struct ProgramFile {
 };
 
 AssemblyResult assembleLines(const std::vector<std::string>& lines);
+std::string formatAssemblyErrors(const std::vector<AssemblyError>& errors);
+std::string formatAssemblyWarnings(const std::vector<AssemblyError>& warnings);
 ProgramFile readProgramFile(const std::string& path);
 
 } // namespace risc201

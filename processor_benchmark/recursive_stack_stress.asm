@@ -1,7 +1,7 @@
 ; Stack stress: repeat recursive sum(128) 128 times, saving R14 and the argument
 ; at each nonzero level.
 ; Expected: R1=128  R2=8256  R9=1056768  SP=4096
-; Run with: risc201-sim examples/benchmarks/recursive_stack_stress.asm -6
+; Run with: risc201-sim processor_benchmark/recursive_stack_stress.asm -6
 
 .main:
 MOV R8, 128

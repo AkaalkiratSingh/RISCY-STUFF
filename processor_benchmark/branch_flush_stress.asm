@@ -1,7 +1,7 @@
 ; Control-hazard stress: 16384 alternating parity branches plus four taken jumps per
 ; iteration. The skipped paths contain a divide-by-zero and sentinel-corrupting stores.
 ; Expected: R1=16384  R2=R3=8192  R5=0  R6=MEM[0]=777  no exception
-; Run with: risc201-sim examples/benchmarks/branch_flush_stress.asm -6 --no-forward
+; Run with: risc201-sim processor_benchmark/branch_flush_stress.asm -6 --no-forward
 
 .main:
 MOV R1, 0
