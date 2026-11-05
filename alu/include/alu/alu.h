@@ -33,6 +33,8 @@ namespace risc201 {
         static uint32_t floatMul(uint32_t a, uint32_t b);
         static uint32_t floatDiv(uint32_t a, uint32_t b);
         static Result floatCmp(uint32_t a, uint32_t b);
+        static uint32_t floatToInt(uint32_t a); 
+        static uint32_t intToFloat(uint32_t a); 
         static uint32_t reciprocalNR(uint32_t D_fp);
     };
 
