@@ -206,7 +206,6 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { pcFromRARow() });
 
-
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
         appendRoutine(Opcode::MUL, aluRoutine(Opcode::MUL));
@@ -329,6 +328,8 @@ namespace risc201 {
     uint64_t ControlUnit::packHorizontal(const MicroOp& row) {
         const ControlWord& c = row.ctl;
         uint64_t w = 0;
+        
+        // Control Low Fields (Continuous 0-9)
         w |= static_cast<uint64_t>(c.alu_enable)  << 0;
         w |= static_cast<uint64_t>(c.mem_read)    << 1;
         w |= static_cast<uint64_t>(c.mem_write)   << 2;
@@ -337,21 +338,25 @@ namespace risc201 {
         w |= static_cast<uint64_t>(c.pc_inc)      << 5;
         w |= static_cast<uint64_t>(c.alu_src_imm) << 6;
         w |= static_cast<uint64_t>(c.mem_to_reg)  << 7;
-        w |= static_cast<uint64_t>(c.flag_update) << 10;
-        w |= static_cast<uint64_t>(c.halt)        << 11;
-        // bits 8-9 and 12-15 are unassigned (formerly stack-pointer signals)
-        w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 16;
-        w |= (static_cast<uint64_t>(row.cond) & 0x7u) << 21;
-        w |= static_cast<uint64_t>(addrField(row.next))          << 24;
-        w |= static_cast<uint64_t>(addrField(row.branch_target)) << 32;
-        w |= static_cast<uint64_t>(c.trap)        << 40;
-        w |= static_cast<uint64_t>(c.addr_check)  << 41;
-        w |= static_cast<uint64_t>(c.ra_write)    << 42;
-        w |= static_cast<uint64_t>(c.pc_src_ra)   << 43;
-        w |= static_cast<uint64_t>(c.ir_load) << 44;
-        w |= static_cast<uint64_t>(c.instr_decode) << 45;
-        w |= static_cast<uint64_t>(c.operand_read) << 46;
-        w |= static_cast<uint64_t>(c.opcode_dispatch) << 47;
+        w |= static_cast<uint64_t>(c.flag_update) << 8;  // Shifted down
+        w |= static_cast<uint64_t>(c.halt)        << 9;  // Shifted down
+        
+        // Sequencing & ALU Operation
+        w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 10;
+        w |= (static_cast<uint64_t>(row.cond) & 0x7u)  << 15;
+        w |= static_cast<uint64_t>(addrField(row.next))          << 18;
+        w |= static_cast<uint64_t>(addrField(row.branch_target)) << 26;
+        
+        // Control High Fields
+        w |= static_cast<uint64_t>(c.trap)            << 34;
+        w |= static_cast<uint64_t>(c.addr_check)      << 35;
+        w |= static_cast<uint64_t>(c.ra_write)        << 36;
+        w |= static_cast<uint64_t>(c.pc_src_ra)       << 37;
+        w |= static_cast<uint64_t>(c.ir_load)         << 38;
+        w |= static_cast<uint64_t>(c.instr_decode)    << 39;
+        w |= static_cast<uint64_t>(c.operand_read)    << 40;
+        w |= static_cast<uint64_t>(c.opcode_dispatch) << 41;
+        
         return w;
     }
 
@@ -385,9 +390,10 @@ namespace risc201 {
             if (r.cond == BranchCond::None || r.branch_target == kMicroEnd) os << std::setw(5) << "-";
             else os << std::setw(5) << r.branch_target;
 
+            // Adjusted setw to 11 to match 42-bit width
             os << "  0x" << std::right << std::hex << std::uppercase
-               << std::setfill('0') << std::setw(12) << packHorizontal(r)
-               << std::dec << std::setfill(' ') << std::left << "     "
+               << std::setfill('0') << std::setw(11) << packHorizontal(r)
+               << std::dec << std::setfill(' ') << std::left << "      "
                << signalList(r.ctl) << "\n";
         }
         return os.str();
