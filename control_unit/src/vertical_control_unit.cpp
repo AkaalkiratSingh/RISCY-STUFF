@@ -91,44 +91,6 @@ namespace risc201 {
             return "?";
         }
 
-        std::string signalList(const ControlWord& w) {
-            std::string s;
-            auto add = [&s](bool on, const char* name) {
-                if (!on) return;
-                if (!s.empty()) s += ' ';
-                s += name;
-                };
-            add(w.ir_load, "ir_load");
-            add(w.instr_decode, "instr_decode");
-            add(w.operand_read, "operand_read");
-            add(w.opcode_dispatch, "opcode_dispatch");
-            add(w.alu_enable, "alu_enable");
-            if (w.alu_enable) {
-                s += ' ';
-                s += std::string("alu_op=") + opcodeName(w.alu_op);
-            }
-            add(w.alu_src_imm, "alu_src_imm");
-            add(w.flag_update, "flag_update");
-            add(w.mem_read, "mem_read");
-            add(w.mem_write, "mem_write");
-            add(w.reg_write, "reg_write");
-            add(w.mem_to_reg, "mem_to_reg");
-            add(w.pc_inc, "pc_inc");
-            add(w.pc_write, "pc_write");
-            add(w.sp_dec, "sp_dec");
-            add(w.sp_inc, "sp_inc");
-            add(w.mem_addr_sp, "mem_addr_sp");
-            add(w.mem_data_pc, "mem_data_pc");
-            add(w.pc_src_mem, "pc_src_mem");
-            add(w.pc_src_ra, "pc_src_ra");
-            add(w.stack_check, "stack_check");
-            add(w.addr_check, "addr_check");
-            add(w.ra_write, "ra_write");
-            add(w.halt, "halt");
-            add(w.trap, "trap");
-            return s.empty() ? "(idle)" : s;
-        }
-
         // ---- the encoder ----------------------------------------------------
 
         // Last line of defence: decoding `word` must give back exactly `row`, so no
@@ -190,7 +152,7 @@ namespace risc201 {
                     (func << 5) | (end ? 1u : 0u));
                 return roundTripProblem(row, addr, word);
             }
-            return "its control lines match no micro-operation (" + signalList(row.ctl) + ")";
+            return "its control lines match no micro-operation (" + controlSignalNames(row.ctl) + ")";
         }
 
         // Generates ROM listing mnemonics.
@@ -400,7 +362,7 @@ namespace risc201 {
                 << std::setfill('0') << std::setw(4) << vrom_[a]
                 << std::dec << std::setfill(' ') << std::left << "          "
                 << std::setw(14) << verticalMnemonic(vrom_[a]) << "  "
-                << signalList(r.ctl) << "\n";
+                << controlSignalNames(r.ctl) << "\n";
         }
 
         const size_t rows = cm_.size();
