@@ -147,13 +147,7 @@ namespace risc201 {
             add(w.mem_to_reg,   "mem_to_reg");
             add(w.pc_inc,       "pc_inc");
             add(w.pc_write,     "pc_write");
-            add(w.sp_dec,       "sp_dec");
-            add(w.sp_inc,       "sp_inc");
-            add(w.mem_addr_sp,  "mem_addr_sp");
-            add(w.mem_data_pc,  "mem_data_pc");
-            add(w.pc_src_mem,   "pc_src_mem");
             add(w.pc_src_ra,    "pc_src_ra");
-            add(w.stack_check,  "stack_check");
             add(w.addr_check,   "addr_check");
             add(w.ra_write,     "ra_write");
             add(w.halt,         "halt");
@@ -212,10 +206,6 @@ namespace risc201 {
         appendRoutine(Opcode::RET,
             { pcFromRARow() });
 
-        // appendRoutine(Opcode::PUSH, { operandRow(), spDecRow(), pushWriteRow() });
-
-        // appendRoutine(Opcode::POP,
-        //     { operandRow(), stackPopReadRow(), writebackMemRow(), spIncRow() });
 
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
@@ -228,16 +218,11 @@ namespace risc201 {
         appendRoutine(Opcode::DIV, aluRoutine(Opcode::DIV));
         appendRoutine(Opcode::REM, aluRoutine(Opcode::REM));
 
-        // BGT target: conditional micro-branch on flags.greaterThan (set by CMP), built exactly
-        // like BEQ. Appended last so no existing routine moves.
         appendBranchRoutine(Opcode::BGT, BranchCond::GreaterThan, jumpRow(), MicroOp{});
 
-        // Floating point (IEEE-754 single, held in the ordinary 32-bit registers; one ALU cycle each).
-        // FADD/FSUB/FMUL/FDIV: fetch -> execute -> writeback, FLAGS untouched (see aluRowKeepFlags).
         for (Opcode op : { Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV }) {
             appendRoutine(op, { operandRow(), aluRowKeepFlags(op), writebackRow() });
         }
-        // FCMP rs1, rs2: sets zero/equal/greaterThan only, no writeback (like CMP), so BGT/BEQ can follow.
         appendRoutine(Opcode::FCMP, { operandRow(), aluRow(Opcode::FCMP) });
 
         MicroOp fetch, decode;
@@ -352,14 +337,9 @@ namespace risc201 {
         w |= static_cast<uint64_t>(c.pc_inc)      << 5;
         w |= static_cast<uint64_t>(c.alu_src_imm) << 6;
         w |= static_cast<uint64_t>(c.mem_to_reg)  << 7;
-        w |= static_cast<uint64_t>(c.sp_dec)      << 8;
-        w |= static_cast<uint64_t>(c.sp_inc)      << 9;
         w |= static_cast<uint64_t>(c.flag_update) << 10;
         w |= static_cast<uint64_t>(c.halt)        << 11;
-        w |= static_cast<uint64_t>(c.mem_addr_sp) << 12;
-        w |= static_cast<uint64_t>(c.mem_data_pc) << 13;
-        w |= static_cast<uint64_t>(c.pc_src_mem)  << 14;
-        w |= static_cast<uint64_t>(c.stack_check) << 15;
+        // bits 8-9 and 12-15 are unassigned (formerly stack-pointer signals)
         w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 16;
         w |= (static_cast<uint64_t>(row.cond) & 0x7u) << 21;
         w |= static_cast<uint64_t>(addrField(row.next))          << 24;
