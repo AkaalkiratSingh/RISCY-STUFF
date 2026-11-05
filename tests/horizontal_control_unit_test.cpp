@@ -35,19 +35,19 @@ void testEntryAddresses() {
     CHECK(cu.routineEntry(Opcode::MOV)   == 35);
     CHECK(cu.routineEntry(Opcode::CALL)  == 38);
     CHECK(cu.routineEntry(Opcode::RET)   == 41);
-    CHECK(cu.routineEntry(Opcode::NOT)   == 42);
-    CHECK(cu.routineEntry(Opcode::SAR)   == 45);
-    CHECK(cu.routineEntry(Opcode::MUL)   == 48);
-    CHECK(cu.routineEntry(Opcode::DIV)   == 54);
-    CHECK(cu.routineEntry(Opcode::REM)   == 57);
-    CHECK(cu.routineEntry(Opcode::BGT)   == 60);
-    CHECK(cu.trapEntry() == 53);
-    CHECK(cu.routineEntry(Opcode::CMP)   == 51);
-    CHECK(cu.routineEntry(Opcode::FADD)  == 63);
-    CHECK(cu.routineEntry(Opcode::FSUB)  == 66);
-    CHECK(cu.routineEntry(Opcode::FMUL)  == 69);
-    CHECK(cu.routineEntry(Opcode::FDIV)  == 72);
-    CHECK(cu.routineEntry(Opcode::FCMP)  == 75);
+    CHECK(cu.routineEntry(Opcode::NOT)   == 43);
+    CHECK(cu.routineEntry(Opcode::SAR)   == 46);
+    CHECK(cu.routineEntry(Opcode::MUL)   == 49);
+    CHECK(cu.routineEntry(Opcode::DIV)   == 55);
+    CHECK(cu.routineEntry(Opcode::REM)   == 58);
+    CHECK(cu.routineEntry(Opcode::BGT)   == 61);
+    CHECK(cu.trapEntry() == 54);
+    CHECK(cu.routineEntry(Opcode::CMP)   == 52);
+    CHECK(cu.routineEntry(Opcode::FADD)  == 64);
+    CHECK(cu.routineEntry(Opcode::FSUB)  == 67);
+    CHECK(cu.routineEntry(Opcode::FMUL)  == 70);
+    CHECK(cu.routineEntry(Opcode::FDIV)  == 73);
+    CHECK(cu.routineEntry(Opcode::FCMP)  == 76);
     CHECK(cu.routineEntry(static_cast<Opcode>(0x55)) == 0);   // unknown -> illegal row
 }
 
@@ -146,17 +146,17 @@ void testBgt() {
     Flags gt;  gt.greaterThan = true;
     { ControlUnit cu;
       ControlWord w = cu.step(Opcode::BGT, gt);                    // decision row
-      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 62 && !cu.routineDone());
+      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 63 && !cu.routineDone());
       w = cu.step(Opcode::BGT, gt);                                // taken row
       CHECK(w.pc_write && !w.pc_inc && cu.routineDone()); }
     { ControlUnit cu; Flags ng;
       ControlWord w = cu.step(Opcode::BGT, ng);
-      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 61);
+      CHECK(!w.pc_write && !w.pc_inc && cu.microPC() == 62);
       w = cu.step(Opcode::BGT, ng);                                // not-taken row
       CHECK(!w.pc_inc && !w.pc_write && cu.routineDone()); }
     // BGT looks only at greaterThan: Z, N, C, V alone must not take it.
     Flags other; other.zero = other.negative = other.carry = other.overflow = other.equal = true;
-    { ControlUnit cu; cu.step(Opcode::BGT, other); CHECK(cu.microPC() == 61); }
+    { ControlUnit cu; cu.step(Opcode::BGT, other); CHECK(cu.microPC() == 62); }
     // BEQ is unchanged and ignores greaterThan.
     { ControlUnit cu; cu.step(Opcode::BEQ, gt); CHECK(cu.microPC() == 33); }
 }
@@ -164,19 +164,20 @@ void testBgt() {
 void testCallRetRows() {
     auto c = runAll(Opcode::CALL);
     CHECK(c.size() == 3 && c[0].operand_read);
-    CHECK(c[1].ra_write && !c[1].pc_write);
-    CHECK(c[2].pc_write && !c[2].pc_src_mem && !c[2].pc_src_ra);
+    CHECK(c[1].pc_write && !c[1].pc_src_mem && !c[1].pc_src_ra);
+    CHECK(c[2].ra_write && !c[2].pc_write);
     auto r = runAll(Opcode::RET);
-    CHECK(r.size() == 1);
-    CHECK(r[0].pc_write && r[0].pc_src_ra);
-    CHECK(!r[0].mem_read && !r[0].sp_inc);
+    CHECK(r.size() == 2);
+    CHECK(r[0].operand_read);
+    CHECK(r[1].pc_write && r[1].pc_src_ra);
+    CHECK(!r[1].mem_read && !r[1].sp_inc);
 }
 
 // Toy datapath: applies each ControlWord to PC / SP / one register / stack memory.
 // Every source in a cycle is the OLD state (like real registers).
 struct ToyMachine {
     static constexpr uint32_t kBase = 64, kLimit = 60;   // empty: SP == kBase; room for 4 words
-    uint32_t pc = 0, sp = kBase, mdr = 0, reg = 0, ra = 0;
+    uint32_t pc = 0, sp = kBase, mdr = 0, reg = 0, ra = 0, return_pc = 0;
     std::vector<uint32_t> mem = std::vector<uint32_t>(128, 0);
     ExceptionCode fault = ExceptionCode::NONE;
 
@@ -187,7 +188,7 @@ struct ToyMachine {
         if (w.mem_write && w.mem_addr_sp) mem[osp] = w.mem_data_pc ? opc : reg;
         if (w.mem_read  && w.mem_addr_sp) mdr = mem[osp];
         if (w.reg_write && w.mem_to_reg)  reg = omdr;
-        if (w.ra_write) ra = pc;
+        if (w.ra_write) ra = return_pc;
         if (w.pc_inc)   pc = opc + 1;
         if (w.pc_write) pc = w.pc_src_ra ? ra : (w.pc_src_mem ? omdr : target);
         if (w.sp_dec)   sp = osp - 1;
@@ -197,6 +198,7 @@ struct ToyMachine {
     bool run(Opcode op, uint32_t target = 0) {
         ControlUnit cu; Flags f;
         fault = ExceptionCode::NONE;
+        return_pc = pc + 1;
         for (int address : frontendRows(cu)) {
             if (!apply(cu.controlMemory()[static_cast<size_t>(address)].ctl, target)) return false;
         }
@@ -237,7 +239,7 @@ void testBackToBackAndIllegal() {
 
 void testControlMemoryWellFormed() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    CHECK(cm.size() == 79);
+    CHECK(cm.size() == 80);
     CHECK(cm.size() <= kMaxControlMemoryRows);
     for (const MicroOp& r : cm) {
         CHECK(r.next == kMicroEnd || (r.next >= 0 && r.next < static_cast<int32_t>(cm.size())));
@@ -267,18 +269,18 @@ void testPackHorizontal() {
     CHECK(ControlUnit::packHorizontal(cm[32]) == ((1ull<<21)|(33ull<<24)|(34ull<<32)));
     // MOV execute row (36): alu_op = MOV in bits 20:16
     CHECK(((ControlUnit::packHorizontal(cm[36]) >> 16) & 0x1F) == static_cast<uint64_t>(Opcode::MOV));
-    // CALL RA row (39): ra_write(42) | next=40 | END
+    // CALL jump row (39): pc_write(4) | next=40 | END
     CHECK(ControlUnit::packHorizontal(cm[39]) ==
-           ((1ull<<42)|(40ull<<24)|(0xFFull<<32)));
-    // CALL jump row (40): pc_write(4) | next=END | END
+           ((1ull<<4)|(40ull<<24)|(0xFFull<<32)));
+    // CALL RA row (40): ra_write(42) | next=END | END
     CHECK(ControlUnit::packHorizontal(cm[40]) ==
-           ((1ull<<4)|(0xFFull<<24)|(0xFFull<<32)));
+           ((1ull<<42)|(0xFFull<<24)|(0xFFull<<32)));
     // LOAD access row (24): mem_read(1) | addr_check(41) | next=25 (writeback)
     CHECK(ControlUnit::packHorizontal(cm[24]) == ((1ull<<1)|(1ull<<41)|(25ull<<24)|(0xFFull<<32)));
-    // BGT test row (60): cond=GreaterThan(6)<<21 | next=61<<24 | taken=62<<32
-    CHECK(ControlUnit::packHorizontal(cm[60]) == ((6ull<<21)|(61ull<<24)|(62ull<<32)));
-    // TRAP row (53): trap(40) | halt(11), next = END
-    CHECK(ControlUnit::packHorizontal(cm[53]) == ((1ull<<40)|(1ull<<11)|(0xFFull<<24)|(0xFFull<<32)));
+    // BGT test row (61): cond=GreaterThan(6)<<21 | next=62<<24 | taken=63<<32
+    CHECK(ControlUnit::packHorizontal(cm[61]) == ((6ull<<21)|(62ull<<24)|(63ull<<32)));
+    // TRAP row (54): trap(40) | halt(11), next = END
+    CHECK(ControlUnit::packHorizontal(cm[54]) == ((1ull<<40)|(1ull<<11)|(0xFFull<<24)|(0xFFull<<32)));
 }
 
 // ---------------------------------------------------------------------------------------
@@ -426,8 +428,8 @@ void testFaultsOnlyCountWhereTheirCheckerIsActive() {
       ControlWord w = cu.step(Opcode::LOAD, f, kDivZero);          // divide-by-zero wire on a memory row
       CHECK(w.mem_read && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::CALL, f);
-      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // RA row: no checker
-      CHECK(w.ra_write && cu.pendingException() == ExceptionCode::NONE); }
+      ControlWord w = cu.step(Opcode::CALL, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // jump row: no checker
+      CHECK(w.pc_write && cu.pendingException() == ExceptionCode::NONE); }
     { ControlUnit cu; cu.step(Opcode::ADD, f);
       ControlWord w = cu.step(Opcode::ADD, f, ExceptionCode::INVALID_MEMORY_ACCESS);   // ALU row, no checker
       CHECK(w.alu_enable && cu.pendingException() == ExceptionCode::NONE); }

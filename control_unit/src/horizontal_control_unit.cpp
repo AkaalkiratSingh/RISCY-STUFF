@@ -85,11 +85,10 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp pcFromRARow() {
+        MicroOp jumpRaRow() {
             MicroOp m;
             m.ctl.pc_write = true;
             m.ctl.pc_src_ra = true;
-            m.ctl.operand_read = true;
             return m;
         }
 
@@ -207,10 +206,10 @@ namespace risc201 {
         appendRoutine(Opcode::MOV, { operandRow(), movRow(), writebackRow() });
 
         appendRoutine(Opcode::CALL,
-            { operandRow(), raWriteRow(), jumpRow() });
+            { operandRow(), jumpRow(), raWriteRow() });
 
         appendRoutine(Opcode::RET,
-            { pcFromRARow() });
+            { operandRow(), jumpRaRow() });
 
         // appendRoutine(Opcode::PUSH, { operandRow(), spDecRow(), pushWriteRow() });
 

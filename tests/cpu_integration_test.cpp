@@ -411,7 +411,7 @@ int main() {
         CHECK(hazard.cycles() > 6u);           // load-use: not forwardable until MEM completes
     }
 
-    section("Pipeline: a hazard-free program costs k + n - 1 cycles");
+    section("Pipeline: front-end row clocking differs by variant");
     {
         const std::vector<std::string> program = {
             "ADD R1, R0, R0",
@@ -422,12 +422,14 @@ int main() {
         const Cpu four = runProgram(program, {}, PipelineVariant::FourStage);
         CHECK(four.state().halted);
         CHECK_EQ(four.retired(), 2u);
-        CHECK_EQ(four.cycles(), 6u);           // 4 stages + 3 instructions - 1
+        CHECK_EQ(four.cycles(), 10u);
+        CHECK_EQ(four.trace().rows, 13u);
 
         const Cpu six = runProgram(program, {}, PipelineVariant::SixStage);
         CHECK(six.state().halted);
         CHECK_EQ(six.retired(), 2u);
-        CHECK_EQ(six.cycles(), 8u);            // 6 stages + 3 instructions - 1
+        CHECK_EQ(six.cycles(), 8u);
+        CHECK_EQ(six.trace().rows, 13u);
     }
 
     if (failures == 0) {

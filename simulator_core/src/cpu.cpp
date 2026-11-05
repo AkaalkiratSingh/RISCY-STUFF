@@ -3,6 +3,7 @@
 #include "control_unit/control_path.h"
 #include "simulator_core/decoder.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 
@@ -29,8 +30,6 @@ namespace risc201 {
         controls_(encoding == MicrocodeEncoding::Vertical
                       ? buildStageControls(vertical_unit_)
                       : buildStageControls(control_unit_)) {
-        frontend_ = encoding == MicrocodeEncoding::Vertical
-            ? frontendControls(vertical_unit_) : frontendControls(control_unit_);
         state_.sp = memory_words;
         state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         resetPipeline();
@@ -41,6 +40,7 @@ namespace risc201 {
         trace_.clear();
         micro_trace_.clear();
         fetch_pc_ = 0;
+        seq_counter_ = 0;
         stop_fetch_ = false;
         fetch_held_ = false;
 
@@ -84,8 +84,6 @@ namespace risc201 {
         controls_ = encoding == MicrocodeEncoding::Vertical
                         ? buildStageControls(vertical_unit_)
                         : buildStageControls(control_unit_);
-        frontend_ = encoding == MicrocodeEncoding::Vertical
-            ? frontendControls(vertical_unit_) : frontendControls(control_unit_);
         routine_ends_valid_ = false;
         memory_.assign(memory_.size(), 0);
         loadWords(source_words_);
@@ -96,6 +94,14 @@ namespace risc201 {
             if (l.valid) return false;
         }
         return true;
+    }
+
+    void Cpu::holdFetch(bool hold) {
+        fetch_held_ = hold;
+        if (hold && regs_[0].valid && regs_[0].row_cycle == 0 &&
+            regs_[0].pc == fetch_pc_) {
+            regs_[0] = Latch{};
+        }
     }
 
     bool Cpu::readMemory(int64_t address, int32_t& out) const {
@@ -114,27 +120,6 @@ namespace risc201 {
         const uint64_t byte_target =
             4 * static_cast<uint64_t>(instr_pc) + static_cast<uint64_t>(instr.imm) + 4;
         return static_cast<uint32_t>(byte_target / 4);
-    }
-
-    Latch Cpu::fetchStage(bool stall) {
-        Latch out;
-        if (stop_fetch_ || fetch_held_ || !frontend_.ir_load) return out;
-
-        if (fetch_pc_ >= code_.size()) {
-            out.valid = true;
-            out.pc = fetch_pc_;
-            out.instr = Instruction{};
-            out.decoded = true;
-            out.fault = true;
-            out.fault_code = ExceptionCode::INVALID_MEMORY_ACCESS;
-            return out;
-        }
-
-        out.valid = true;
-        out.pc = fetch_pc_;
-        out.word = code_[fetch_pc_];
-        if (!stall && frontend_.pc_inc) fetch_pc_ += 1;
-        return out;
     }
 
     bool Cpu::dependsOn(const Latch& candidate, const Latch& older) const {
@@ -169,342 +154,243 @@ namespace risc201 {
         return false;
     }
 
-    int32_t Cpu::bypass(Register src, int32_t current) const {
-        const Latch& ex_mem = regs_[static_cast<size_t>(ex_slot_)];
-        if (ex_mem.valid && ex_mem.decoded) {
-            const StageControls& c = controls_[static_cast<uint8_t>(ex_mem.instr.opcode)];
-            if (src == Register::R14 && c.ra_write) {
-                return static_cast<int32_t>(ex_mem.pc + 1);
-            }
-            if (c.reg_write && ex_mem.instr.rd == src) {
-                return c.mem_to_reg ? current : ex_mem.alu_result;
-            }
-        }
-
-        const Latch& mem_wb = regs_[static_cast<size_t>(ex_slot_ + 1)];
-        if (mem_wb.valid && mem_wb.decoded) {
-            const StageControls& c = controls_[static_cast<uint8_t>(mem_wb.instr.opcode)];
-            if (src == Register::R14 && c.ra_write) {
-                return static_cast<int32_t>(mem_wb.pc + 1);
-            }
-            if (c.reg_write && mem_wb.instr.rd == src) {
-                return c.mem_to_reg ? mem_wb.mem_data : mem_wb.alu_result;
-            }
-        }
-
-        return current;
-    }
-
-    uint32_t Cpu::bypassSp() const {
-        const Latch& ex_mem = regs_[static_cast<size_t>(ex_slot_)];
-        if (ex_mem.valid && ex_mem.writes_sp) return ex_mem.sp_commit;
-
-        const Latch& mem_wb = regs_[static_cast<size_t>(ex_slot_ + 1)];
-        if (mem_wb.valid && mem_wb.writes_sp) return mem_wb.sp_commit;
-
-        return state_.sp;
-    }
-
-    bool Cpu::wouldStall(uint32_t* pc) const {
-        if (fetch_held_) return false;
-
-        Latch candidate;
-
-        if (ex_slot_ == 1) {
-            if (fetch_pc_ >= code_.size()) return false;
-            candidate.valid = true;
-            candidate.decoded = true;
-            candidate.pc = fetch_pc_;
-            candidate.instr = decodeInstruction(code_[fetch_pc_]);
-        } else {
-            candidate = regs_[static_cast<size_t>(ex_slot_ - 2)];
-            if (!candidate.valid || !candidate.decoded) return false;
-        }
-
-        for (int i = ex_slot_ - 1; i <= n_slots_ - 3; ++i) {
-            if (i < 0) continue;
-            const Latch& p = regs_[static_cast<size_t>(i)];
-            if (!dependsOn(candidate, p)) continue;
-
-            if (!forwarding_) {
-                if (pc) *pc = candidate.pc;
-                return true;
-            }
-
-            // The producer that reaches EX/MEM exactly when this instruction runs
-            // is past bypassing when its value is still in the memory stage.
-            if (i == ex_slot_ - 1 &&
-                controls_[static_cast<uint8_t>(p.instr.opcode)].mem_to_reg) {
-                if (pc) *pc = candidate.pc;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void Cpu::applySlot(const StageSlot& slot, Latch& out, Effects& fx) {
-        if (out.fault) {
-            if (slot.EX) {
-                fx.fault = true;
-                fx.code = out.fault_code;
-            }
-            return;
-        }
-
-        if (slot.ID && !out.decoded && frontend_.instr_decode && frontend_.opcode_dispatch) {
-            out.instr = decodeInstruction(out.word);
-            out.decoded = true;
-            if (control_unit_.routineEntry(out.instr.opcode) ==
-                control_unit_.routineEntry(static_cast<Opcode>(0xFF))) {
-                out.fault = true;
-                out.fault_code = ExceptionCode::ILLEGAL_INSTRUCTION;
-                return;
-            }
-            if (controls_[static_cast<uint8_t>(out.instr.opcode)].halting) fx.stop_fetch = true;
-        }
-
-        const uint8_t op = static_cast<uint8_t>(out.instr.opcode);
-
-        if (slot.OF && out.decoded && controls_[op].operand_read) {
-            out.rs1_val = state_.registers[static_cast<size_t>(out.instr.rs1)];
-            out.rs2_val = state_.registers[static_cast<size_t>(out.instr.rs2)];
-            out.rd_val  = state_.registers[static_cast<size_t>(out.instr.rd)];
-            out.ra_val = state_.registers[static_cast<size_t>(Register::R14)];
-        }
-
-        if (slot.EX && out.decoded) {
-            out.execution_flags = state_.flags;
-            const StageControls& c = controls_[op];
-
-            if (forwarding_) {
-                out.rs1_val = bypass(out.instr.rs1, out.rs1_val);
-                out.rs2_val = bypass(out.instr.rs2, out.rs2_val);
-                out.rd_val  = bypass(out.instr.rd, out.rd_val);
-            }
-
-            if (c.alu_enable) {
-                const int32_t rhs = (c.alu_src_imm || out.instr.I) ? out.instr.imm : out.rs2_val;
-                const Alu::Result r = alu_.execute(c.alu_op, out.rs1_val, rhs);
-                if (r.fault != ExceptionCode::NONE) {
-                    fx.fault = true;
-                    fx.code = r.fault;
-                    return;
-                }
-                out.alu_result = r.value;
-                if (c.flag_update) state_.flags = r.flags;
-            }
-
-            const uint32_t sp = forwarding_ ? bypassSp() : state_.sp;
-            if (c.sp_dec) {
-                out.mem_sp_addr = sp - 1;
-                out.sp_commit = sp - 1;
-                out.writes_sp = true;
-            }
-            if (c.sp_inc) {
-                out.mem_sp_addr = sp;
-                out.sp_commit = sp + 1;
-                out.writes_sp = true;
-            }
-
-            if (c.pc_from_ra) {
-                const int32_t ra = forwarding_
-                    ? bypass(Register::R14, out.ra_val)
-                    : out.ra_val;
-                out.redirect = true;
-                out.next_pc = static_cast<uint32_t>(ra);
-                fx.taken = true;
-                fx.target = out.next_pc;
-            } else if (c.pc_from_target && (!c.is_branch || condHolds(c.cond, state_.flags))) {
-                out.redirect = true;
-                out.next_pc = branchTarget(out.pc, out.instr);
-                fx.taken = true;
-                fx.target = out.next_pc;
-            }
-        }
-
-        if (slot.MEM && out.decoded) {
-            const StageControls& c = controls_[op];
-            const uint32_t address =
-                c.mem_addr_sp ? out.mem_sp_addr : static_cast<uint32_t>(out.alu_result);
-
-            if (c.stack_check) {
-                const auto fault = c.mem_write ? stack_guard_.checkPush(out.mem_sp_addr + 1)
-                                               : stack_guard_.checkPop(out.mem_sp_addr);
-                if (fault) {
-                    fx.fault = true;
-                    fx.code = *fault;
-                    return;
-                }
-            }
-
-            if (c.mem_read) {
-                int32_t loaded = 0;
-                if (!readMemory(address, loaded)) {
-                    fx.fault = true;
-                    fx.code = ExceptionCode::INVALID_MEMORY_ACCESS;
-                    return;
-                }
-                out.mem_data = loaded;
-            }
-
-            if (c.mem_write) {
-                const int32_t value = c.mem_data_pc
-                    ? static_cast<int32_t>(out.pc + 1)
-                    : out.rd_val;
-                if (!writeMemory(address, value)) {
-                    fx.fault = true;
-                    fx.code = ExceptionCode::INVALID_MEMORY_ACCESS;
-                    return;
-                }
-            }
-
-            if (c.pc_from_mem) {
-                out.redirect = true;
-                out.next_pc = static_cast<uint32_t>(out.mem_data);
-                fx.taken = true;
-                fx.target = out.next_pc;
-            }
-        }
-    }
-
-    void Cpu::retire(const Latch& out) {
-        if (!out.valid || !out.decoded) return;
-
-        if (out.fault) {
-            state_.pending_exception = out.fault_code;
-            state_.fault_info = FaultInfo{out.pc, n_slots_ - 1, out.pc};
-            ++trace_.faults;
-            stop_fetch_ = true;
-            return;
-        }
-
-        const StageControls& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
-
-        if (c.reg_write) {
-            const int32_t value = c.mem_to_reg ? out.mem_data : out.alu_result;
-            state_.registers[static_cast<size_t>(out.instr.rd)] = value;
-            if (out.instr.rd == Register::R15) state_.sp = static_cast<uint32_t>(value);
-        }
-        if (out.writes_sp) {
-            state_.sp = out.sp_commit;
-            state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(out.sp_commit);
-        }
-        if (c.ra_write) {
-            state_.registers[static_cast<size_t>(Register::R14)] = static_cast<int32_t>(out.pc + 1);
-        }
-        recordMicroTrace(out);
-        state_.pc = out.pc;
-        if (!c.halting) ++retired_;
-    }
-
     void Cpu::tick() {
-        const StageLayout layout = layoutFor(variant_);
-        const int n = n_slots_;
-        const int ex = ex_slot_;
-
+        const auto& rom = controlMemory();
         std::array<Latch, kMaxPipelineSlots> next{};
+        std::vector<int> order;
+        for (int i = 0; i < n_slots_; ++i) {
+            if (regs_[static_cast<size_t>(i)].valid) order.push_back(i);
+        }
+        std::sort(order.begin(), order.end(), [&](int a, int b) {
+            return regs_[static_cast<size_t>(a)].seq < regs_[static_cast<size_t>(b)].seq;
+        });
 
-        uint32_t stall_pc = 0;
-        const bool stall = !stop_fetch_ && wouldStall(&stall_pc);
-
+        uint64_t squash_after = 0;
         int effect_slot = -1;
         uint32_t effect_pc = 0;
+        uint32_t redirect_target = 0;
+        bool redirect = false;
+        bool fault = false;
         int discarded = 0;
-        Effects oldest;
-        bool have_effect = false;
 
-        for (int i = n - 1; i >= 0; --i) {
-            const StageSlot& slot = layout[static_cast<size_t>(i)];
-            const bool wrong_path = effect_slot >= 0 && i < effect_slot;
+        for (int slot : order) {
+            Latch l = regs_[static_cast<size_t>(slot)];
+            if (squash_after && l.seq > squash_after) {
+                ++discarded;
+                continue;
+            }
 
-            Effects here;
-            Latch out;
-
-            if (stall && i < ex - 1) {
-                out = regs_[static_cast<size_t>(i)];
-            } else {
-                if (i == 0) {
-                    out = fetchStage(stall);
+            const MicroOp& row = rom.at(l.micro_pc);
+            const RowStage stage = rowStage(row);
+            const int expected = slotForRow(variant_, stage);
+            if (expected >= 0 && expected != slot) {
+                bool blocked = next[static_cast<size_t>(expected)].valid;
+                for (int i = slot; i <= expected && !blocked; ++i) {
+                    const Latch& ahead = next[static_cast<size_t>(i)];
+                    if (ahead.valid && ahead.seq < l.seq) blocked = true;
+                }
+                if (blocked) {
+                    next[static_cast<size_t>(slot)] = l;
                 } else {
-                    out = regs_[static_cast<size_t>(i - 1)];
+                    next[static_cast<size_t>(expected)] = l;
                 }
-
-                const bool bubble = stall && i == ex - 1;
-                if (out.valid && !bubble && !wrong_path) {
-                    applySlot(slot, out, here);
-                }
-                if (bubble) out = Latch{};
+                continue;
             }
-
-            if (i == n - 1) {
-                if (!wrong_path) retire(out);
-            } else {
-                if (wrong_path) {
-                    if (out.valid) ++discarded;
-                    out = Latch{};
-                }
-                next[static_cast<size_t>(i)] = out;
-            }
-
-            if (!wrong_path && !have_effect &&
-                (here.fault || here.taken || here.stop_fetch)) {
-                if (here.fault) {
-                    FaultInfo info{out.pc, i, std::nullopt};
-                    if (here.code == ExceptionCode::INVALID_MEMORY_ACCESS) {
-                        const auto& c = controls_[static_cast<uint8_t>(out.instr.opcode)];
-                        info.address = out.fault ? out.pc : (c.mem_addr_sp ? out.mem_sp_addr
-                                                   : static_cast<uint32_t>(out.alu_result));
+            const ControlWord& c = row.ctl;
+            bool stalled = false;
+            if (c.ir_load && l.pc >= code_.size()) {
+                for (const Latch& older : regs_) {
+                    if (older.valid && older.seq < l.seq) {
+                        stalled = true;
+                        break;
                     }
-                    state_.fault_info = info;
-                    recordMicroTrace(out, here.code);
                 }
-                oldest = here;
-                have_effect = true;
-                effect_slot = i;
-                effect_pc = out.pc;
             }
-        }
-
-        if (have_effect) {
-            if (oldest.fault) {
-                for (int i = 0; i <= effect_slot && i < n - 1; ++i) {
-                    next[static_cast<size_t>(i)].valid = false;
+            if (c.operand_read && l.decoded) {
+                for (const Latch& older : regs_) {
+                    if (older.valid && older.seq < l.seq && dependsOn(l, older)) {
+                        stalled = true;
+                        break;
+                    }
                 }
+            }
+            if (!stalled && row.next == kMicroEnd && !c.opcode_dispatch) {
+                for (const Latch& older : regs_) {
+                    if (older.valid && older.seq < l.seq) {
+                        stalled = true;
+                        break;
+                    }
+                }
+            }
+            if (stalled) {
+                next[static_cast<size_t>(slot)] = l;
+                ++trace_.stalls;
+                if (tracing_) trace_.events.push_back(
+                    {cycles_, HazardKind::Stall, l.pc, slot, 0, 0, 0});
+                continue;
+            }
+
+            ++trace_.rows;
+
+            ExceptionCode error = ExceptionCode::NONE;
+            std::optional<uint32_t> fault_address;
+            if (c.ir_load) {
+                if (l.pc >= code_.size()) {
+                    error = ExceptionCode::INVALID_MEMORY_ACCESS;
+                    fault_address = l.pc;
+                } else {
+                    l.word = code_[l.pc];
+                    if (c.pc_inc) fetch_pc_ = l.pc + 1;
+                }
+            }
+            if (error == ExceptionCode::NONE && c.instr_decode) {
+                l.instr = decodeInstruction(l.word);
+                l.decoded = true;
+            }
+            if (error == ExceptionCode::NONE && c.operand_read) {
+                l.rs1_val = state_.registers[static_cast<size_t>(l.instr.rs1)];
+                l.rs2_val = state_.registers[static_cast<size_t>(l.instr.rs2)];
+                l.rd_val = state_.registers[static_cast<size_t>(l.instr.rd)];
+                l.ra_val = state_.registers[static_cast<size_t>(Register::R14)];
+            }
+            if (error == ExceptionCode::NONE && c.alu_enable) {
+                const int32_t rhs = (c.alu_src_imm || l.instr.I) ? l.instr.imm : l.rs2_val;
+                const Alu::Result result = alu_.execute(c.alu_op, l.rs1_val, rhs);
+                error = result.fault;
+                if (error == ExceptionCode::NONE) {
+                    l.alu_result = result.value;
+                    l.alu_done = true;
+                    if (c.flag_update) state_.flags = result.flags;
+                }
+            }
+            if (error == ExceptionCode::NONE && (c.sp_dec || c.sp_inc)) {
+                l.mem_sp_addr = c.sp_dec ? state_.sp - 1 : state_.sp;
+                l.sp_commit = c.sp_dec ? state_.sp - 1 : state_.sp + 1;
+                l.writes_sp = true;
+            }
+            if (error == ExceptionCode::NONE && (c.mem_read || c.mem_write)) {
+                const uint32_t address = c.mem_addr_sp ? l.mem_sp_addr
+                    : static_cast<uint32_t>(l.alu_result);
+                fault_address = address;
+                if (c.stack_check) {
+                    const auto bad = c.mem_write ? stack_guard_.checkPush(address + 1)
+                                                 : stack_guard_.checkPop(address);
+                    if (bad) error = *bad;
+                }
+                if (error == ExceptionCode::NONE && c.mem_read &&
+                    !readMemory(address, l.mem_data)) {
+                    error = ExceptionCode::INVALID_MEMORY_ACCESS;
+                }
+                if (error == ExceptionCode::NONE && c.mem_write) {
+                    const int32_t value = c.mem_data_pc
+                        ? static_cast<int32_t>(l.pc + 1) : l.rd_val;
+                    if (!writeMemory(address, value)) error = ExceptionCode::INVALID_MEMORY_ACCESS;
+                }
+                if (error == ExceptionCode::NONE) l.mem_done = true;
+            }
+            if (error == ExceptionCode::NONE && c.reg_write) {
+                const int32_t value = c.mem_to_reg ? l.mem_data : l.alu_result;
+                state_.registers[static_cast<size_t>(l.instr.rd)] = value;
+                if (l.instr.rd == Register::R15) state_.sp = static_cast<uint32_t>(value);
+                l.wb_done = true;
+            }
+            if (error == ExceptionCode::NONE && c.ra_write) {
+                state_.registers[static_cast<size_t>(Register::R14)] =
+                    static_cast<int32_t>(l.pc + 1);
+                l.ra_done = true;
+            }
+            if (error == ExceptionCode::NONE && l.writes_sp &&
+                (c.reg_write || c.ra_write || row.next == kMicroEnd)) {
+                state_.sp = l.sp_commit;
+                state_.registers[static_cast<size_t>(Register::R15)] =
+                    static_cast<int32_t>(l.sp_commit);
+                l.sp_done = true;
+            }
+            if (error == ExceptionCode::NONE && c.trap) {
+                error = ExceptionCode::ILLEGAL_INSTRUCTION;
+            }
+            if (error != ExceptionCode::NONE) {
+                state_.pending_exception = error;
+                state_.fault_info = FaultInfo{l.pc, slot, fault_address};
                 stop_fetch_ = true;
-                state_.pending_exception = oldest.code;
+                fault = true;
+                squash_after = l.seq;
+                effect_slot = slot;
+                effect_pc = l.pc;
                 ++trace_.faults;
-                if (tracing_) {
-                    trace_.events.push_back(
-                        {cycles_, HazardKind::Fault, effect_pc, effect_slot, 0,
-                         effect_slot, discarded});
+                recordMicroTrace(l, error);
+                continue;
+            }
+
+            l.execution_flags = state_.flags;
+            const bool condition_taken = row.cond != BranchCond::None &&
+                condHolds(row.cond, state_.flags);
+            int32_t successor = condition_taken ? row.branch_target : row.next;
+            if (c.opcode_dispatch) {
+                successor = encoding_ == MicrocodeEncoding::Vertical
+                    ? vertical_unit_.routineEntry(l.instr.opcode)
+                    : control_unit_.routineEntry(l.instr.opcode);
+                if (l.instr.opcode == Opcode::HALT ||
+                    successor == control_unit_.routineEntry(static_cast<Opcode>(0xFF))) {
+                    stop_fetch_ = true;
+                    squash_after = l.seq;
                 }
-            } else if (oldest.taken) {
-                fetch_pc_ = oldest.target;
+            }
+            if (c.pc_write) {
+                redirect_target = c.pc_src_ra ? static_cast<uint32_t>(l.ra_val)
+                    : c.pc_src_mem ? static_cast<uint32_t>(l.mem_data)
+                    : branchTarget(l.pc, l.instr);
+                fetch_pc_ = redirect_target;
+                redirect = true;
                 stop_fetch_ = false;
-                ++trace_.flushes;
-                trace_.flush_bubbles += static_cast<uint64_t>(effect_slot);
-                trace_.squashed += static_cast<uint64_t>(discarded);
-                if (tracing_) {
-                    trace_.events.push_back(
-                        {cycles_, HazardKind::Flush, effect_pc, effect_slot,
-                         oldest.target, effect_slot, discarded});
-                }
+                squash_after = l.seq;
+                effect_slot = slot;
+                effect_pc = l.pc;
             }
-            if (oldest.stop_fetch) stop_fetch_ = true;
+            if (c.halt) stop_fetch_ = true;
+            l.row_cycle = cycles_;
+            if (successor == kMicroEnd) {
+                recordMicroTrace(l);
+                state_.pc = l.pc;
+                if (!c.halt) ++retired_;
+                continue;
+            }
+            l.micro_pc = static_cast<uint32_t>(successor);
+            const RowStage next_stage = rowStage(rom.at(l.micro_pc));
+            const int target = next_stage == RowStage::Terminal ? slot
+                : slotForRow(variant_, next_stage);
+            bool blocked = next[static_cast<size_t>(target)].valid;
+            for (int i = slot; i <= target && !blocked; ++i) {
+                const Latch& ahead = next[static_cast<size_t>(i)];
+                if (ahead.valid && ahead.seq < l.seq) blocked = true;
+            }
+            if (blocked && target != slot) {
+                next[static_cast<size_t>(slot)] = l;
+            } else {
+                next[static_cast<size_t>(target)] = l;
+            }
         }
 
-        // A redirect in the same clock already discards the slot the interlock
-        // was holding, so counting the stall too would double-count that clock.
-        if (stall && !(have_effect && oldest.taken)) {
-            ++trace_.stalls;
-            if (tracing_) {
-                trace_.events.push_back(
-                    {cycles_, HazardKind::Stall, stall_pc, ex - 1, 0, 0, 0});
-            }
+        if (redirect) {
+            ++trace_.flushes;
+            trace_.squashed += static_cast<uint64_t>(discarded);
+            trace_.flush_bubbles += static_cast<uint64_t>(discarded);
+            if (tracing_) trace_.events.push_back(
+                {cycles_, HazardKind::Flush, effect_pc, effect_slot,
+                 redirect_target, effect_slot, discarded});
         }
-
+        if (fault && tracing_) trace_.events.push_back(
+            {cycles_, HazardKind::Fault, effect_pc, effect_slot, 0, effect_slot, discarded});
         regs_ = next;
-
+        if (!stop_fetch_ && !fetch_held_ && !regs_[0].valid) {
+            Latch admitted;
+            admitted.valid = true;
+            admitted.seq = ++seq_counter_;
+            admitted.pc = fetch_pc_;
+            admitted.micro_pc = static_cast<uint32_t>(encoding_ == MicrocodeEncoding::Vertical
+                ? vertical_unit_.frontendEntry() : control_unit_.frontendEntry());
+            regs_[0] = admitted;
+        }
         if (stop_fetch_ && pipelineEmpty()) state_.halted = true;
     }
 

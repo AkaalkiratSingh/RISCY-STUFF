@@ -103,8 +103,8 @@ int main() {
                         }
                     }
                     if (!traced.state().pending_exception) {
-                        CHECK(traced.cycles() == traced.stageCount() - 1 + traced.retired() + 1 +
-                            traced.trace().stalls + traced.trace().flush_bubbles);
+                        CHECK(traced.trace().rows >= traced.retired() + 1);
+                        CHECK(traced.trace().flush_bubbles == traced.trace().squashed);
                     }
                     traced.loadWords({op(Opcode::HALT)});
                     CHECK(traced.microTrace().empty());

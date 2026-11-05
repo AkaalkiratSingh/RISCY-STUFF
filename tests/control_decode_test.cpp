@@ -193,9 +193,45 @@ int main() {
         CHECK_EQ(std::string(six[5].name),  std::string("WB"));
 
         CHECK(four[0].IF && four[0].ID && four[0].OF);
+        for (int stage = 0; stage < 6; ++stage) {
+            const RowStage row_stage = static_cast<RowStage>(stage);
+            CHECK_EQ(slotForRow(PipelineVariant::SixStage, row_stage), stage);
+            CHECK_EQ(slotForRow(PipelineVariant::FourStage, row_stage),
+                     stage < 3 ? 0 : stage - 2);
+        }
+        CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::Terminal), -1);
 
         std::cout << "  ok    4-stage: " << stageNames(PipelineVariant::FourStage) << "\n";
         std::cout << "  ok    6-stage: " << stageNames(PipelineVariant::SixStage) << "\n";
+    }
+
+    section("Control decode: ROM rows belong to one monotonic stage");
+    {
+        const auto& rom = cu.controlMemory();
+        for (const MicroOp& row : rom) {
+            const RowStage stage = rowStage(row);
+            const StageMask mask = stageMask(row.ctl);
+            if (stage == RowStage::Terminal) {
+                CHECK(mask == 0);
+            } else {
+                CHECK(mask == stageBit(static_cast<PipelineStage>(stage)) ||
+                      (stage == RowStage::EX && mask == 0));
+            }
+            CHECK(std::string(rowStageName(stage)) != "?");
+        }
+        for (int i = 0; i < 256; ++i) {
+            for (bool taken : {false, true}) {
+                Flags flags;
+                flags.zero = flags.greaterThan = taken;
+                RowStage previous = RowStage::IF;
+                for (const PathStep& step : controlTrace(cu, static_cast<Opcode>(i), flags)) {
+                    const RowStage stage = rowStage(rom[static_cast<size_t>(step.micro_pc)]);
+                    if (stage == RowStage::Terminal) continue;
+                    CHECK(static_cast<int>(stage) >= static_cast<int>(previous));
+                    previous = stage;
+                }
+            }
+        }
     }
 
     section("Control decode: every opcode collapses without losing or inventing a signal");

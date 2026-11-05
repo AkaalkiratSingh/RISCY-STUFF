@@ -161,6 +161,46 @@ namespace risc201 {
         return mask;
     }
 
+    RowStage rowStage(const MicroOp& row) {
+        const ControlWord& c = row.ctl;
+        if (c.ir_load) return RowStage::IF;
+        if (c.instr_decode || c.opcode_dispatch) return RowStage::ID;
+        if (c.halt || c.trap) return RowStage::Terminal;
+        if (c.mem_read || c.mem_write || c.stack_check) return RowStage::MEM;
+        if (c.reg_write || c.ra_write || c.mem_to_reg) return RowStage::WB;
+        if (c.operand_read) return RowStage::OF;
+        return RowStage::EX;
+    }
+
+    const char* rowStageName(RowStage stage) {
+        switch (stage) {
+            case RowStage::IF: return "IF";
+            case RowStage::ID: return "ID";
+            case RowStage::OF: return "OF";
+            case RowStage::EX: return "EX";
+            case RowStage::MEM: return "MEM";
+            case RowStage::WB: return "WB";
+            case RowStage::Terminal: return "Terminal";
+        }
+        return "?";
+    }
+
+    int slotForRow(PipelineVariant variant, RowStage stage) {
+        if (stage == RowStage::Terminal) return -1;
+        const StageLayout layout = layoutFor(variant);
+        for (size_t i = 0; i < layout.count; ++i) {
+            const StageSlot& slot = layout[i];
+            const bool owns = (stage == RowStage::IF && slot.IF) ||
+                              (stage == RowStage::ID && slot.ID) ||
+                              (stage == RowStage::OF && slot.OF) ||
+                              (stage == RowStage::EX && slot.EX) ||
+                              (stage == RowStage::MEM && slot.MEM) ||
+                              (stage == RowStage::WB && slot.WB);
+            if (owns) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
     std::vector<PathStep> controlTrace(const ControlUnit& cu, Opcode op,
                                        const Flags& flags, ExceptionCode fault) {
         return traceOf(cu, op, flags, fault);

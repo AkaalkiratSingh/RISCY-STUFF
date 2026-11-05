@@ -14,10 +14,18 @@ namespace risc201 {
 
     struct Latch {
         bool     valid = false;
+        uint64_t seq = 0;
         uint32_t pc = 0;
         uint32_t word = 0;
         Instruction instr{};
         bool     decoded = false;
+        uint32_t micro_pc = 0;
+        uint64_t row_cycle = 0;
+        bool     alu_done = false;
+        bool     mem_done = false;
+        bool     wb_done = false;
+        bool     ra_done = false;
+        bool     sp_done = false;
 
         int32_t  rs1_val = 0;
         int32_t  rs2_val = 0;
@@ -60,6 +68,7 @@ namespace risc201 {
     };
 
     struct PipelineTrace {
+        uint64_t rows = 0;
         uint64_t stalls = 0;
         uint64_t flushes = 0;
         uint64_t flush_bubbles = 0;

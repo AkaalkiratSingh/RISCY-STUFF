@@ -54,6 +54,11 @@ namespace risc201 {
     std::vector<int> reachableRows(const ControlUnit& cu, Opcode op);
     std::string controlProblem(const ControlUnit& cu, Opcode op);
 
+    enum class RowStage : uint8_t { IF, ID, OF, EX, MEM, WB, Terminal };
+    RowStage rowStage(const MicroOp& row);
+    const char* rowStageName(RowStage stage);
+    int slotForRow(PipelineVariant variant, RowStage stage);
+
     enum class PipelineStage : uint8_t { IF = 0, ID, OF, EX, MEM, WB };
     inline constexpr size_t kPipelineStageCount = 6;
     using StageMask = uint8_t;

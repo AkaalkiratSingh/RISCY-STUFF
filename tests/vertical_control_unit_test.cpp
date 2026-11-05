@@ -186,7 +186,7 @@ int main() {
     CHECK_EQ(vrom[fetch_row], 0x5000);
     CHECK_EQ(vrom[decode_row], 0x5401);
     CHECK_EQ(ControlUnit::packHorizontal(hcm[fetch_row]),
-        (1ull << 44) | (1ull << 5) | (78ull << 24) | (0xFFull << 32));
+        (1ull << 44) | (1ull << 5) | (79ull << 24) | (0xFFull << 32));
     CHECK_EQ(ControlUnit::packHorizontal(hcm[decode_row]),
         (1ull << 45) | (1ull << 47) | (0xFFull << 24) | (0xFFull << 32));
     CHECK_EQ(word(Opcode::ADD, 0), 0x0400);        
@@ -196,9 +196,10 @@ int main() {
     CHECK_EQ(word(Opcode::LOAD, 1), 0x1040);
     CHECK_EQ(word(Opcode::LOAD, 3), 0x2001);       
     CHECK_EQ(word(Opcode::MOV, 1), 0x0C20);
-    CHECK_EQ(word(Opcode::CALL, 1), 0x4800);        // RA.WR
-    CHECK_EQ(word(Opcode::CALL, 2), 0x2401);        // JUMP, END
-    CHECK_EQ(word(Opcode::RET, 0), 0x4C01);         // JUMP.RA, END
+    CHECK_EQ(word(Opcode::CALL, 1), 0x2400);        // JUMP
+    CHECK_EQ(word(Opcode::CALL, 2), 0x4801);        // RA.WR, END
+    CHECK_EQ(word(Opcode::RET, 0), 0x0400);         // OPERANDS
+    CHECK_EQ(word(Opcode::RET, 1), 0x4C01);         // JUMP.RA, END
     CHECK_EQ(word(Opcode::HALT, 0), 0x4001);       
     CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
     CHECK_EQ(word(Opcode::BEQ, 1), 0x0001);        
