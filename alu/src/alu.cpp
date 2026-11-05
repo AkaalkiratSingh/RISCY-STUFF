@@ -233,6 +233,69 @@ Alu::Result Alu::floatCmp(uint32_t a, uint32_t b) {
 }
 
 // ============================================================
+//  TYPE CONVERSIONS (FTOI / ITOF)
+// ============================================================
+
+uint32_t Alu::floatToInt(uint32_t a) {
+    uint32_t sign = (a >> 31) & 1;
+    int32_t  exp  = (a >> 23) & 0xFF;
+    uint32_t mant = (a & 0x007FFFFF) | 0x00800000; // Add implicit 1
+
+    // If exponent < 127, the value is < 1.0, so integer part is 0
+    if (exp < 127) return 0; 
+
+    // If exponent is too large, we overflow a 32-bit int.
+    // Clamp to INT_MAX (0x7FFFFFFF) or INT_MIN (0x80000000)
+    if (exp >= 127 + 31) {
+        return sign ? 0x80000000 : 0x7FFFFFFF;
+    }
+
+    int shift = exp - 127;
+    uint32_t res;
+
+    // Shift the mantissa to get the integer part
+    if (shift >= 23) {
+        res = mant << (shift - 23);
+    } else {
+        res = mant >> (23 - shift);
+    }
+
+    // Apply two's complement if negative
+    if (sign) {
+        res = ~res + 1;
+    }
+
+    return res;
+}
+
+uint32_t Alu::intToFloat(uint32_t a) {
+    if (a == 0) return 0;
+
+    uint32_t sign = (a >> 31) & 1;
+    
+    // Get absolute value
+    uint32_t abs_a = sign ? (~a + 1) : a;
+
+    // Find the position of the Most Significant Bit (MSB)
+    int msb = 31;
+    while (msb >= 0 && !((abs_a >> msb) & 1)) {
+        msb--;
+    }
+
+    int32_t exp = 127 + msb; // Calculate biased exponent
+    uint32_t mant;
+
+    // Extract the 23-bit mantissa after the implicit 1
+    if (msb <= 23) {
+        mant = (abs_a << (23 - msb)) & 0x007FFFFF;
+    } else {
+        mant = (abs_a >> (msb - 23)) & 0x007FFFFF;
+    }
+
+    return packFloat(sign, exp, mant);
+}
+
+// ============================================================
 //  EXECUTE
 // ============================================================
 
@@ -353,8 +416,16 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
             break;
         }
         default: res = 0; break;
-    }
+        case Opcode::FTOI:
+            r.value = static_cast<int32_t>(floatToInt(a));
+            return r;
 
+        case Opcode::ITOF:
+            r.value = static_cast<int32_t>(intToFloat(a));
+            return r;
+
+    }
+            
     if (op != Opcode::MUL) {
         r.value = static_cast<int32_t>(res);
     }

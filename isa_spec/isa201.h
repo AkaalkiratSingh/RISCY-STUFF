@@ -59,8 +59,8 @@ enum class Opcode : uint8_t {
     FMUL = 0x18,//
     FDIV = 0x19,//
     FCMP = 0x1A,//
-    // TODO : FTOI = 0x1B,
-    // TODO : ITOF = 0x1C,
+    FTOI = 0x1B,
+    ITOF = 0x1C,
 
     HALT = 0x1F, //
 };
