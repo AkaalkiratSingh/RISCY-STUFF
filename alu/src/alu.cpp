@@ -347,7 +347,7 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
                 quotient = quotient << 1;
                 if (remainder >= u_rhs) {
                     bool c_out_div;
-                    remainder = remainder = koggeStoneAdder(remainder, ~u_rhs, true, c_out_div);
+                    remainder = koggeStoneAdder(remainder, ~u_rhs, true, c_out_div);
                     quotient |= 1;
                 }
             }
