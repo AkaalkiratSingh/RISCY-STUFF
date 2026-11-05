@@ -44,6 +44,13 @@ namespace risc201 {
         return "?";
     }
 
+    bool parseRegisterAlias(const std::string& token, Register& out) {
+        const std::string upper = toUpper(token);
+        if (upper == "SP") { out = Register::R15; return true; }
+        if (upper == "RA") { out = Register::R14; return true; }
+        return false;
+    }
+
     std::string formatInstruction(const Instruction& in) {
         const std::string name = opcodeName(in.opcode);
         const int rd  = static_cast<int>(in.rd);
@@ -67,6 +74,13 @@ namespace risc201 {
             case Opcode::CMP:
                 return name + " " + regName(rs1) + ", " +
                        (in.I ? std::to_string(in.imm) : regName(rs2));
+            case Opcode::FCMP:
+                return name + " " + regName(rs1) + ", " + regName(rs2);
+            case Opcode::FADD:
+            case Opcode::FSUB:
+            case Opcode::FMUL:
+            case Opcode::FDIV:
+                return name + " " + regName(rd) + ", " + regName(rs1) + ", " + regName(rs2);
             case Opcode::LOAD:
             case Opcode::STORE:
                 return name + " " + regName(rd) + ", " + std::to_string(in.imm) +

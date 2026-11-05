@@ -130,6 +130,6 @@ int main() {
     std::cout << "All tests passed successfully!\n";
     std::cout << " - Integer ALU (ADD, SUB, MUL, DIV, REM) OK\n";
     std::cout << " - Float ALU (FADD, FSUB, FMUL, FDIV via Newton-Raphson,FCMP) OK\n";
-    
+    std::cout << " - Conversions (FTOI, ITOF) OK\n";
     return 0;
 }

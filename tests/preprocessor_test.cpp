@@ -511,6 +511,12 @@ void testDefinitionErrors() {
     PreprocessResult spParam = run({".macro M sp", ".endm"});
     CHECK_ERROR(spParam, 1, "parameter 'sp' looks like a register name");
 
+    // Every register alias the assembler accepts is also refused as a parameter name.
+    for (const char* alias : { "RA", "ra", "Ra", "SP", "Sp" }) {
+        PreprocessResult aliasParam = run({std::string(".macro M ") + alias, ".endm"});
+        CHECK_ERROR(aliasParam, 1, std::string("parameter '") + alias + "' looks like a register name");
+    }
+
     PreprocessResult badParam = run({".macro M 1a", ".endm"});
     CHECK_ERROR(badParam, 1, "invalid parameter name '1a'");
 

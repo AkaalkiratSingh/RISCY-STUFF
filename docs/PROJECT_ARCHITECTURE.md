@@ -46,7 +46,7 @@ The processor uses a **custom ISA**. Its encodings and calling convention are de
 | Data addressing | Word indices |
 | Execution PC addressing | Instruction-word indices |
 | Encoded branch displacement | Signed byte displacement relative to the following instruction |
-| Four-stage pipeline | IF/ID/OF → EX → MEM → WB |
+| Four-stage pipeline | FETCH → EX → MEM → WB |
 | Six-stage pipeline | IF → ID → OF → EX → MEM → WB |
 | Instruction issue model | In-order pipeline, at most one instruction retired per clock |
 | Forwarding | Enabled by default; can be disabled |
@@ -371,11 +371,11 @@ A separate `StackGuard` supplies stack-bound checks, and `StackVisualizer` can r
 | `--trace` | Pipeline snapshots and hazard events after each simulated clock |
 | `-s` / instruction step | Register snapshots associated with instruction-level advancement |
 | `--micro-trace` / `--micro-step` | Reconstructed control-ROM path for an instruction at retirement or fault |
-| TUI CONTROL ROM pane | Live control row for each active pipeline stage, derived from the same control-path walker |
+| TUI assembled-binary tags | Each in-flight instruction shows its stage and control-ROM row, e.g. `◄[EX 29]` or `<[WB 03] [FETCH 07]>` |
 
 The microcode view includes the shared fetch/decode prefix, the selected instruction's routine, branch successors based on captured execution flags, and trap controls when applicable. It prints actual ROM words and signal definitions, but the sequence is reconstructed for explanation. Squashed instructions are omitted.
 
-The TUI cursor is not a serial global microPC. It reports the ROM row driving the current stage of the oldest in-flight instruction that has a control row for that stage, using the stage projection of the same `controlPath` used by the sequencer listing, the collapse into `StageControls`, and the reconstruction. The pane inserts a visual blank line after each instruction routine without changing any ROM address.
+The TUI does not run a serial global microPC. The assembled-binary pane annotates each in-flight instruction with a control-ROM row, using the stage projection of the same `controlPath` used by the sequencer listing, the collapse into `StageControls`, and the reconstruction. Each tag names the stage that owns the row, so an ALU op passing through MEM can show a `WB` row; if the pipeline stage itself has a row, that row is used. If one PC is active in several stages, all annotations are shown. The CONTROL ROM pane inserts a visual blank line after each instruction routine without changing any ROM address.
 
 ### 11.2 Why the first microcode output is labelled cycle 4
 
@@ -533,7 +533,7 @@ The terminal UI displays assembly, encoded words, registers, memory, statistics,
 
 Watchpoints detect value changes, not every access to an address. Breakpoints are fetch barriers: when the next fetch PC matches a breakpoint, the debugger holds fetch, drains the older instructions, and reports the stop only if that PC is still next. No instruction at or after the breakpoint enters the pipeline, and resuming starts from an empty pipeline at that PC.
 
-The source editor requires explicit reassembly. A stale-buffer indication distinguishes edited text from the loaded program. Failed assembly does not replace the currently loaded machine image.
+The source editor requires explicit reassembly. A stale-buffer indication distinguishes edited text from the loaded program. `:save` writes the buffer back to the loaded file or a supplied path, independently of assembly. Command input supports Tab completion for command names and `:load` paths. Failed assembly does not replace the currently loaded machine image.
 
 ### 13.3 Run limits and exit statuses
 
