@@ -264,12 +264,14 @@ int main() {
     section("Vertical == horizontal: lockstep, every opcode x every flag combination (all 6 flags)");
     {
         int mismatches = 0;
+        ControlUnit h;                    // built once: constructing a VerticalControlUnit
+        VerticalControlUnit v;            // takes ~100 us, reset() takes ~0.01 us
         for (int opv = 0; opv < 256; ++opv) {
             const Opcode op = static_cast<Opcode>(opv);
             for (int fl = 0; fl < 64; ++fl) {
                 const Flags f = flagsFromBits(fl);
-                ControlUnit h;
-                VerticalControlUnit v;
+                h.reset();
+                v.reset();
                 for (int cycle = 0;; ++cycle) {
                     const ControlWord hw = h.step(op, f);
                     const ControlWord vw = v.step(op, f);
@@ -333,12 +335,14 @@ int main() {
             ExceptionCode::NONE, ExceptionCode::INVALID_MEMORY_ACCESS, ExceptionCode::DIVIDE_BY_ZERO,
             ExceptionCode::ILLEGAL_INSTRUCTION };
         int mismatches = 0, trapped = 0;
+        ControlUnit h;                    // built once, reset() per case 
+        VerticalControlUnit v;
         for (int opv = 0; opv < 256; ++opv) {
             const Opcode op = static_cast<Opcode>(opv);
             for (ExceptionCode fault : faults) {
                 for (int fl : {0, 1, 63}) {
-                    ControlUnit h;
-                    VerticalControlUnit v;
+                    h.reset();
+                    v.reset();
                     const Flags f = flagsFromBits(fl);
                     bool hit = false;
                     for (int cycle = 0; cycle < 40; ++cycle) {
