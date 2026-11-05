@@ -351,4 +351,4 @@ All CTest targets pass. The TUI is exercised manually and is not covered by CTes
 RISCY-STUFF is a team project.
 
 - **Akaalkirat Singh**: `Cpu` core (integrating the ALU, control unit and stack guard), decoder, simulator runner
-- _Add teammates and their modules here_
+- **Divyansh Singh**: Assembler, Disassembler, Debugger
