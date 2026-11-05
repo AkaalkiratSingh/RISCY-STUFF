@@ -100,7 +100,7 @@ The screen has panes for raw assembly, assembled binary, registers, extra stats,
 
 **Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane is a scrollable listing with blank separators between instruction routines (addresses are unchanged); `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
 
-**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent. A failed assembly lists all diagnostics with source line numbers and leaves the running program untouched. `:load` reports diagnostics in the same format. Use PageUp/PageDown to read an error list longer than the feedback pane.
+**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent. A failed assembly lists all errors with source line numbers and leaves the running program untouched. `:assemble` and `:load` also report assembler warnings, including successful assemblies; warnings appear in yellow below the status or errors. Use PageUp/PageDown to read a diagnostic list longer than the feedback pane.
 
 Commands (type `:` in normal or inspect mode). While typing, `Tab` completes command names and `:load` paths, with the candidates listed in the feedback pane; `Tab` again cycles them.
 
@@ -162,7 +162,7 @@ zero:
 
 Result: `R2 = 15`, `SP` back at 4096.
 
-The `examples/` folder has 14 assembly sources. The runnable examples include Collatz, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, floating-point arithmetic with literals, recursion, and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `INVALID_MEMORY_ACCESS` on purpose. `gcd.asm` currently contains invalid assembly and is useful for checking multi-error diagnostics.
+The `examples/` folder has 14 assembly sources. The runnable examples include Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, floating-point arithmetic with literals, recursion, and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `INVALID_MEMORY_ACCESS` on purpose.
 
 Every instruction executes at most one control-ROM row per clock. In the 4-stage variant, the FETCH slot serializes the IF, ID, and operand-read rows; row-less stages are skipped. The `pipeline:` line reports data stalls, redirects, and squashed instructions. The old stage-count cycle formula no longer applies.
 
@@ -294,7 +294,9 @@ RISCY-STUFF/
 
 ## Stress benchmarks
 
-Five longer, deterministic workloads are available in [examples/benchmarks](examples/benchmarks/README.md), with expected results, a runner for all eight CPU configurations, and measured counters. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
+Five longer, deterministic workloads are available in [processor_benchmark](processor_benchmark/README.md), with expected results, a runner for all eight CPU configurations, simulated counters, and average host runtime from five runs per configuration. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
+
+The standalone ALU algorithm benchmark writes per-operation timings to [alu_benchmark/alu_benchmark_results.csv](alu_benchmark/alu_benchmark_results.csv). From the project root, run `./build/risc201-alu-bench`; pass a CSV path as its first argument to choose another output file. Its columns are the algorithm name and average nanoseconds per operation for 2-, 4-, 8-, 16-, 32-, and 64-bit input cases, plus 128-bit operands when the compiler supports `__uint128_t`. The 2- and 4-bit cases mask inputs stored in `uint8_t`, so the algorithms still execute their 8-bit loops. No wider integer type is available to the unchanged algorithms; they therefore stop at 64 bits on standard C++17 compilers or 128 bits on this GCC build.
 
 ## Testing
 

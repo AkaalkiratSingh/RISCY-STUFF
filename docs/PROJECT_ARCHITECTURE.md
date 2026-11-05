@@ -507,7 +507,7 @@ The terminal UI displays assembly, encoded words, registers, memory, statistics,
 
 Watchpoints detect value changes, not every access to an address. Breakpoints are fetch barriers: when the next fetch PC matches a breakpoint, the debugger holds fetch, drains the older instructions, and reports the stop only if that PC is still next. No instruction at or after the breakpoint enters the pipeline, and resuming starts from an empty pipeline at that PC.
 
-The source editor requires explicit reassembly. A stale-buffer indication distinguishes edited text from the loaded program. `:save` writes the buffer back to the loaded file or a supplied path, independently of assembly. Command input supports Tab completion for command names and `:load` paths. Failed `:assemble` and `:load` commands list all collected diagnostics with source line numbers in the feedback message and leave the current machine image intact. PageUp/PageDown scrolls a diagnostic list that exceeds the feedback pane.
+The source editor requires explicit reassembly. A stale-buffer indication distinguishes edited text from the loaded program. `:save` writes the buffer back to the loaded file or a supplied path, independently of assembly. Command input supports Tab completion for command names and `:load` paths. Failed `:assemble` and `:load` commands list all collected errors with source line numbers and leave the current machine image intact. Both commands also show assembler warnings after success or failure, in yellow below the status or errors. PageUp/PageDown scrolls a diagnostic list that exceeds the feedback pane.
 
 ### 13.3 Run limits and exit statuses
 

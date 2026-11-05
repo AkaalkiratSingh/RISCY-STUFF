@@ -1,6 +1,6 @@
 ; Memory-traffic stress: 32 sweeps over two 1024-word buffers, then a checksum.
 ; Expected: R9=589312  MEM[i]=i+64 and MEM[1024+i]=i+63 for 0<=i<1024
-; Run with: risc201-sim examples/benchmarks/memory_ping_pong.asm -4 -m 0:8
+; Run with: risc201-sim processor_benchmark/memory_ping_pong.asm -4 -m 0:8
 
 .main:
 MOV R1, 0

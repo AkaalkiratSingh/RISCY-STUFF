@@ -1,6 +1,6 @@
 ; ALU dependency stress: 8192 iterations of dependent ADD/MUL/DIV/XOR/shift/REM.
 ; Expected: R1=8192  R3=8192  R2=392094
-; Run with: risc201-sim examples/benchmarks/alu_dependencies.asm -4
+; Run with: risc201-sim processor_benchmark/alu_dependencies.asm -4
 
 .main:
 MOV R1, 0

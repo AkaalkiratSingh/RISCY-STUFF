@@ -24,6 +24,8 @@ add_subdirectory(assembler)
 add_subdirectory(memory_safety)
 add_subdirectory(simulator_core)
 
+add_executable(risc201-alu-bench alu_benchmark/alu_bench.cpp)
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
   add_subdirectory(tests)
 endif()

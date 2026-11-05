@@ -981,7 +981,7 @@ void Tui::renderCommandLine(int r, int c, int h, int w) {
 }
 
 void Tui::renderFeedback(int r, int c, int h, int w) {
-    const bool paged = feedback_is_error_ && feedback_message_.find('\n') != std::string::npos;
+    const bool paged = feedback_message_.find('\n') != std::string::npos;
     screen_.drawBox(r, c, h, w, paged ? "COMMAND FEEDBACK (PgUp/PgDn)" : "COMMAND FEEDBACK",
                     Style{Color::White, Color::Default, false},
                     paneTitleStyle());
@@ -1021,8 +1021,17 @@ void Tui::renderFeedback(int r, int c, int h, int w) {
 
     const std::vector<std::string> lines = wrapTextLines(feedback_message_, inner_w);
     const int start = std::min(feedback_scroll_, std::max(0, static_cast<int>(lines.size()) - inner_h));
-    for (int i = 0; i < inner_h && start + i < static_cast<int>(lines.size()); ++i) {
-        screen_.drawText(r + 1 + i, c + 2, lines[static_cast<size_t>(start + i)], fb_style, inner_w);
+    bool warning_section = false;
+    for (int index = 0; index < start + inner_h && index < static_cast<int>(lines.size()); ++index) {
+        if (lines[static_cast<size_t>(index)].rfind("Warnings (", 0) == 0) warning_section = true;
+        if (index < start) continue;
+        Style line_style = fb_style;
+        if (warning_section) {
+            line_style.fg = Color::BrightYellow;
+            line_style.bold = true;
+        }
+        screen_.drawText(r + 1 + index - start, c + 2,
+                         lines[static_cast<size_t>(index)], line_style, inner_w);
     }
 }
 
@@ -1463,7 +1472,7 @@ void Tui::handleKey(const KeyEvent& ev) {
             scrollFocused(-1);
             break;
         case Key::PageDown:
-            if (feedback_is_error_ && feedback_message_.find('\n') != std::string::npos) {
+            if (feedback_message_.find('\n') != std::string::npos) {
                 const auto lines = wrapTextLines(feedback_message_, std::max(1, screen_.cols() - 4));
                 feedback_scroll_ = std::min(feedback_scroll_ + 8,
                                             std::max(0, static_cast<int>(lines.size()) - 1));
@@ -1472,7 +1481,7 @@ void Tui::handleKey(const KeyEvent& ev) {
             }
             break;
         case Key::PageUp:
-            if (feedback_is_error_ && feedback_message_.find('\n') != std::string::npos) {
+            if (feedback_message_.find('\n') != std::string::npos) {
                 feedback_scroll_ = std::max(0, feedback_scroll_ - 8);
             } else {
                 scrollFocused(-10);
@@ -1900,6 +1909,9 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         AssemblyResult assembled = assembleLines(raw_assembly_);
         if (!assembled.errors.empty()) {
             feedback_message_ = formatAssemblyErrors(assembled.errors);
+            if (!assembled.warnings.empty()) {
+                feedback_message_ += "\n" + formatAssemblyWarnings(assembled.warnings);
+            }
             feedback_is_error_ = true;
         } else if (assembled.words.empty()) {
             feedback_message_ = "Assemble failed: produced 0 instructions";
@@ -1908,6 +1920,9 @@ void Tui::executeCommand(const std::string& raw_cmd) {
             installProgram(std::move(assembled.words));
             assembly_dirty_ = false;
             feedback_message_ = "Assembled " + std::to_string(code_words_.size()) + " instructions.";
+            if (!assembled.warnings.empty()) {
+                feedback_message_ += "\n" + formatAssemblyWarnings(assembled.warnings);
+            }
             feedback_is_error_ = false;
         }
     } else if (action == "h" || action == "help" || action == "?") {
@@ -1941,13 +1956,18 @@ bool Tui::loadProgram(const std::string& raw_path) {
     }
 
     std::vector<uint32_t> new_words;
+    std::vector<AssemblyError> warnings;
     if (file.kind == SourceKind::Assembly) {
         AssemblyResult assembled = assembleLines(file.lines);
         if (!assembled.errors.empty()) {
             feedback_message_ = formatAssemblyErrors(assembled.errors);
+            if (!assembled.warnings.empty()) {
+                feedback_message_ += "\n" + formatAssemblyWarnings(assembled.warnings);
+            }
             feedback_is_error_ = true;
             return false;
         }
+        warnings = std::move(assembled.warnings);
         new_words = std::move(assembled.words);
     } else {
         new_words = std::move(file.words);
@@ -1966,6 +1986,9 @@ bool Tui::loadProgram(const std::string& raw_path) {
     installProgram(std::move(new_words));
 
     feedback_message_ = "Loaded and compiled " + std::to_string(code_words_.size()) + " instructions from " + file.path;
+    if (!warnings.empty()) {
+        feedback_message_ += "\n" + formatAssemblyWarnings(warnings);
+    }
     feedback_is_error_ = false;
     return true;
 }

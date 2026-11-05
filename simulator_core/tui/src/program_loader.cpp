@@ -55,6 +55,10 @@ AssemblyResult assembleLines(const std::vector<std::string>& lines) {
         result.errors.push_back(
             AssemblyError{originalLine(err.line_number), err.message + contextOf(err.line_number)});
     }
+    for (const auto& warning : assembler.warnings()) {
+        result.warnings.push_back(
+            AssemblyError{originalLine(warning.line_number), warning.message + contextOf(warning.line_number)});
+    }
     if (result.errors.empty()) {
         for (const auto& instr : program) {
             result.words.push_back(assembler.encodeInstruction(instr));
@@ -71,6 +75,15 @@ std::string formatAssemblyErrors(const std::vector<AssemblyError>& errors) {
     out << "Assembly failed with " << errors.size() << " error(s):";
     for (const auto& error : errors) {
         out << "\nLine " << error.line_number << ": " << error.message;
+    }
+    return out.str();
+}
+
+std::string formatAssemblyWarnings(const std::vector<AssemblyError>& warnings) {
+    std::ostringstream out;
+    out << "Warnings (" << warnings.size() << "):";
+    for (const auto& warning : warnings) {
+        out << "\nLine " << warning.line_number << ": " << warning.message;
     }
     return out.str();
 }
