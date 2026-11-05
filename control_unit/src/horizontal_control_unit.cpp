@@ -339,21 +339,20 @@ namespace risc201 {
         w |= static_cast<uint64_t>(c.pc_inc)      << 5;
         w |= static_cast<uint64_t>(c.alu_src_imm) << 6;
         w |= static_cast<uint64_t>(c.mem_to_reg)  << 7;
-        w |= static_cast<uint64_t>(c.flag_update) << 10;
-        w |= static_cast<uint64_t>(c.halt)        << 11;
-        // bits 8-9 and 12-15 are unassigned (formerly stack-pointer signals)
-        w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 16;
-        w |= (static_cast<uint64_t>(row.cond) & 0x7u) << 21;
-        w |= static_cast<uint64_t>(addrField(row.next))          << 24;
-        w |= static_cast<uint64_t>(addrField(row.branch_target)) << 32;
-        w |= static_cast<uint64_t>(c.trap)        << 40;
-        w |= static_cast<uint64_t>(c.addr_check)  << 41;
-        w |= static_cast<uint64_t>(c.ra_write)    << 42;
-        w |= static_cast<uint64_t>(c.pc_src_ra)   << 43;
-        w |= static_cast<uint64_t>(c.ir_load) << 44;
-        w |= static_cast<uint64_t>(c.instr_decode) << 45;
-        w |= static_cast<uint64_t>(c.operand_read) << 46;
-        w |= static_cast<uint64_t>(c.opcode_dispatch) << 47;
+        w |= static_cast<uint64_t>(c.flag_update) << 8;
+        w |= static_cast<uint64_t>(c.halt)        << 9;
+        w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 10;
+        w |= (static_cast<uint64_t>(row.cond) & 0x7u) << 15;
+        w |= static_cast<uint64_t>(addrField(row.next))          << 18;
+        w |= static_cast<uint64_t>(addrField(row.branch_target)) << 26;
+        w |= static_cast<uint64_t>(c.trap)        << 34;
+        w |= static_cast<uint64_t>(c.addr_check)  << 35;
+        w |= static_cast<uint64_t>(c.ra_write)    << 36;
+        w |= static_cast<uint64_t>(c.pc_src_ra)   << 37;
+        w |= static_cast<uint64_t>(c.ir_load) << 38;
+        w |= static_cast<uint64_t>(c.instr_decode) << 39;
+        w |= static_cast<uint64_t>(c.operand_read) << 40;
+        w |= static_cast<uint64_t>(c.opcode_dispatch) << 41;
         return w;
     }
 

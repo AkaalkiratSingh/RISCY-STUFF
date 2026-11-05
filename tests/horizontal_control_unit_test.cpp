@@ -114,12 +114,12 @@ void testLoadStore() {
     CHECK(l.size() == 4 && l[0].operand_read);
     CHECK(l[1].alu_enable && l[1].alu_src_imm && l[1].alu_op == Opcode::ADD && !l[1].flag_update);
     CHECK(l[2].mem_read && !l[2].mem_write);
-    CHECK(l[2].addr_check && !l[2].mem_addr_sp);                  // bounds check, address from the ALU
+    CHECK(l[2].addr_check);                  // bounds check, address from the ALU
     CHECK(!l[0].addr_check && !l[1].addr_check && !l[3].addr_check);    CHECK(l[3].reg_write && l[3].mem_to_reg);
     auto s = runAll(Opcode::STORE);
     CHECK(s.size() == 3 && s[1].alu_src_imm && !s[1].flag_update);
     CHECK(s[2].mem_write && !s[2].mem_read && !s[2].reg_write);
-    CHECK(s[2].addr_check && !s[2].mem_addr_sp);
+    CHECK(s[2].addr_check);
     CHECK(!s[0].addr_check && !s[1].addr_check);}
 
 void testJmpHaltNop() {
@@ -168,13 +168,13 @@ void testBgt() {
 void testCallRetRows() {
     auto c = runAll(Opcode::CALL);
     CHECK(c.size() == 3 && c[0].operand_read);
-    CHECK(c[1].pc_write && !c[1].pc_src_mem && !c[1].pc_src_ra);
+    CHECK(c[1].pc_write && !c[1].pc_src_ra);
     CHECK(c[2].ra_write && !c[2].pc_write);
     auto r = runAll(Opcode::RET);
     CHECK(r.size() == 2);
     CHECK(r[0].operand_read);
     CHECK(r[1].pc_write && r[1].pc_src_ra);
-    CHECK(!r[1].mem_read && !r[1].sp_inc);
+    CHECK(!r[1].mem_read);
 }
 
 // Toy datapath: applies each ControlWord to PC / SP / one register / stack memory.
@@ -188,15 +188,11 @@ struct ToyMachine {
     // Returns false once the machine trapped. `w` is what the control unit returned this cycle.
     bool apply(const ControlWord& w, uint32_t target) {
         if (w.trap) return false;                    // TRAP row: stop, fault is in pendingException()
-        const uint32_t opc = pc, osp = sp, omdr = mdr;
-        if (w.mem_write && w.mem_addr_sp) mem[osp] = w.mem_data_pc ? opc : reg;
-        if (w.mem_read  && w.mem_addr_sp) mdr = mem[osp];
+        const uint32_t opc = pc, omdr = mdr;
         if (w.reg_write && w.mem_to_reg)  reg = omdr;
         if (w.ra_write) ra = return_pc;
         if (w.pc_inc)   pc = opc + 1;
-        if (w.pc_write) pc = w.pc_src_ra ? ra : (w.pc_src_mem ? omdr : target);
-        if (w.sp_dec)   sp = osp - 1;
-        if (w.sp_inc)   sp = osp + 1;
+        if (w.pc_write) pc = w.pc_src_ra ? ra : target;
         return true;
     }
     bool run(Opcode op, uint32_t target = 0) {
@@ -250,16 +246,9 @@ void testControlMemoryWellFormed() {
         if (r.cond != BranchCond::None) CHECK(r.branch_target >= 0 && r.branch_target < static_cast<int32_t>(cm.size()));
         CHECK(!(r.ctl.mem_read && r.ctl.mem_write));
         CHECK(!(r.ctl.pc_inc && r.ctl.pc_write));
-        CHECK(!(r.ctl.sp_dec && r.ctl.sp_inc));
-        CHECK(!r.ctl.mem_addr_sp || r.ctl.mem_read || r.ctl.mem_write);
-        CHECK(!r.ctl.mem_data_pc || r.ctl.mem_write);
-        CHECK(!r.ctl.pc_src_mem  || r.ctl.pc_write);
         CHECK(!r.ctl.pc_src_ra   || r.ctl.pc_write);
-        CHECK(!(r.ctl.pc_src_mem && r.ctl.pc_src_ra));
-        CHECK(!r.ctl.stack_check || r.ctl.mem_addr_sp);
-        CHECK((ControlUnit::packHorizontal(r) >> 48) == 0);
-        CHECK(!r.ctl.addr_check || ((r.ctl.mem_read || r.ctl.mem_write) && !r.ctl.mem_addr_sp));
-        CHECK(!(r.ctl.addr_check && r.ctl.stack_check));          // one guard per access
+        CHECK((ControlUnit::packHorizontal(r) >> 42) == 0);
+        CHECK(!r.ctl.addr_check || ((r.ctl.mem_read || r.ctl.mem_write)));
         CHECK(static_cast<unsigned>(r.cond) <= 7u);               // cond field is 3 bits
         CHECK(!r.ctl.trap || r.ctl.halt);                        // a trap always stops the machine
     }
@@ -267,24 +256,16 @@ void testControlMemoryWellFormed() {
 
 void testPackHorizontal() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    // ADD execute row (2): alu_enable(0) | flag_update(10) | alu_op=2<<16 | next=3<<24 | taken=END(0xFF)<<32
-    CHECK(ControlUnit::packHorizontal(cm[2]) == ((1ull<<0)|(1ull<<10)|(2ull<<16)|(3ull<<24)|(0xFFull<<32)));
-    // BEQ test row (32): cond=Zero(1)<<21 | next=33<<24 | taken=34<<32
-    CHECK(ControlUnit::packHorizontal(cm[32]) == ((1ull<<21)|(33ull<<24)|(34ull<<32)));
-    // MOV execute row (36): alu_op = MOV in bits 20:16
-    CHECK(((ControlUnit::packHorizontal(cm[36]) >> 16) & 0x1F) == static_cast<uint64_t>(Opcode::MOV));
-    // CALL jump row (39): pc_write(4) | next=40 | END
+    CHECK(ControlUnit::packHorizontal(cm[2]) == ((1ull<<0)|(1ull<<8)|(2ull<<10)|(3ull<<18)|(0xFFull<<26)));
+    CHECK(ControlUnit::packHorizontal(cm[32]) == ((1ull<<15)|(33ull<<18)|(34ull<<26)));
+    CHECK(((ControlUnit::packHorizontal(cm[36]) >> 10) & 0x1F) == static_cast<uint64_t>(Opcode::MOV));
     CHECK(ControlUnit::packHorizontal(cm[39]) ==
-           ((1ull<<4)|(40ull<<24)|(0xFFull<<32)));
-    // CALL RA row (40): ra_write(42) | next=END | END
+           ((1ull<<4)|(40ull<<18)|(0xFFull<<26)));
     CHECK(ControlUnit::packHorizontal(cm[40]) ==
-           ((1ull<<42)|(0xFFull<<24)|(0xFFull<<32)));
-    // LOAD access row (24): mem_read(1) | addr_check(41) | next=25 (writeback)
-    CHECK(ControlUnit::packHorizontal(cm[24]) == ((1ull<<1)|(1ull<<41)|(25ull<<24)|(0xFFull<<32)));
-    // BGT test row (61): cond=GreaterThan(6)<<21 | next=62<<24 | taken=63<<32
-    CHECK(ControlUnit::packHorizontal(cm[61]) == ((6ull<<21)|(62ull<<24)|(63ull<<32)));
-    // TRAP row (54): trap(40) | halt(11), next = END
-    CHECK(ControlUnit::packHorizontal(cm[54]) == ((1ull<<40)|(1ull<<11)|(0xFFull<<24)|(0xFFull<<32)));
+           ((1ull<<36)|(0xFFull<<18)|(0xFFull<<26)));
+    CHECK(ControlUnit::packHorizontal(cm[24]) == ((1ull<<1)|(1ull<<35)|(25ull<<18)|(0xFFull<<26)));
+    CHECK(ControlUnit::packHorizontal(cm[61]) == ((6ull<<15)|(62ull<<18)|(63ull<<26)));
+    CHECK(ControlUnit::packHorizontal(cm[54]) == ((1ull<<34)|(1ull<<9)|(0xFFull<<18)|(0xFFull<<26)));
 }
 
 // ---------------------------------------------------------------------------------------
@@ -301,9 +282,8 @@ void testAluFaultAbortsRoutineWithoutCommitting() {
     w = cu.step(Opcode::DIV, f, kDivZero);                      // execute row: fault honoured
     // every control signal of the faulting cycle is deleted
     CHECK(!w.alu_enable && !w.flag_update && !w.reg_write && !w.mem_write && !w.mem_read);
-    CHECK(!w.pc_write && !w.pc_inc && !w.sp_dec && !w.sp_inc && !w.halt && !w.trap);
+    CHECK(!w.pc_write && !w.pc_inc && !w.halt && !w.trap);
     CHECK(w.alu_op == Opcode::NOP && !w.alu_src_imm && !w.mem_to_reg);
-    CHECK(!w.mem_addr_sp && !w.mem_data_pc && !w.pc_src_mem && !w.stack_check);
     CHECK(!cu.routineDone());                                  // TRAP row still to run
     CHECK(cu.microPC() == static_cast<uint32_t>(cu.trapEntry()));
     CHECK(cu.pendingException() == kDivZero);

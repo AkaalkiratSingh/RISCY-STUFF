@@ -63,6 +63,7 @@ namespace risc201 {
     inline bool faultApplies(const ControlWord& c, ExceptionCode e) {
         switch (e) {
             case ExceptionCode::DIVIDE_BY_ZERO:        return c.alu_enable;
+            case ExceptionCode::INVALID_MEMORY_ACCESS: return c.addr_check;
             case ExceptionCode::NONE:
             case ExceptionCode::ILLEGAL_INSTRUCTION:   return false;
         }

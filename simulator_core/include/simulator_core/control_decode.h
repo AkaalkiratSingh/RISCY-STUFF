@@ -26,18 +26,12 @@ namespace risc201 {
         Opcode     alu_op = Opcode::NOP;
         bool       alu_src_imm = false;
         bool       flag_update = false;
-        bool       sp_dec = false;
-        bool       sp_inc = false;
         bool       pc_from_target = false;
         bool       pc_from_ra = false;
         bool       ra_write = false;
 
         bool       mem_read = false;
         bool       mem_write = false;
-        bool       mem_addr_sp = false;
-        bool       mem_data_pc = false;
-        bool       stack_check = false;
-        bool       pc_from_mem = false;
 
         bool       reg_write = false;
         bool       mem_to_reg = false;

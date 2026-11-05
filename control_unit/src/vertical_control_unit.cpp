@@ -115,13 +115,7 @@ namespace risc201 {
             add(w.mem_to_reg, "mem_to_reg");
             add(w.pc_inc, "pc_inc");
             add(w.pc_write, "pc_write");
-            add(w.sp_dec, "sp_dec");
-            add(w.sp_inc, "sp_inc");
-            add(w.mem_addr_sp, "mem_addr_sp");
-            add(w.mem_data_pc, "mem_data_pc");
-            add(w.pc_src_mem, "pc_src_mem");
             add(w.pc_src_ra, "pc_src_ra");
-            add(w.stack_check, "stack_check");
             add(w.addr_check, "addr_check");
             add(w.ra_write, "ra_write");
             add(w.halt, "halt");

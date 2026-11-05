@@ -25,7 +25,6 @@ namespace risc201 {
         bool     mem_done = false;
         bool     wb_done = false;
         bool     ra_done = false;
-        bool     sp_done = false;
 
         int32_t  rs1_val = 0;
         int32_t  rs2_val = 0;
@@ -34,9 +33,6 @@ namespace risc201 {
         int32_t  alu_result = 0;
         int32_t  mem_data = 0;
 
-        uint32_t mem_sp_addr = 0;
-        uint32_t sp_commit = 0;
-        bool     writes_sp = false;
 
         Flags    execution_flags{};
 

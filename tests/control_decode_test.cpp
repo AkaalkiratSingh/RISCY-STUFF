@@ -81,19 +81,13 @@ std::set<std::string> rowSignals(const MicroOp& row) {
     if (c.alu_enable) s.insert(std::string("alu_op=") + opcodeName(c.alu_op));
     add(c.alu_src_imm, "alu_src_imm");
     add(c.flag_update, "flag_update");
-    add(c.sp_dec, "sp_dec");
-    add(c.sp_inc, "sp_inc");
     add(c.mem_read, "mem_read");
     add(c.mem_write, "mem_write");
-    add(c.mem_addr_sp, "mem_addr_sp");
-    add(c.mem_data_pc, "mem_data_pc");
-    add(c.stack_check, "stack_check");
     add(c.reg_write, "reg_write");
     add(c.mem_to_reg, "mem_to_reg");
     add(c.halt, "halt");
     add(c.ra_write, "ra_write");
-    if (c.pc_write) s.insert(c.pc_src_mem ? "pc_from_mem"
-                                       : (c.pc_src_ra ? "pc_from_ra" : "pc_from_target"));
+    if (c.pc_write) s.insert(c.pc_src_ra ? "pc_from_ra" : "pc_from_target");
     if (row.cond != BranchCond::None) s.insert(std::string("cond=") + condName(row.cond));
     return s;
 }
@@ -111,19 +105,13 @@ std::set<std::string> controlsSignals(const StageControls& sc) {
     if (sc.alu_enable) s.insert(std::string("alu_op=") + opcodeName(sc.alu_op));
     add(sc.alu_src_imm, "alu_src_imm");
     add(sc.flag_update, "flag_update");
-    add(sc.sp_dec, "sp_dec");
-    add(sc.sp_inc, "sp_inc");
     add(sc.mem_read, "mem_read");
     add(sc.mem_write, "mem_write");
-    add(sc.mem_addr_sp, "mem_addr_sp");
-    add(sc.mem_data_pc, "mem_data_pc");
-    add(sc.stack_check, "stack_check");
     add(sc.reg_write, "reg_write");
     add(sc.mem_to_reg, "mem_to_reg");
     add(sc.halting, "halt");
     add(sc.ra_write, "ra_write");
     add(sc.pc_from_target, "pc_from_target");
-    add(sc.pc_from_mem, "pc_from_mem");
     add(sc.pc_from_ra, "pc_from_ra");
     if (sc.cond != BranchCond::None) s.insert(std::string("cond=") + condName(sc.cond));
     return s;
@@ -280,13 +268,13 @@ int main() {
         // CALL: fetch, write the RETURN ADDRESS into R14, then jump.
         const StageControls call = controlFor(cu, Opcode::CALL);
         CHECK(call.pc_inc && call.ra_write && call.pc_from_target && !call.pc_from_ra);
-        CHECK(!call.mem_write && !call.mem_read && !call.reg_write && !call.stack_check);
+        CHECK(!call.mem_write && !call.mem_read && !call.reg_write);
 
         // RET: jump through R14.
         const StageControls ret = controlFor(cu, Opcode::RET);
-        CHECK(ret.pc_from_ra && !ret.pc_from_target && !ret.pc_from_mem);
+        CHECK(ret.pc_from_ra && !ret.pc_from_target);
         CHECK(ret.pc_inc && !ret.mem_write && !ret.mem_read && !ret.reg_write);
-        CHECK(!ret.alu_enable && !ret.sp_inc);
+        CHECK(!ret.alu_enable);
 
         // // PUSH: same stack write as CALL, but the data is a REGISTER, not the PC.
         // const StageControls push = controlFor(cu, Opcode::PUSH);

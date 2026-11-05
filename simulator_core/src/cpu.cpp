@@ -128,11 +128,6 @@ namespace risc201 {
         const StageControls& c = controls_[static_cast<uint8_t>(candidate.instr.opcode)];
         const StageControls& o = controls_[static_cast<uint8_t>(older.instr.opcode)];
 
-        if ((o.sp_dec || o.sp_inc) &&
-            (c.sp_dec || c.sp_inc || c.mem_addr_sp || c.pc_from_mem)) {
-            return true;
-        }
-
         if (o.ra_write &&
             (c.pc_from_ra ||
              candidate.instr.rs1 == Register::R14 ||
@@ -149,7 +144,7 @@ namespace risc201 {
             (candidate.instr.rs1 == dst || (!c.alu_src_imm && candidate.instr.rs2 == dst))) {
             return true;
         }
-        if (c.mem_write && !c.mem_data_pc && candidate.instr.rd == dst) return true;
+        if (c.mem_write && candidate.instr.rd == dst) return true;
 
         return false;
     }
@@ -263,28 +258,15 @@ namespace risc201 {
                     if (c.flag_update) state_.flags = result.flags;
                 }
             }
-            if (error == ExceptionCode::NONE && (c.sp_dec || c.sp_inc)) {
-                l.mem_sp_addr = c.sp_dec ? state_.sp - 1 : state_.sp;
-                l.sp_commit = c.sp_dec ? state_.sp - 1 : state_.sp + 1;
-                l.writes_sp = true;
-            }
             if (error == ExceptionCode::NONE && (c.mem_read || c.mem_write)) {
-                const uint32_t address = c.mem_addr_sp ? l.mem_sp_addr
-                    : static_cast<uint32_t>(l.alu_result);
+                const uint32_t address = static_cast<uint32_t>(l.alu_result);
                 fault_address = address;
-                if (c.stack_check) {
-                    const auto bad = c.mem_write ? stack_guard_.checkPush(address + 1)
-                                                 : stack_guard_.checkPop(address);
-                    if (bad) error = *bad;
-                }
                 if (error == ExceptionCode::NONE && c.mem_read &&
                     !readMemory(address, l.mem_data)) {
                     error = ExceptionCode::INVALID_MEMORY_ACCESS;
                 }
                 if (error == ExceptionCode::NONE && c.mem_write) {
-                    const int32_t value = c.mem_data_pc
-                        ? static_cast<int32_t>(l.pc + 1) : l.rd_val;
-                    if (!writeMemory(address, value)) error = ExceptionCode::INVALID_MEMORY_ACCESS;
+                    if (!writeMemory(address, l.rd_val)) error = ExceptionCode::INVALID_MEMORY_ACCESS;
                 }
                 if (error == ExceptionCode::NONE) l.mem_done = true;
             }
@@ -298,13 +280,6 @@ namespace risc201 {
                 state_.registers[static_cast<size_t>(Register::R14)] =
                     static_cast<int32_t>(l.pc + 1);
                 l.ra_done = true;
-            }
-            if (error == ExceptionCode::NONE && l.writes_sp &&
-                (c.reg_write || c.ra_write || row.next == kMicroEnd)) {
-                state_.sp = l.sp_commit;
-                state_.registers[static_cast<size_t>(Register::R15)] =
-                    static_cast<int32_t>(l.sp_commit);
-                l.sp_done = true;
             }
             if (error == ExceptionCode::NONE && c.trap) {
                 error = ExceptionCode::ILLEGAL_INSTRUCTION;
@@ -338,7 +313,6 @@ namespace risc201 {
             }
             if (c.pc_write) {
                 redirect_target = c.pc_src_ra ? static_cast<uint32_t>(l.ra_val)
-                    : c.pc_src_mem ? static_cast<uint32_t>(l.mem_data)
                     : branchTarget(l.pc, l.instr);
                 fetch_pc_ = redirect_target;
                 redirect = true;

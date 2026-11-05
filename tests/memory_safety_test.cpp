@@ -1,5 +1,4 @@
 #include "memory_safety/stack_guard.h"
-#include "memory_safety/visualizer.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -71,23 +70,6 @@ int main() {
 
         CHECK_EQ(guard.checkBounds(8).value_or(ExceptionCode::NONE),
                  ExceptionCode::INVALID_MEMORY_ACCESS);
-    }
-    
-    std::cout << "StackVisualizer: renders stack contents and SP\n";
-    {
-        StackVisualizer visualizer;
-
-        const std::vector<int32_t> memory = {
-            10, 20, 30, 40, 50
-        };
-
-        const std::string output = visualizer.render(memory, 2, 5);
-
-        CHECK(output.find("Stack (top -> bottom)") != std::string::npos);
-        CHECK(output.find("SP = 2") != std::string::npos);
-        CHECK(output.find("[2] 30  <-- SP") != std::string::npos);
-        CHECK(output.find("[3] 40") != std::string::npos);
-        CHECK(output.find("[4] 50") != std::string::npos);
     }
     
     if (failures == 0) {

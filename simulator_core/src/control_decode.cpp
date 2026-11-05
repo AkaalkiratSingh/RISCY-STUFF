@@ -25,21 +25,15 @@ namespace risc201 {
                 sc.flag_update |= c.flag_update;
             }
 
-            sc.sp_dec |= c.sp_dec;
-            sc.sp_inc |= c.sp_inc;
             sc.mem_read |= c.mem_read;
             sc.mem_write |= c.mem_write;
-            sc.mem_addr_sp |= c.mem_addr_sp;
-            sc.mem_data_pc |= c.mem_data_pc;
-            sc.stack_check |= c.stack_check;
             sc.reg_write |= c.reg_write;
             sc.mem_to_reg |= c.mem_to_reg;
             sc.halting |= c.halt;
             sc.ra_write |= c.ra_write;
 
             if (c.pc_write) {
-                if (c.pc_src_mem)      sc.pc_from_mem = true;
-                else if (c.pc_src_ra) sc.pc_from_ra = true;
+                if (c.pc_src_ra) sc.pc_from_ra = true;
                 else                  sc.pc_from_target = true;
             }
 
@@ -153,10 +147,8 @@ namespace risc201 {
         add(PipelineStage::IF,  c.ir_load);
         add(PipelineStage::ID,  c.instr_decode || c.opcode_dispatch);
         add(PipelineStage::OF,  c.operand_read);
-        add(PipelineStage::EX,  c.alu_enable || c.pc_write || c.flag_update ||
-                                c.sp_dec || c.sp_inc);
-        add(PipelineStage::MEM, c.mem_read || c.mem_write || c.addr_check ||
-                                c.stack_check);
+        add(PipelineStage::EX,  c.alu_enable || c.pc_write || c.flag_update);
+        add(PipelineStage::MEM, c.mem_read || c.mem_write || c.addr_check);
         add(PipelineStage::WB,  c.reg_write || c.ra_write || c.mem_to_reg);
         return mask;
     }
@@ -166,7 +158,7 @@ namespace risc201 {
         if (c.ir_load) return RowStage::IF;
         if (c.instr_decode || c.opcode_dispatch) return RowStage::ID;
         if (c.halt || c.trap) return RowStage::Terminal;
-        if (c.mem_read || c.mem_write || c.stack_check) return RowStage::MEM;
+        if (c.mem_read || c.mem_write) return RowStage::MEM;
         if (c.reg_write || c.ra_write || c.mem_to_reg) return RowStage::WB;
         if (c.operand_read) return RowStage::OF;
         return RowStage::EX;
@@ -227,9 +219,8 @@ namespace risc201 {
 
         bool saw_alu = false;
         Opcode alu_fn = Opcode::NOP;
-        bool pc_from_target = false, pc_from_mem = false, pc_from_ra = false;
+        bool pc_from_target = false, pc_from_ra = false;
         bool mem_read = false, mem_write = false;
-        bool sp_dec = false, sp_inc = false;
 
         for (int addr : rows) {
             const MicroOp& row = cm[static_cast<size_t>(addr)];
@@ -246,21 +237,17 @@ namespace risc201 {
                 return "flag_update on a row that does not enable the ALU";
             }
             if (c.pc_write) {
-                if (c.pc_src_mem)      pc_from_mem = true;
-                else if (c.pc_src_ra) pc_from_ra = true;
+                if (c.pc_src_ra) pc_from_ra = true;
                 else                  pc_from_target = true;
             }
             mem_read |= c.mem_read;
             mem_write |= c.mem_write;
-            sp_dec |= c.sp_dec;
-            sp_inc |= c.sp_inc;
         }
 
         if (rows.empty())                 return "routine reached no control-memory row";
-        const int pc_sources = (pc_from_target ? 1 : 0) + (pc_from_mem ? 1 : 0) + (pc_from_ra ? 1 : 0);
+        const int pc_sources = (pc_from_target ? 1 : 0) + (pc_from_ra ? 1 : 0);
         if (pc_sources > 1)               return "PC written from more than one source";
         if (mem_read && mem_write)        return "routine both reads and writes memory";
-        if (sp_dec && sp_inc)             return "routine both decrements and increments SP";
         return std::string();
     }
 } // namespace risc201
