@@ -3,7 +3,7 @@
 namespace risc201 {
 
 std::optional<ExceptionCode> StackGuard::checkBounds(uint32_t sp) const {
-    // Check that the stack configuration itself is valid.
+    // Check that the stack configuration is valid.
     if (stack_limit_ > stack_base_) {
         return ExceptionCode::INVALID_MEMORY_ACCESS;
     }
@@ -18,12 +18,10 @@ std::optional<ExceptionCode> StackGuard::checkBounds(uint32_t sp) const {
         return ExceptionCode::INVALID_MEMORY_ACCESS;
     }
 
-    // SP is inside the valid stack range.
     return std::nullopt;
 }
 
 std::optional<ExceptionCode> StackGuard::checkPush(uint32_t current_sp) const {
-    // A full-descending PUSH decreases SP by one word.
     // Check the new SP before changing the actual CPU SP.
     if (current_sp == 0) {
         return ExceptionCode::INVALID_MEMORY_ACCESS;
@@ -40,7 +38,6 @@ std::optional<ExceptionCode> StackGuard::checkPush(uint32_t current_sp) const {
 }
 
 std::optional<ExceptionCode> StackGuard::checkPop(uint32_t current_sp) const {
-    // A full-descending POP increases SP by one word.
     // If SP is already at the stack base, there is nothing to pop.
     if (current_sp >= stack_base_) {
         return ExceptionCode::INVALID_MEMORY_ACCESS;
@@ -51,7 +48,6 @@ std::optional<ExceptionCode> StackGuard::checkPop(uint32_t current_sp) const {
 
 bool StackGuard::isValidAddress(uint32_t address) const {
     // Stack memory uses [stack_limit, stack_base).
-    // stack_base is the first address outside the stack.
     return address >= stack_limit_ &&
            address < stack_base_;
 }
