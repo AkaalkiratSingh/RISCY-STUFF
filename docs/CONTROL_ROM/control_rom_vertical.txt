@@ -96,7 +96,7 @@ addr  routine  cond  next  taken  microword(hex)  micro-op        signals
 0085  DECODE   -     END   -      0x3C01          ID.DISPATCH     instr_decode opcode_dispatch
 
 86 rows x 16 bits = 1376 bits  (horizontal: 86 x 42 = 3612 bits, 62% narrower)
-decoder: 16 micro-ops -> 24 control lines
+decoder: 16 micro-ops -> 18 control lines
 
 COMPLETE INSTRUCTION FLOWS
 

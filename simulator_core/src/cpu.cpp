@@ -204,8 +204,14 @@ namespace risc201 {
             if (c.operand_read && l.decoded) {
                 for (const Latch& older : regs_) {
                     if (older.valid && older.seq < l.seq && dependsOn(l, older)) {
-                        stalled = true;
-                        break;
+                        const StageControls& producer = controls_[static_cast<uint8_t>(older.instr.opcode)];
+                        const bool register_ready = !producer.reg_write ||
+                            (producer.mem_to_reg ? older.mem_done : older.alu_done);
+                        const bool ra_ready = !producer.ra_write || older.ra_done;
+                        if (!forwarding_ || !register_ready || !ra_ready) {
+                            stalled = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -247,6 +253,29 @@ namespace risc201 {
                 l.rs2_val = state_.registers[static_cast<size_t>(l.instr.rs2)];
                 l.rd_val = state_.registers[static_cast<size_t>(l.instr.rd)];
                 l.ra_val = state_.registers[static_cast<size_t>(Register::R14)];
+                if (forwarding_) {
+                    const auto readForwarded = [&](Register reg, int32_t value) {
+                        uint64_t newest = 0;
+                        for (const Latch& older : regs_) {
+                            if (!older.valid || !older.decoded || older.seq >= l.seq || older.seq <= newest) continue;
+                            const StageControls& producer = controls_[static_cast<uint8_t>(older.instr.opcode)];
+                            if (producer.reg_write && older.instr.rd == reg &&
+                                (producer.mem_to_reg ? older.mem_done : older.alu_done)) {
+                                value = producer.mem_to_reg ? older.mem_data : older.alu_result;
+                                newest = older.seq;
+                            }
+                            if (producer.ra_write && reg == Register::R14 && older.ra_done) {
+                                value = static_cast<int32_t>(older.pc + 1);
+                                newest = older.seq;
+                            }
+                        }
+                        return value;
+                    };
+                    l.rs1_val = readForwarded(l.instr.rs1, l.rs1_val);
+                    l.rs2_val = readForwarded(l.instr.rs2, l.rs2_val);
+                    l.rd_val = readForwarded(l.instr.rd, l.rd_val);
+                    l.ra_val = readForwarded(Register::R14, l.ra_val);
+                }
             }
             if (error == ExceptionCode::NONE && c.alu_enable) {
                 const int32_t rhs = (c.alu_src_imm || l.instr.I) ? l.instr.imm : l.rs2_val;

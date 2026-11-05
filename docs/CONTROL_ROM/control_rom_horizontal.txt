@@ -12,92 +12,92 @@ Address 255 denotes END.
 
 PHYSICAL ROM
 addr  routine  cond  next  taken  microword(hex)  signals
-0000  ILLEGAL  -     END   -      0x0007FFFC0200     halt trap
-0001  ADD      -     2     -      0x0103FC080000     operand_read
-0002           -     3     -      0x0003FC0C0901     alu_enable alu_op=ADD flag_update
-0003           -     END   -      0x0003FFFC0008     reg_write
-0004  SUB      -     5     -      0x0103FC140000     operand_read
-0005           -     6     -      0x0003FC180D01     alu_enable alu_op=SUB flag_update
-0006           -     END   -      0x0003FFFC0008     reg_write
-0007  AND      -     8     -      0x0103FC200000     operand_read
-0008           -     9     -      0x0003FC241D01     alu_enable alu_op=AND flag_update
-0009           -     END   -      0x0003FFFC0008     reg_write
-0010  OR       -     11    -      0x0103FC2C0000     operand_read
-0011           -     12    -      0x0003FC302101     alu_enable alu_op=OR flag_update
-0012           -     END   -      0x0003FFFC0008     reg_write
-0013  XOR      -     14    -      0x0103FC380000     operand_read
-0014           -     15    -      0x0003FC3C2501     alu_enable alu_op=XOR flag_update
-0015           -     END   -      0x0003FFFC0008     reg_write
-0016  SHL      -     17    -      0x0103FC440000     operand_read
-0017           -     18    -      0x0003FC482D01     alu_enable alu_op=SHL flag_update
-0018           -     END   -      0x0003FFFC0008     reg_write
-0019  SHR      -     20    -      0x0103FC500000     operand_read
-0020           -     21    -      0x0003FC543101     alu_enable alu_op=SHR flag_update
-0021           -     END   -      0x0003FFFC0008     reg_write
-0022  LOAD     -     23    -      0x0103FC5C0000     operand_read
-0023           -     24    -      0x0003FC600841     alu_enable alu_op=ADD alu_src_imm
-0024           -     25    -      0x000BFC640002     mem_read addr_check
-0025           -     END   -      0x0003FFFC0088     reg_write mem_to_reg
-0026  STORE    -     27    -      0x0103FC6C0000     operand_read
-0027           -     28    -      0x0003FC700841     alu_enable alu_op=ADD alu_src_imm
-0028           -     END   -      0x000BFFFC0004     mem_write addr_check
-0029  JMP      -     END   -      0x0003FFFC0010     pc_write
-0030  HALT     -     END   -      0x0003FFFC0200     halt
-0031  NOP      -     END   -      0x0003FFFC0000     (idle)
-0032  BEQ      Z     33    34     0x000088848000     (idle)
-0033           -     END   -      0x0003FFFC0000     (idle)
-0034           -     END   -      0x0003FFFC0010     pc_write
-0035  MOV      -     36    -      0x0103FC900000     operand_read
-0036           -     37    -      0x0003FC940401     alu_enable alu_op=MOV
-0037           -     END   -      0x0003FFFC0008     reg_write
-0038  CALL     -     39    -      0x0103FC9C0000     operand_read
-0039           -     40    -      0x0003FCA00010     pc_write
-0040           -     END   -      0x0013FFFC0000     ra_write
-0041  RET      -     42    -      0x0103FCA80000     operand_read
-0042           -     END   -      0x0023FFFC0010     pc_write pc_src_ra
-0043  NOT      -     44    -      0x0103FCB00000     operand_read
-0044           -     45    -      0x0003FCB42901     alu_enable alu_op=NOT flag_update
-0045           -     END   -      0x0003FFFC0008     reg_write
-0046  SAR      -     47    -      0x0103FCBC0000     operand_read
-0047           -     48    -      0x0003FCC03501     alu_enable alu_op=SAR flag_update
-0048           -     END   -      0x0003FFFC0008     reg_write
-0049  MUL      -     50    -      0x0103FCC80000     operand_read
-0050           -     51    -      0x0003FCCC1101     alu_enable alu_op=MUL flag_update
-0051           -     END   -      0x0003FFFC0008     reg_write
-0052  CMP      -     53    -      0x0103FCD40000     operand_read
-0053           -     END   -      0x0003FFFC4101     alu_enable alu_op=CMP flag_update
-0054  TRAP     -     END   -      0x0007FFFC0200     halt trap
-0055  DIV      -     56    -      0x0103FCE00000     operand_read
-0056           -     57    -      0x0003FCE41501     alu_enable alu_op=DIV flag_update
-0057           -     END   -      0x0003FFFC0008     reg_write
-0058  REM      -     59    -      0x0103FCEC0000     operand_read
-0059           -     60    -      0x0003FCF01901     alu_enable alu_op=REM flag_update
-0060           -     END   -      0x0003FFFC0008     reg_write
-0061  BGT      GT    62    63     0x0000FCFB0000     (idle)
-0062           -     END   -      0x0003FFFC0000     (idle)
-0063           -     END   -      0x0003FFFC0010     pc_write
-0064  FADD     -     65    -      0x0103FD040000     operand_read
-0065           -     66    -      0x0003FD085801     alu_enable alu_op=FADD
-0066           -     END   -      0x0003FFFC0008     reg_write
-0067  FSUB     -     68    -      0x0103FD100000     operand_read
-0068           -     69    -      0x0003FD145C01     alu_enable alu_op=FSUB
-0069           -     END   -      0x0003FFFC0008     reg_write
-0070  FMUL     -     71    -      0x0103FD1C0000     operand_read
-0071           -     72    -      0x0003FD206001     alu_enable alu_op=FMUL
-0072           -     END   -      0x0003FFFC0008     reg_write
-0073  FDIV     -     74    -      0x0103FD280000     operand_read
-0074           -     75    -      0x0003FD2C6401     alu_enable alu_op=FDIV
-0075           -     END   -      0x0003FFFC0008     reg_write
-0076  FCMP     -     77    -      0x0103FD340000     operand_read
-0077           -     END   -      0x0003FFFC6901     alu_enable alu_op=FCMP flag_update
-0078  FTOI     -     79    -      0x0103FD3C0000     operand_read
-0079           -     80    -      0x0003FD406C01     alu_enable alu_op=FTOI
-0080           -     END   -      0x0003FFFC0008     reg_write
-0081  ITOF     -     82    -      0x0103FD480000     operand_read
-0082           -     83    -      0x0003FD4C7001     alu_enable alu_op=ITOF
-0083           -     END   -      0x0003FFFC0008     reg_write
-0084  FETCH    -     85    -      0x0043FD540020     ir_load pc_inc
-0085  DECODE   -     END   -      0x0283FFFC0000     instr_decode opcode_dispatch
+0000  ILLEGAL  -     END   -      0x007FFFC0200      halt trap
+0001  ADD      -     2     -      0x103FC080000      operand_read
+0002           -     3     -      0x003FC0C0901      alu_enable alu_op=ADD flag_update
+0003           -     END   -      0x003FFFC0008      reg_write
+0004  SUB      -     5     -      0x103FC140000      operand_read
+0005           -     6     -      0x003FC180D01      alu_enable alu_op=SUB flag_update
+0006           -     END   -      0x003FFFC0008      reg_write
+0007  AND      -     8     -      0x103FC200000      operand_read
+0008           -     9     -      0x003FC241D01      alu_enable alu_op=AND flag_update
+0009           -     END   -      0x003FFFC0008      reg_write
+0010  OR       -     11    -      0x103FC2C0000      operand_read
+0011           -     12    -      0x003FC302101      alu_enable alu_op=OR flag_update
+0012           -     END   -      0x003FFFC0008      reg_write
+0013  XOR      -     14    -      0x103FC380000      operand_read
+0014           -     15    -      0x003FC3C2501      alu_enable alu_op=XOR flag_update
+0015           -     END   -      0x003FFFC0008      reg_write
+0016  SHL      -     17    -      0x103FC440000      operand_read
+0017           -     18    -      0x003FC482D01      alu_enable alu_op=SHL flag_update
+0018           -     END   -      0x003FFFC0008      reg_write
+0019  SHR      -     20    -      0x103FC500000      operand_read
+0020           -     21    -      0x003FC543101      alu_enable alu_op=SHR flag_update
+0021           -     END   -      0x003FFFC0008      reg_write
+0022  LOAD     -     23    -      0x103FC5C0000      operand_read
+0023           -     24    -      0x003FC600841      alu_enable alu_op=ADD alu_src_imm
+0024           -     25    -      0x00BFC640002      mem_read addr_check
+0025           -     END   -      0x003FFFC0088      reg_write mem_to_reg
+0026  STORE    -     27    -      0x103FC6C0000      operand_read
+0027           -     28    -      0x003FC700841      alu_enable alu_op=ADD alu_src_imm
+0028           -     END   -      0x00BFFFC0004      mem_write addr_check
+0029  JMP      -     END   -      0x003FFFC0010      pc_write
+0030  HALT     -     END   -      0x003FFFC0200      halt
+0031  NOP      -     END   -      0x003FFFC0000      (idle)
+0032  BEQ      Z     33    34     0x00088848000      (idle)
+0033           -     END   -      0x003FFFC0000      (idle)
+0034           -     END   -      0x003FFFC0010      pc_write
+0035  MOV      -     36    -      0x103FC900000      operand_read
+0036           -     37    -      0x003FC940401      alu_enable alu_op=MOV
+0037           -     END   -      0x003FFFC0008      reg_write
+0038  CALL     -     39    -      0x103FC9C0000      operand_read
+0039           -     40    -      0x003FCA00010      pc_write
+0040           -     END   -      0x013FFFC0000      ra_write
+0041  RET      -     42    -      0x103FCA80000      operand_read
+0042           -     END   -      0x023FFFC0010      pc_write pc_src_ra
+0043  NOT      -     44    -      0x103FCB00000      operand_read
+0044           -     45    -      0x003FCB42901      alu_enable alu_op=NOT flag_update
+0045           -     END   -      0x003FFFC0008      reg_write
+0046  SAR      -     47    -      0x103FCBC0000      operand_read
+0047           -     48    -      0x003FCC03501      alu_enable alu_op=SAR flag_update
+0048           -     END   -      0x003FFFC0008      reg_write
+0049  MUL      -     50    -      0x103FCC80000      operand_read
+0050           -     51    -      0x003FCCC1101      alu_enable alu_op=MUL flag_update
+0051           -     END   -      0x003FFFC0008      reg_write
+0052  CMP      -     53    -      0x103FCD40000      operand_read
+0053           -     END   -      0x003FFFC4101      alu_enable alu_op=CMP flag_update
+0054  TRAP     -     END   -      0x007FFFC0200      halt trap
+0055  DIV      -     56    -      0x103FCE00000      operand_read
+0056           -     57    -      0x003FCE41501      alu_enable alu_op=DIV flag_update
+0057           -     END   -      0x003FFFC0008      reg_write
+0058  REM      -     59    -      0x103FCEC0000      operand_read
+0059           -     60    -      0x003FCF01901      alu_enable alu_op=REM flag_update
+0060           -     END   -      0x003FFFC0008      reg_write
+0061  BGT      GT    62    63     0x000FCFB0000      (idle)
+0062           -     END   -      0x003FFFC0000      (idle)
+0063           -     END   -      0x003FFFC0010      pc_write
+0064  FADD     -     65    -      0x103FD040000      operand_read
+0065           -     66    -      0x003FD085801      alu_enable alu_op=FADD
+0066           -     END   -      0x003FFFC0008      reg_write
+0067  FSUB     -     68    -      0x103FD100000      operand_read
+0068           -     69    -      0x003FD145C01      alu_enable alu_op=FSUB
+0069           -     END   -      0x003FFFC0008      reg_write
+0070  FMUL     -     71    -      0x103FD1C0000      operand_read
+0071           -     72    -      0x003FD206001      alu_enable alu_op=FMUL
+0072           -     END   -      0x003FFFC0008      reg_write
+0073  FDIV     -     74    -      0x103FD280000      operand_read
+0074           -     75    -      0x003FD2C6401      alu_enable alu_op=FDIV
+0075           -     END   -      0x003FFFC0008      reg_write
+0076  FCMP     -     77    -      0x103FD340000      operand_read
+0077           -     END   -      0x003FFFC6901      alu_enable alu_op=FCMP flag_update
+0078  FTOI     -     79    -      0x103FD3C0000      operand_read
+0079           -     80    -      0x003FD406C01      alu_enable alu_op=FTOI
+0080           -     END   -      0x003FFFC0008      reg_write
+0081  ITOF     -     82    -      0x103FD480000      operand_read
+0082           -     83    -      0x003FD4C7001      alu_enable alu_op=ITOF
+0083           -     END   -      0x003FFFC0008      reg_write
+0084  FETCH    -     85    -      0x043FD540020      ir_load pc_inc
+0085  DECODE   -     END   -      0x283FFFC0000      instr_decode opcode_dispatch
 
 COMPLETE INSTRUCTION FLOWS
 

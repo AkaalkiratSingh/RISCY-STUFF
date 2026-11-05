@@ -221,10 +221,13 @@ int main() {
         const Cpu on  = runOn(v, {"ADD R1, R0, 5", "ADD R2, R1, 5", "HALT"}, {}, kDefaultMemoryWords, true);
         const Cpu off = runOn(v, {"ADD R1, R0, 5", "ADD R2, R1, 5", "HALT"}, {}, kDefaultMemoryWords, false);
 
-        CHECK_EQ(on.cycles(), off.cycles());
+        CHECK(on.cycles() <= off.cycles());
+        if (v == PipelineVariant::SixStage) CHECK(on.cycles() < off.cycles());
         CHECK_EQ(on.trace().rows, 13u);
         CHECK_EQ(on.state().registers[static_cast<size_t>(Register::R2)], 10);
         CHECK_EQ(off.state().registers[static_cast<size_t>(Register::R2)], 10);
+        const Cpu newest = runOn(v, {"ADD R1, R0, 1", "ADD R1, R0, 2", "ADD R2, R1, 0", "HALT"}, {}, kDefaultMemoryWords, true);
+        CHECK_EQ(newest.state().registers[static_cast<size_t>(Register::R2)], 2);
     }
 
     section("Pipeline: a load-use dependency costs one bubble even with forwarding");
@@ -251,7 +254,8 @@ int main() {
         CHECK_EQ(on.memory()[4], 7);
         CHECK_EQ(off.memory()[4], 7);
         CHECK_EQ(on.state().registers[static_cast<size_t>(Register::R3)], 7);
-        CHECK_EQ(on.cycles(), off.cycles());
+        CHECK(on.cycles() <= off.cycles());
+        if (v == PipelineVariant::SixStage) CHECK(on.cycles() < off.cycles());
         CHECK(on.trace().rows >= 18u);
     }
 
