@@ -24,6 +24,8 @@ namespace risc201 {
             case Opcode::FMUL:  return "FMUL";
             case Opcode::FDIV:  return "FDIV";
             case Opcode::FCMP:  return "FCMP";
+            case Opcode::FTOI:  return "FTOI";
+            case Opcode::ITOF:  return "ITOF";
             case Opcode::OR:    return "OR";
             case Opcode::XOR:   return "XOR";
             case Opcode::SHL:   return "SHL";
@@ -62,6 +64,8 @@ namespace risc201 {
                 return name + " " + std::to_string(in.imm);
             case Opcode::MOV:
             case Opcode::NOT:
+            case Opcode::FTOI:
+            case Opcode::ITOF:
                 return name + " " + regName(rd) + ", " +
                        (in.I ? std::to_string(in.imm) : regName(rs2));
             case Opcode::CMP:

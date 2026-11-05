@@ -36,7 +36,7 @@ namespace risc201 {
                 << "RET's operand_read captures R14 in OF; pc_src_ra selects that value in EX.\n"
                 << "PC and data addresses are word indices; encoded branch offsets are bytes relative to PC+1.\n"
                 << "The 4-stage front end merges fetch, decode and operand read into FETCH; the 6-stage front end separates them.\n"
-                << "ROM rows describe control flow, not additional pipeline clocks.\n"
+                << "Each in-flight instruction executes at most one ROM row per clock.\n"
                 << "Conditional rows list both successors. Idle END on a not-taken branch keeps the incremented PC.\n"
                 << "Faults suppress the checking row's signals and redirect to TRAP at " << cu.trapEntry() << ".\n"
                 << "Unknown opcodes dispatch to ILLEGAL at " << cu.routineEntry(static_cast<Opcode>(0xFF)) << ".\n\n";

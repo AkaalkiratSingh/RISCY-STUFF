@@ -5,6 +5,7 @@
 #include "utils/utils.h"
 
 #include <fstream>
+#include <sstream>
 
 namespace risc201 {
 
@@ -63,6 +64,15 @@ AssemblyResult assembleLines(const std::vector<std::string>& lines) {
         }
     }
     return result;
+}
+
+std::string formatAssemblyErrors(const std::vector<AssemblyError>& errors) {
+    std::ostringstream out;
+    out << "Assembly failed with " << errors.size() << " error(s):";
+    for (const auto& error : errors) {
+        out << "\nLine " << error.line_number << ": " << error.message;
+    }
+    return out.str();
 }
 
 ProgramFile readProgramFile(const std::string& raw_path) {

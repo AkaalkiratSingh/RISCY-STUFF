@@ -24,8 +24,8 @@ int main() {
                     {imm(Opcode::MOV, 1, 0, 7), imm(Opcode::DIV, 2, 1, 0), imm(Opcode::MOV, 3, 0, 99)},
                     {imm(Opcode::LOAD, 2, 0, 32), op(Opcode::HALT)},
                     {imm(Opcode::STORE, 2, 0, -1), op(Opcode::HALT)},
-                    {0xe0000000u, op(Opcode::HALT)},
-                    {op(Opcode::JMP) | 4, 0xe0000000u, op(Opcode::HALT)},
+                    {0xe8000000u, op(Opcode::HALT)},
+                    {op(Opcode::JMP) | 4, 0xe8000000u, op(Opcode::HALT)},
                     {imm(Opcode::MOV, 1, 0, 7)}
                 };
                 for (const auto& program : programs) {
@@ -67,7 +67,7 @@ int main() {
                         CHECK(row.packed == (encoding == MicrocodeEncoding::Horizontal
                             ? ControlUnit::packHorizontal(rom) : packVertical(rom, row.micro_pc)));
                     }
-                    if (program[0] == 0xe0000000u) {
+                    if (program[0] == 0xe8000000u) {
                         CHECK(traced.state().pending_exception == ExceptionCode::ILLEGAL_INSTRUCTION);
                         CHECK(traced.state().fault_info->pc == 0);
                         CHECK(traced.retired() == 0);

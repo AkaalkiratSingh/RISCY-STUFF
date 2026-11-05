@@ -48,6 +48,8 @@ void testEntryAddresses() {
     CHECK(cu.routineEntry(Opcode::FMUL)  == 70);
     CHECK(cu.routineEntry(Opcode::FDIV)  == 73);
     CHECK(cu.routineEntry(Opcode::FCMP)  == 76);
+    CHECK(cu.routineEntry(Opcode::FTOI)  == 78);
+    CHECK(cu.routineEntry(Opcode::ITOF)  == 81);
     CHECK(cu.routineEntry(static_cast<Opcode>(0x55)) == 0);   // unknown -> illegal row
 }
 
@@ -58,6 +60,7 @@ void testEveryOpcodeHasARoutine() {
         Opcode::RET, Opcode::NOT, Opcode::SAR, Opcode::CMP, Opcode::MOV,
         Opcode::MUL, Opcode::DIV, Opcode::REM, Opcode::BGT,
         Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV, Opcode::FCMP,
+        Opcode::FTOI, Opcode::ITOF,
         Opcode::HALT };
     for (Opcode op : all) CHECK(cu.routineEntry(op) != 0);   // nothing falls to the illegal row
 }
@@ -85,7 +88,8 @@ void testAluOpsCarryTheirOwnFunction() {
 }
 
 void testFloatRoutines() {
-    for (Opcode op : {Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV}) {
+    for (Opcode op : {Opcode::FADD, Opcode::FSUB, Opcode::FMUL, Opcode::FDIV,
+                      Opcode::FTOI, Opcode::ITOF}) {
         auto r = runAll(op);
         CHECK(r.size() == 3 && r[0].operand_read);
         CHECK(r[1].alu_enable && r[1].alu_op == op && !r[1].flag_update);
@@ -239,7 +243,7 @@ void testBackToBackAndIllegal() {
 
 void testControlMemoryWellFormed() {
     ControlUnit cu; const auto& cm = cu.controlMemory();
-    CHECK(cm.size() == 80);
+    CHECK(cm.size() == 86);
     CHECK(cm.size() <= kMaxControlMemoryRows);
     for (const MicroOp& r : cm) {
         CHECK(r.next == kMicroEnd || (r.next >= 0 && r.next < static_cast<int32_t>(cm.size())));

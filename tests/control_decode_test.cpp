@@ -169,7 +169,8 @@ int main() {
         for (auto op : {Opcode::JMP, Opcode::BEQ, Opcode::BGT, Opcode::HALT, Opcode::NOP}) {
             CHECK(!controlFor(cu, op).operand_read);
         }
-        for (auto op : {Opcode::ADD, Opcode::LOAD, Opcode::STORE, Opcode::RET}) {
+        for (auto op : {Opcode::ADD, Opcode::LOAD, Opcode::STORE, Opcode::RET,
+                        Opcode::FTOI, Opcode::ITOF}) {
             CHECK(controlFor(cu, op).operand_read);
         }
     }
@@ -305,6 +306,11 @@ int main() {
             CHECK(sc.alu_op == (op == Opcode::MOV ? Opcode::MOV : Opcode::ADD));
         }
         CHECK(controlFor(cu, Opcode::LOAD).mem_read && controlFor(cu, Opcode::LOAD).mem_to_reg);
+        for (Opcode op : {Opcode::FTOI, Opcode::ITOF}) {
+            const StageControls sc = controlFor(cu, op);
+            CHECK(sc.operand_read && sc.alu_enable && sc.alu_op == op);
+            CHECK(sc.reg_write && !sc.flag_update);
+        }
         CHECK(controlFor(cu, Opcode::STORE).mem_write && !controlFor(cu, Opcode::STORE).reg_write);
 
         // R-type arithmetic does latch FLAGS.

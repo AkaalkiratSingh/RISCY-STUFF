@@ -25,6 +25,7 @@ struct ProgramFile {
 };
 
 AssemblyResult assembleLines(const std::vector<std::string>& lines);
+std::string formatAssemblyErrors(const std::vector<AssemblyError>& errors);
 ProgramFile readProgramFile(const std::string& path);
 
 } // namespace risc201

@@ -35,6 +35,9 @@ static void check(const Alu::Result& r, int32_t value,
 int main() {
     Alu alu;
 
+    assert(static_cast<uint32_t>(alu.execute(Opcode::ITOF, 0, -3).value) == 0xC0400000u);
+    assert(alu.execute(Opcode::FTOI, 0, static_cast<int32_t>(0x40E00000u)).value == 7);
+
     // ==========================================
     // 1. INTEGER TESTS
     // ==========================================

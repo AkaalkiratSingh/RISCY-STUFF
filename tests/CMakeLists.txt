@@ -67,6 +67,10 @@ add_executable(micro_trace_test micro_trace_test.cpp)
 target_link_libraries(micro_trace_test PRIVATE simulator_core_lib)
 add_test(NAME MicroTraceTest COMMAND micro_trace_test)
 
+add_executable(tui_program_loader_test tui_program_loader_test.cpp)
+target_link_libraries(tui_program_loader_test PRIVATE tui_lib)
+add_test(NAME TuiProgramLoaderTest COMMAND tui_program_loader_test)
+
 add_test(NAME MicroCliTest COMMAND ${CMAKE_COMMAND}
     -DSIM=$<TARGET_FILE:risc201-sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/micro_cli_test.cmake)
 

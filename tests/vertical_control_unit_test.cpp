@@ -186,7 +186,7 @@ int main() {
     CHECK_EQ(vrom[fetch_row], 0x5000);
     CHECK_EQ(vrom[decode_row], 0x5401);
     CHECK_EQ(ControlUnit::packHorizontal(hcm[fetch_row]),
-        (1ull << 44) | (1ull << 5) | (79ull << 24) | (0xFFull << 32));
+        (1ull << 44) | (1ull << 5) | (85ull << 24) | (0xFFull << 32));
     CHECK_EQ(ControlUnit::packHorizontal(hcm[decode_row]),
         (1ull << 45) | (1ull << 47) | (0xFFull << 24) | (0xFFull << 32));
     CHECK_EQ(word(Opcode::ADD, 0), 0x0400);        
@@ -212,6 +212,8 @@ int main() {
     CHECK_EQ(word(Opcode::FADD, 1), 0x0EC0);        // ALU.NF, func FADD(0x16): flags untouched
     CHECK_EQ(word(Opcode::FADD, 2), 0x1C01);        // WB, END
     CHECK_EQ(word(Opcode::FCMP, 1), 0x0B41);        // ALU, func FCMP(0x1A), END: no writeback
+    CHECK_EQ(word(Opcode::FTOI, 1), 0x0F60);
+    CHECK_EQ(word(Opcode::ITOF, 1), 0x0F80);
     CHECK_EQ(packVertical(MicroOp{}, 0), 0x0001);   
     {
         MicroOp idle;
@@ -311,7 +313,8 @@ int main() {
     {
         const int illegal = hcu.routineEntry(static_cast<Opcode>(0xFF));
         for (Opcode op : {Opcode::DIV, Opcode::REM, Opcode::BGT, Opcode::FADD, Opcode::FSUB,
-                          Opcode::FMUL, Opcode::FDIV, Opcode::FCMP}) {
+                          Opcode::FMUL, Opcode::FDIV, Opcode::FCMP,
+                          Opcode::FTOI, Opcode::ITOF}) {
             CHECK(hcu.routineEntry(op) != illegal);          // the horizontal ROM has the routine
             CHECK_EQ(vcu.routineEntry(op), hcu.routineEntry(op));
         }
@@ -544,13 +547,19 @@ int main() {
 
             Preprocessor preprocessor;
             PreprocessResult expanded = preprocessor.expand(lines);
-            CHECK(expanded.errors.empty());
-
             Assembler as;
-            CHECK(as.assemblePass1(expanded.lines));
+            if (!expanded.errors.empty() || !as.assemblePass1(expanded.lines)) {
+                std::cerr << "  FAIL  " << path.filename().string() << ": source does not assemble\n";
+                ++failures;
+                continue;
+            }
             std::vector<uint32_t> words;
             for (const auto& instr : as.assemblePass2()) words.push_back(as.encodeInstruction(instr));
-            CHECK(!words.empty());
+            if (words.empty()) {
+                std::cerr << "  FAIL  " << path.filename().string() << ": no encoded instructions\n";
+                ++failures;
+                continue;
+            }
 
             int bad = 0;
             for (PipelineVariant pv : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {

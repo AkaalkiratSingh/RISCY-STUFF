@@ -238,6 +238,9 @@ namespace risc201 {
         }
         // FCMP rs1, rs2: sets zero/equal/greaterThan only, no writeback (like CMP), so BGT/BEQ can follow.
         appendRoutine(Opcode::FCMP, { operandRow(), aluRow(Opcode::FCMP) });
+        for (Opcode op : { Opcode::FTOI, Opcode::ITOF }) {
+            appendRoutine(op, { operandRow(), aluRowKeepFlags(op), writebackRow() });
+        }
 
         MicroOp fetch, decode;
         fetch.ctl.ir_load = true;

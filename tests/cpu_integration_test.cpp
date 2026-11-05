@@ -80,6 +80,28 @@ int32_t reg(const Cpu& cpu, Register r) {
 } // namespace
 
 int main() {
+    section("Cpu: FTOI and ITOF execute through both ROM encodings");
+    {
+        const auto words = assembleWords({
+            "ADD R1, R0, 7", "ITOF R2, R1", "FTOI R3, R2",
+            "ITOF R4, -3", "FTOI R5, R4", "HALT",
+        });
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            for (MicrocodeEncoding encoding : {MicrocodeEncoding::Horizontal,
+                                               MicrocodeEncoding::Vertical}) {
+                Cpu cpu(variant, kDefaultMemoryWords, encoding);
+                cpu.loadWords(words);
+                cpu.run();
+                CHECK(cpu.state().halted && !cpu.state().pending_exception);
+                CHECK_EQ(reg(cpu, Register::R2), static_cast<int32_t>(0x40E00000u));
+                CHECK_EQ(reg(cpu, Register::R3), 7);
+                CHECK_EQ(reg(cpu, Register::R4), static_cast<int32_t>(0xC0400000u));
+                CHECK_EQ(reg(cpu, Register::R5), -3);
+                CHECK(!cpu.state().flags.zero && !cpu.state().flags.negative);
+            }
+        }
+    }
+
     section("Cpu: LOAD seeds registers, ADD sums them, HALT stops the machine");
     {
         const Cpu cpu = runProgram({
