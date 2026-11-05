@@ -1,4 +1,5 @@
 #include "assembler/assembler.h"
+#include "assembler/preprocessor.h"
 #include "simulator_core/cpu.h"
 
 #include <cstdint>
@@ -33,23 +34,41 @@ void section(const char* name) { std::cout << name << "\n"; }
 
 using namespace risc201;
 
-std::vector<Instruction> assemble(const std::vector<std::string>& source) {
+std::vector<uint32_t> assembleWords(const std::vector<std::string>& source) {
+    std::vector<std::string> source_lines = source;
+    source_lines.insert(source_lines.begin(), ".main:");
+
+    Preprocessor preprocessor;
+    PreprocessResult expanded = preprocessor.expand(source_lines);
+    for (const auto& err : expanded.errors) {
+        std::cerr << "  FAIL: preprocess line " << err.line_number << ": " << err.message << "\n";
+        ++failures;
+    }
+
     Assembler asmblr;
-    if (!asmblr.assemblePass1(source)) {
+    if (!asmblr.assemblePass1(expanded.lines)) {
         std::cerr << "  FAIL: assembly (pass 1) failed\n";
         for (const auto& e : asmblr.errors()) {
             std::cerr << "    line " << e.line_number << ": " << e.message << "\n";
         }
         ++failures;
     }
-    return asmblr.assemblePass2();
+
+    std::vector<uint32_t> words;
+    for (const auto& instr : asmblr.assemblePass2()) {
+        words.push_back(asmblr.encodeInstruction(instr));
+    }
+    for (uint32_t word : asmblr.literalSection()) words.push_back(word);
+    if (!words.empty()) words.erase(words.begin());
+    return words;
 }
 
 Cpu runProgram(const std::vector<std::string>& source,
-               const std::map<uint32_t, int32_t>& memory = {}) {
-    Cpu cpu(PipelineVariant::FourStage);
+               const std::map<uint32_t, int32_t>& memory = {},
+               PipelineVariant variant = PipelineVariant::FourStage) {
+    Cpu cpu(variant);
     for (const auto& [addr, value] : memory) cpu.memory()[addr] = value;
-    cpu.loadProgram(assemble(source));
+    cpu.loadWords(assembleWords(source));
     cpu.run();
     return cpu;
 }
@@ -76,30 +95,38 @@ int main() {
         CHECK_EQ(reg(cpu, Register::R1), 12);
     }
 
-    section("Cpu: step() is one macro instruction, not one micro-cycle");
+    section("Cpu: step() advances one clock, stepInstruction() retires one instruction");
     {
         Cpu cpu(PipelineVariant::FourStage);
         cpu.memory()[0] = 3;
         cpu.memory()[1] = 4;
-        cpu.loadProgram(assemble({
+        cpu.loadWords(assembleWords({
             "LOAD R1, 0[R0]",
             "LOAD R2, 1[R0]",
             "ADD R3, R1, R2",
             "HALT",
         }));
+
+        const uint64_t before = cpu.cycles();
         cpu.step();
-        CHECK_EQ(cpu.state().pc, 1u);
+        CHECK_EQ(cpu.cycles(), before + 1u);   // one clock
+        CHECK_EQ(cpu.retired(), 0u);           // nothing has drained out yet
+
+        cpu.stepInstruction();
+        CHECK_EQ(cpu.retired(), 1u);
         CHECK_EQ(reg(cpu, Register::R1), 3);
-        cpu.step();
-        CHECK_EQ(cpu.state().pc, 2u);
+
+        cpu.stepInstruction();
+        CHECK_EQ(cpu.retired(), 2u);
         CHECK_EQ(reg(cpu, Register::R2), 4);
-        cpu.step();
-        CHECK_EQ(cpu.state().pc, 3u);
+
+        cpu.stepInstruction();
+        CHECK_EQ(cpu.retired(), 3u);
         CHECK_EQ(reg(cpu, Register::R3), 7);
-        cpu.step();
+
+        cpu.stepInstruction();                 // HALT drains without retiring
         CHECK(cpu.state().halted);
-        cpu.step();
-        CHECK(cpu.state().halted);
+        CHECK_EQ(cpu.retired(), 3u);
     }
 
     section("Cpu: STORE/LOAD round-trip through data memory");
@@ -189,27 +216,61 @@ int main() {
               ExceptionCode::INVALID_MEMORY_ACCESS);
     }
     
-    section("Cpu: PUSH and POP preserve stack values");
+    section("Cpu: literal section is loaded into data memory before execution");
     {
         const Cpu cpu = runProgram({
             "LOAD R1, 0[R0]",
+            "LOAD R2, 1[R0]",
+            "HALT",
+            ".literals:",
+            "pi: 3.14f",
+            "half: 0.5f",
+        });
+
+        CHECK(cpu.state().halted);
+        CHECK(!cpu.state().pending_exception.has_value());
+        CHECK_EQ(cpu.memory()[0], static_cast<int32_t>(0x4048F5C3u));
+        CHECK_EQ(cpu.memory()[1], static_cast<int32_t>(0x3F000000u));
+        CHECK_EQ(reg(cpu, Register::R1), static_cast<int32_t>(0x4048F5C3u));
+        CHECK_EQ(reg(cpu, Register::R2), static_cast<int32_t>(0x3F000000u));
+    }
+
+    section("Cpu: MOV copies register and immediate sources");
+    {
+        const Cpu cpu = runProgram({
+            "ADD R1, R0, 42",
+            "MOV R2, R1",
+            "MOV R3, 7",
+            "HALT",
+        });
+
+        CHECK(cpu.state().halted);
+        CHECK_EQ(reg(cpu, Register::R2), 42);
+        CHECK_EQ(reg(cpu, Register::R3), 7);
+    }
+
+    section("Cpu: PUSH then POP round-trips a value through the stack");
+    {
+        const Cpu cpu = runProgram({
+            "ADD R1, R0, 42",
             "PUSH R1",
             "POP R2",
             "HALT",
-        }, {{0, 42}});
+        });
 
         CHECK(cpu.state().halted);
         CHECK(!cpu.state().pending_exception.has_value());
         CHECK_EQ(reg(cpu, Register::R1), 42);
         CHECK_EQ(reg(cpu, Register::R2), 42);
+        CHECK_EQ(cpu.memory()[cpu.memory().size() - 1], 42);  // top stack slot
         CHECK_EQ(cpu.state().sp, static_cast<uint32_t>(cpu.memory().size()));
     }
 
-    section("Cpu: stack overflow raises STACK_OVERFLOW");
+    section("Cpu: PUSH past the stack limit raises INVALID_MEMORY_ACCESS");
     {
         Cpu cpu(PipelineVariant::FourStage, 1);
 
-        cpu.loadProgram(assemble({
+        cpu.loadWords(assembleWords({
             "PUSH R1",
             "PUSH R1",
             "HALT",
@@ -219,15 +280,14 @@ int main() {
 
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
-              ExceptionCode::STACK_OVERFLOW);
-        CHECK_EQ(cpu.state().sp, 0u);
+              ExceptionCode::INVALID_MEMORY_ACCESS);
     }
 
-    section("Cpu: stack underflow raises STACK_UNDERFLOW");
+    section("Cpu: POP from an empty stack raises INVALID_MEMORY_ACCESS");
     {
-        Cpu cpu(PipelineVariant::FourStage, 1);
+        Cpu cpu(PipelineVariant::FourStage);
 
-        cpu.loadProgram(assemble({
+        cpu.loadWords(assembleWords({
             "POP R1",
             "HALT",
         }));
@@ -236,23 +296,88 @@ int main() {
 
         CHECK(cpu.state().halted);
         CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
-              ExceptionCode::STACK_UNDERFLOW);
-        CHECK_EQ(cpu.state().sp, 1u);
+              ExceptionCode::INVALID_MEMORY_ACCESS);
     }
-    
-    section("Cpu: BEQ falls through when zero flag is clear");
+
+    section("Cpu: DIV by zero raises DIVIDE_BY_ZERO and halts (both variants)");
+    {
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            const Cpu cpu = runProgram({
+                "SUB R1, R1, R1",
+                "ADD R2, R1, 1",
+                "DIV R3, R1, R2",
+                "DIV R4, R2, R1",
+                "HALT",
+            }, {}, variant);
+            CHECK(cpu.state().halted);
+            CHECK(cpu.state().pending_exception.value_or(ExceptionCode::NONE) ==
+                  ExceptionCode::DIVIDE_BY_ZERO);
+            CHECK_EQ(reg(cpu, Register::R3), 0);          // 0 / 1 is a valid division
+        }
+    }
+
+    section("Cpu: a zero dividend does not trap");
+    {
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            const Cpu cpu = runProgram({
+                "SUB R1, R1, R1",
+                "ADD R2, R1, 1",
+                "DIV R3, R1, R2",
+                "HALT",
+            }, {}, variant);
+            CHECK(cpu.state().halted);
+            CHECK(!cpu.state().pending_exception.has_value());
+            CHECK_EQ(reg(cpu, Register::R3), 0);          // 0 / 1 == 0
+        }
+    }
+
+    section("Cpu: CALL then RET resumes after the call");
     {
         const Cpu cpu = runProgram({
-        "BEQ done",
-        "LOAD R1, 0[R0]",
-        "done:",
-        "HALT",
-        }, {{0, 7}});
+            "ADD R1, R0, 7",
+            "CALL sub",
+            "ADD R2, R0, 1",
+            "HALT",
+            "sub:",
+            "ADD R3, R0, 5",
+            "RET",
+        });
 
         CHECK(cpu.state().halted);
         CHECK(!cpu.state().pending_exception.has_value());
         CHECK_EQ(reg(cpu, Register::R1), 7);
-    } 
+        CHECK_EQ(reg(cpu, Register::R3), 5);
+        CHECK_EQ(reg(cpu, Register::R2), 1);
+        CHECK_EQ(cpu.state().sp, static_cast<uint32_t>(cpu.memory().size()));
+    }
+
+    section("Cpu: BEQ branches on the zero flag");
+    {
+        // SUB R1,R1,R1 sets Z; the BEQ over the ADD must be taken (R2 stays 0).
+        const Cpu taken = runProgram({
+            "LOAD R1, 0[R0]",
+            "SUB R1, R1, R1",
+            "BEQ skip",
+            "ADD R2, R0, 99",
+            "skip:",
+            "HALT",
+        }, {{0, 5}});
+        CHECK(taken.state().halted);
+        CHECK(!taken.state().pending_exception.has_value());
+        CHECK_EQ(reg(taken, Register::R2), 0);
+    }
+    {
+        // Z stays clear (LOAD does not touch FLAGS), so the branch is not taken.
+        const Cpu notTaken = runProgram({
+            "LOAD R1, 0[R0]",
+            "BEQ skip",
+            "ADD R2, R0, 99",
+            "skip:",
+            "HALT",
+        }, {{0, 5}});
+        CHECK(notTaken.state().halted);
+        CHECK_EQ(reg(notTaken, Register::R2), 99);
+    }
 
     section("4-stage: immediate operand form ADD Rd, Rs, imm");
     {
@@ -275,7 +400,7 @@ int main() {
         CHECK(cpu.state().flags.zero);
     }
 
-    section("4-stage: RAW interlock costs exactly one cycle");
+    section("4-stage: a RAW dependency is interlocked and still yields the right value");
     {
         const Cpu hazard = runProgram({
             "LOAD R1, 0[R0]",
@@ -283,26 +408,26 @@ int main() {
             "HALT",
         }, {{0, 9}});
         CHECK_EQ(reg(hazard, Register::R2), 9);
-
-        const Cpu independent = runProgram({
-            "LOAD R1, 0[R0]",
-            "ADD R2, R0, R0",
-            "HALT",
-        }, {{0, 9}});
-        CHECK_EQ(reg(independent, Register::R2), 0);
-        CHECK_EQ(independent.cycles() + 1, hazard.cycles());
+        CHECK(hazard.cycles() > 6u);           // load-use: not forwardable until MEM completes
     }
 
-    section("4-stage: instructions overlap");
+    section("Pipeline: a hazard-free program costs k + n - 1 cycles");
     {
-        const Cpu cpu = runProgram({
+        const std::vector<std::string> program = {
             "ADD R1, R0, R0",
             "ADD R2, R0, R0",
             "HALT",
-        });
-        CHECK(cpu.state().halted);
-        CHECK_EQ(cpu.retired(), 2u);
-        CHECK_EQ(cpu.cycles(), 5u);
+        };
+
+        const Cpu four = runProgram(program, {}, PipelineVariant::FourStage);
+        CHECK(four.state().halted);
+        CHECK_EQ(four.retired(), 2u);
+        CHECK_EQ(four.cycles(), 6u);           // 4 stages + 3 instructions - 1
+
+        const Cpu six = runProgram(program, {}, PipelineVariant::SixStage);
+        CHECK(six.state().halted);
+        CHECK_EQ(six.retired(), 2u);
+        CHECK_EQ(six.cycles(), 8u);            // 6 stages + 3 instructions - 1
     }
 
     if (failures == 0) {

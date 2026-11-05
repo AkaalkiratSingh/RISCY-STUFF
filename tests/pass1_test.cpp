@@ -5,53 +5,156 @@
 void testCleanProgram() {
     risc201::Assembler asmblr;
     std::vector<std::string> src = {
-        "start: ADD R1, R2, R3",
-        "       BEQ end",
-        "       JMP start",
-        "end:   HALT",
+        ".main:",                   // line 1, address 4
+        "start: ADD R1, R2, R3",    // line 2, address 4
+        "       BEQ end",           // line 3, address 8
+        "       JMP start",         // line 4, address 12
+        "end:   HALT",              // line 5, address 16
     };
     bool ok = asmblr.assemblePass1(src);
     assert(ok);
-    assert(asmblr.symbolTable().at("start") == 0);
-    assert(asmblr.symbolTable().at("end") == 12);
+    assert(asmblr.symbolTable().at(".main") == 4);
+    assert(asmblr.symbolTable().at("start") == 4);
+    assert(asmblr.symbolTable().at("end") == 16);
     std::cout << "testCleanProgram passed\n";
 }
 
 void testDuplicateLabel() {
     risc201::Assembler asmblr;
-    std::vector<std::string> src = { "foo: NOP", "foo: NOP" };
+    std::vector<std::string> src = { ".main:", "foo: NOP", "foo: NOP" };
     bool ok = asmblr.assemblePass1(src);
     assert(!ok);
     assert(asmblr.errors().size() == 1);
-    assert(asmblr.errors()[0].line_number == 2);
+    assert(asmblr.errors()[0].line_number == 3);
     std::cout << "testDuplicateLabel passed\n";
 }
 
 void testUnknownMnemonic() {
     risc201::Assembler asmblr;
-    std::vector<std::string> src = { "ADDD R1, R2, R3" };
+    std::vector<std::string> src = { ".main:", "ADDD R1, R2, R3" };
     bool ok = asmblr.assemblePass1(src);
     assert(!ok);
-    assert(asmblr.errors()[0].line_number == 1);
+    assert(asmblr.errors().size() == 1);
+    assert(asmblr.errors()[0].line_number == 2);
     std::cout << "testUnknownMnemonic passed\n";
 }
 
 void testWrongOperandCount() {
     risc201::Assembler asmblr;
-    std::vector<std::string> src = { "ADD R1, R2" }; // needs 3
+    std::vector<std::string> src = { ".main:", "ADD R1, R2" }; // needs 3
     bool ok = asmblr.assemblePass1(src);
     assert(!ok);
+    assert(asmblr.errors().size() == 1);
+    assert(asmblr.errors()[0].line_number == 2);
     std::cout << "testWrongOperandCount passed\n";
+}
+
+void testMissingMain() {
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = { "ADD R1, R2, R3", "HALT" };
+    bool ok = asmblr.assemblePass1(src);
+    assert(!ok);
+    assert(asmblr.errors().size() == 1);
+    assert(asmblr.errors()[0].line_number == 0);   // not tied to a source line
+    std::cout << "testMissingMain passed\n";
+}
+
+void testDuplicateMain() {
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = { ".main: NOP", ".main: NOP" };
+    bool ok = asmblr.assemblePass1(src);
+    assert(!ok);
+    assert(asmblr.errors().size() == 1);
+    assert(asmblr.errors()[0].line_number == 2);   // reported on the later one
+    std::cout << "testDuplicateMain passed\n";
+}
+
+// ---------- EMPTY operand slots (MOV / NOT / CMP) ----------
+// MOV, NOT and CMP have a register slot in the encoding that is not written in the
+// source, so the op table has 3 operand kinds but the programmer writes only 2.
+
+void testEmptyOperandsAreNotWritten() {
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = {
+        ".main:",
+        "a: MOV R1, R2",    // two written operands, three slots in the op table
+        "b: NOT R3, R4",
+        "c: CMP R5, R6",
+        "d: HALT",
+    };
+    bool ok = asmblr.assemblePass1(src);
+    assert(ok);
+    assert(asmblr.errors().empty());
+
+    // JMP .main is word 0, then one word per instruction.
+    assert(asmblr.symbolTable().at("a") == 4);
+    assert(asmblr.symbolTable().at("b") == 8);
+    assert(asmblr.symbolTable().at("c") == 12);
+    assert(asmblr.symbolTable().at("d") == 16);
+    std::cout << "testEmptyOperandsAreNotWritten passed\n";
+}
+
+void testEmptyOperandWrongCount() {
+    const std::vector<std::string> bad = {
+        "MOV R1", "MOV R1, R2, R3",
+        "NOT R1", "NOT R1, R2, R3",
+        "CMP R1", "CMP R1, R2, R3",
+        "MOV",
+    };
+    for (const auto& line : bad) {
+        risc201::Assembler asmblr;
+        std::vector<std::string> src = { ".main:", line };
+        bool ok = asmblr.assemblePass1(src);
+        assert(!ok);
+        assert(asmblr.errors().size() == 1);
+        assert(asmblr.errors()[0].line_number == 2);
+        assert(asmblr.errors()[0].message.find("expects 2 operand(s)") != std::string::npos);
+    }
+    std::cout << "testEmptyOperandWrongCount passed\n";
+}
+
+void testEmptyOperandErrorReportsWrittenCount() {
+    // The message must count what the programmer writes (2), not the 3 slots in the table.
+    risc201::Assembler asmblr;
+    std::vector<std::string> src = { ".main:", "MOV R1, R2, R3" };
+    asmblr.assemblePass1(src);
+    assert(asmblr.errors().size() == 1);
+    assert(asmblr.errors()[0].message == "'MOV' expects 2 operand(s), got 3");
+    std::cout << "testEmptyOperandErrorReportsWrittenCount passed\n";
+}
+
+void testBgtOperandCount() {
+    {
+        risc201::Assembler asmblr;
+        std::vector<std::string> src = { ".main:", "BGT end", "end: HALT" };
+        assert(asmblr.assemblePass1(src));
+        assert(asmblr.errors().empty());
+    }
+    {
+        risc201::Assembler asmblr;
+        std::vector<std::string> src = { ".main:", "BGT", "HALT" };
+        assert(!asmblr.assemblePass1(src));
+        assert(asmblr.errors().size() == 1);
+        assert(asmblr.errors()[0].message == "'BGT' expects 1 operand(s), got 0");
+    }
+    {
+        risc201::Assembler asmblr;
+        std::vector<std::string> src = { ".main:", "BGT a, b", "a: HALT" };
+        assert(!asmblr.assemblePass1(src));
+        assert(asmblr.errors()[0].message == "'BGT' expects 1 operand(s), got 2");
+    }
+    std::cout << "testBgtOperandCount passed\n";
 }
 
 void printErrorsDemo() {
     risc201::Assembler assembler;
     std::vector<std::string> src = {
+        ".main:",
         "foo: NOP",
         "foo: NOP",
         "ADDD R1, R2, R3",
         "ADD R1, R2",
-        "     BEQ R1, R2, end",
+        "     BEQ end",
         "end: HALT",
     };
 
@@ -77,6 +180,12 @@ int main() {
     testDuplicateLabel();
     testUnknownMnemonic();
     testWrongOperandCount();
+    testMissingMain();
+    testDuplicateMain();
+    testEmptyOperandsAreNotWritten();
+    testEmptyOperandWrongCount();
+    testEmptyOperandErrorReportsWrittenCount();
+    testBgtOperandCount();
     printErrorsDemo();
     std::cout << "All Pass 1 tests passed.\n";
     return 0;

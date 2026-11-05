@@ -1,0 +1,32 @@
+; Naive double recursion: fib(n) = fib(n-1) + fib(n-2). Argument and result in R1.
+; CALL/RET use R14 for the return address, so each nested call saves and restores it.
+; fib(15) makes 1973 calls, and each level's POP feeds the very next ADD, so it also
+; takes one load-use stall per level.
+; Expected: R1=610 (fib(15))  SP=4096
+
+.main:
+MOV R1, 15
+CALL fib
+HALT
+
+fib:
+    SUB R2, R1, 2
+    SHR R2, R2, 31
+    BEQ recurse
+    RET
+recurse:
+    PUSH R14
+    PUSH R1
+    SUB R1, R1, 1
+    CALL fib
+    MOV R8, R1
+    POP R1
+    POP R14
+    PUSH R14
+    PUSH R8
+    SUB R1, R1, 2
+    CALL fib
+    POP R8
+    POP R14
+    ADD R1, R1, R8
+    RET

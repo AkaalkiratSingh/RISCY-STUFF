@@ -16,6 +16,7 @@ namespace risc201 {
         std::vector<std::string> operands;
         uint32_t address = 0;
         bool emits_word = false;
+        bool is_literal = false;
     };
 
     struct AssemblyError {
@@ -34,6 +35,8 @@ namespace risc201 {
         }
         const std::vector<AssemblyError>& errors() const { return errors_; }
         const std::vector<AssemblyError>& warnings() const { return warnings_; }
+        const std::vector<uint32_t>& literalWords() const { return literal_words_; }
+        std::vector<uint32_t> literalSection() const;
 
         uint32_t encodeInstruction(const Instruction& instr);
         bool writeBinaryFile(const std::string& path, const std::vector<uint32_t>& words);
@@ -41,16 +44,23 @@ namespace risc201 {
 
     private:
         uint32_t location_counter_ = 0;
+        bool in_literals_ = false;
         std::unordered_map<std::string, uint32_t> symbol_table_;
         std::vector<ParsedLine> parsed_lines_;
         std::vector<AssemblyError> errors_;
-        std::vector<AssemblyError> warnings_; 
+        std::vector<AssemblyError> warnings_;
+        std::vector<uint32_t> literal_words_;
+        std::unordered_map<std::string, uint32_t> literal_index_;
 
         void addError(int line_num, std::string msg);
         void addWarning(int line_num, std::string msg);
         bool parseLine(const std::string& raw, int line_num, ParsedLine& out);
         bool resolveInstruction(const ParsedLine& pl, const OpInfo& info, Instruction& out);
+        bool resolveLiteralOperand(const std::string& token, int32_t& imm_out, Register& reg_out) const;
     };
+
+    bool readHexWords(const std::string& path, std::vector<uint32_t>& out);
+    bool readBinaryWords(const std::string& path, std::vector<uint32_t>& out);
 
 }
 
