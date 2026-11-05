@@ -217,7 +217,7 @@ namespace risc201 {
 
         std::unordered_map<int32_t, std::string> label_map;
         if (use_labels) label_map = buildLabelMap(program, first, static_cast<int32_t>(first * 4));
-        label_map[main_address] = ".main";   // wins over a generated name at the same address
+        label_map[main_address] = ".main";
 
         std::vector<std::string> lines;
         if (!entry && !program.empty()) {
@@ -234,11 +234,10 @@ namespace risc201 {
                 if (address == main_address) main_emitted = true;
             }
 
-            lines.push_back(use_labels ? formatInstructionWithLabels(program[i], address, label_map)
-                                       : formatInstruction(program[i]));
+            lines.push_back(use_labels ? formatInstructionWithLabels(program[i], address, label_map) : formatInstruction(program[i]));
         }
 
-        if (!main_emitted) lines.push_back(".main:");   // empty program
+        if (!main_emitted) lines.push_back(".main:");
         return lines;
     }
 
