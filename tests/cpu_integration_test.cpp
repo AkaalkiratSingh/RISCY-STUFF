@@ -80,6 +80,28 @@ int32_t reg(const Cpu& cpu, Register r) {
 } // namespace
 
 int main() {
+    section("Cpu: FTOI and ITOF execute through both ROM encodings");
+    {
+        const auto words = assembleWords({
+            "ADD R1, R0, 7", "ITOF R2, R1", "FTOI R3, R2",
+            "ITOF R4, -3", "FTOI R5, R4", "HALT",
+        });
+        for (PipelineVariant variant : {PipelineVariant::FourStage, PipelineVariant::SixStage}) {
+            for (MicrocodeEncoding encoding : {MicrocodeEncoding::Horizontal,
+                                               MicrocodeEncoding::Vertical}) {
+                Cpu cpu(variant, kDefaultMemoryWords, encoding);
+                cpu.loadWords(words);
+                cpu.run();
+                CHECK(cpu.state().halted && !cpu.state().pending_exception);
+                CHECK_EQ(reg(cpu, Register::R2), static_cast<int32_t>(0x40E00000u));
+                CHECK_EQ(reg(cpu, Register::R3), 7);
+                CHECK_EQ(reg(cpu, Register::R4), static_cast<int32_t>(0xC0400000u));
+                CHECK_EQ(reg(cpu, Register::R5), -3);
+                CHECK(!cpu.state().flags.zero && !cpu.state().flags.negative);
+            }
+        }
+    }
+
     section("Cpu: LOAD seeds registers, ADD sums them, HALT stops the machine");
     {
         const Cpu cpu = runProgram({
@@ -411,7 +433,7 @@ int main() {
         CHECK(hazard.cycles() > 6u);           // load-use: not forwardable until MEM completes
     }
 
-    section("Pipeline: a hazard-free program costs k + n - 1 cycles");
+    section("Pipeline: front-end row clocking differs by variant");
     {
         const std::vector<std::string> program = {
             "ADD R1, R0, R0",
@@ -422,12 +444,14 @@ int main() {
         const Cpu four = runProgram(program, {}, PipelineVariant::FourStage);
         CHECK(four.state().halted);
         CHECK_EQ(four.retired(), 2u);
-        CHECK_EQ(four.cycles(), 6u);           // 4 stages + 3 instructions - 1
+        CHECK_EQ(four.cycles(), 10u);
+        CHECK_EQ(four.trace().rows, 13u);
 
         const Cpu six = runProgram(program, {}, PipelineVariant::SixStage);
         CHECK(six.state().halted);
         CHECK_EQ(six.retired(), 2u);
-        CHECK_EQ(six.cycles(), 8u);            // 6 stages + 3 instructions - 1
+        CHECK_EQ(six.cycles(), 8u);
+        CHECK_EQ(six.trace().rows, 13u);
     }
 
     if (failures == 0) {

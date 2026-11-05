@@ -308,7 +308,7 @@ int main(int argc, char** argv) {
     // --- run --------------------------------------------------------------
     if (micro_trace) {
         std::cout << "\nMicrocode reconstruction: rows are replayed at retirement or fault.\n"
-                  << "The cycle label is the pipeline completion/fault clock; rows do not add clocks.\n"
+                  << "Each executed ROM row costs a clock; the displayed cycle is the instruction's completion/fault clock.\n"
                   << "Squashed instructions are omitted; signals are sequencer outputs, not live pipeline wires.\n";
     }
     if (trace_mode || micro_trace) {

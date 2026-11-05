@@ -85,6 +85,7 @@ private:
     int completion_index_ = -1;
     std::string feedback_message_ = "Welcome to RISCY201 TUI! Press 's' to step, 'c' for clock, 'r' to run, '?' for help, 'q' to quit.";
     bool feedback_is_error_ = false;
+    int feedback_scroll_ = 0;
 
     int asm_scroll_ = 0;
     int bin_scroll_ = 0;

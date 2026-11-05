@@ -416,11 +416,11 @@ Alu::Result Alu::execute(Opcode op, int32_t lhs, int32_t rhs) {
         }
         default: res = 0; break;
         case Opcode::FTOI:
-            r.value = static_cast<int32_t>(floatToInt(a));
+            r.value = static_cast<int32_t>(floatToInt(b));
             return r;
 
         case Opcode::ITOF:
-            r.value = static_cast<int32_t>(intToFloat(a));
+            r.value = static_cast<int32_t>(intToFloat(b));
             return r;
 
     }

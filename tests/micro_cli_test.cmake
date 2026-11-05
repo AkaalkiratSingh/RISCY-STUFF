@@ -1,4 +1,4 @@
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/micro_cli.hex" "E0000000\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/micro_cli.hex" "E8000000\n")
 execute_process(COMMAND "${SIM}" "${CMAKE_CURRENT_BINARY_DIR}/micro_cli.hex" --micro-trace --vertical
     RESULT_VARIABLE result OUTPUT_VARIABLE output)
 if(NOT result EQUAL 1 OR NOT output MATCHES "ILLEGAL_INSTRUCTION pc=0" OR NOT output MATCHES "microPC=0" OR NOT output MATCHES "signals: halt trap")

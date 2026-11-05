@@ -218,17 +218,19 @@ StopInfo Debugger::runFetchBarrier(uint32_t pc) {
     }
     else {
         info.reason = info.watch_hits.empty() ? StopReason::StepDone : StopReason::Watchpoint;
+        skip_break_once_ = pc;
     }
     return info;
 }
 
 StopInfo Debugger::clock() {
     std::vector<WatchHit> hits;
-    if (skip_break_once_ && cpu_.fetchPc() == *skip_break_once_) {
+    if (skip_break_once_ && cpu_.fetchPc() != *skip_break_once_) {
         skip_break_once_.reset();
     }
-    else if (breakpointArmedAt(cpu_.fetchPc()) ||
-             (run_target_ && *run_target_ == cpu_.fetchPc())) {
+    if ((!skip_break_once_ || cpu_.fetchPc() != *skip_break_once_) &&
+        (breakpointArmedAt(cpu_.fetchPc()) ||
+         (run_target_ && *run_target_ == cpu_.fetchPc()))) {
         StopInfo barrier = runFetchBarrier(cpu_.fetchPc());
         if (barrier.reason != StopReason::StepDone) return barrier;
         // The drain finished without a stop: the condition did not hold, or a branch

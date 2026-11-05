@@ -82,7 +82,7 @@ usage: risc201-sim <program.asm|program.hex|program.bin> [options]
   -d, --decode    print the decoded instruction listing before running
   -m, --mem S:C   dump C data-memory words starting at word index S
       --trace         print the pipeline per clock, with hazard events
-      --no-forward stall on every dependency instead of bypassing
+      --no-forward select forwarding-off mode (currently the same conservative interlock)
       --horizontal use the horizontal microcode ROM (default)
       --vertical   use the vertical microcode ROM (same behaviour, narrower words)
   -h, --help      show help
@@ -96,11 +96,11 @@ build/simulator_core/tui/risc201-tui examples/recursive_sum.asm
 
 With no path the TUI starts empty — press `Tab` to focus the assembly pane and `e` to write a program from scratch. It accepts the same pipeline options as the simulator CLI: `-4`/`-6`, `--no-forward`, `--horizontal`/`--vertical` and `--trace`.
 
-The screen has panes for raw assembly, assembled binary, registers, extra stats, a control-ROM listing and memory, plus an optional hazard timeline. Long source and control-ROM rows wrap inside their panes. Each assembled-binary row with an active control row ends with that row's stage and ROM address, for example `◄[EX 29]`, or `<[WB 03] [FETCH 07]>` when the same PC is active in several stages at once. If the current pipeline stage has no row (an ALU op in MEM), the tag shows the next routine row and its real stage, such as `[WB 06]`. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Long feedback messages wrap and the feedback pane grows to fit them.
+The screen has panes for raw assembly, assembled binary, registers, extra stats, a control-ROM listing and memory, plus an optional hazard timeline. Long source and control-ROM rows wrap inside their panes. Each assembled-binary row with an active control row ends with its next ROM address, read from that instruction's microPC, for example `◄[EX 29]`. If an instruction waits to move slots, the tag shows its pending next row. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Feedback messages wrap and the pane grows to fit available space.
 
 **Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane is a scrollable listing with blank separators between instruction routines (addresses are unchanged); `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
 
-**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent. A failed assembly reports the error and leaves the running program untouched.
+**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent. A failed assembly lists all errors with source line numbers and leaves the running program untouched. `:assemble` and `:load` also report assembler warnings, including successful assemblies; warnings appear in yellow below the status or errors. Use PageUp/PageDown to read a diagnostic list longer than the feedback pane.
 
 Commands (type `:` in normal or inspect mode). While typing, `Tab` completes command names and `:load` paths, with the candidates listed in the feedback pane; `Tab` again cycles them.
 
@@ -162,9 +162,9 @@ zero:
 
 Result: `R2 = 15`, `SP` back at 4096.
 
-The `examples/` folder has 14 programs. Most are real algorithms running from hundreds to tens of thousands of cycles: Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, floating-point arithmetic with literals, plus recursion and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `INVALID_MEMORY_ACCESS` on purpose.
+The `examples/` folder has 14 assembly sources. The runnable examples include Collatz, Euclid's gcd, factorial by shift-and-add, a sieve, bubble and insertion sort, CRC-32, naive recursive Fibonacci, an 8x8 matrix multiply, floating-point arithmetic with literals, recursion, and stack exhaustion. Two are synthetic hazard controls — `branch_storm` (control hazards only) and `pointer_walk` (load-use only) — and `stack_overflow.asm` triggers `INVALID_MEMORY_ACCESS` on purpose.
 
-Every run prints a `pipeline:` line counting stalls, flushes and flush bubbles, and `--trace` prints the pipeline clock by clock. Those explain the cycle count exactly: `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`.
+Every instruction executes at most one control-ROM row per clock. In the 4-stage variant, the FETCH slot serializes the IF, ID, and operand-read rows; row-less stages are skipped. The `pipeline:` line reports data stalls, redirects, and squashed instructions. The old stage-count cycle formula no longer applies.
 
 ## The ISA
 
@@ -195,13 +195,13 @@ When the `I` bit is set, the last operand is an 18-bit immediate. Otherwise it i
 | Arithmetic | `ADD`, `SUB`, `MUL`, `DIV`, `REM` |
 | Logic | `AND`, `OR`, `XOR` |
 | Shifts | `SHL`, `SHR` |
-| Floating point | `FADD`, `FSUB`, `FMUL`, `FDIV` |
+| Floating point | `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FTOI`, `ITOF` |
 | Memory | `LOAD rd, imm[rs1]`, `STORE rd, imm[rs1]` |
 | Control flow | `JMP`, `BEQ`, `CALL` (writes `R14`), `RET` (jumps to `R14`) |
 | Stack macros | `PUSH`, `POP` (expand to `SUB`/`STORE` and `LOAD`/`ADD` on `SP`) |
 | Misc | `NOP`, `HALT` |
 
-CALL/RET do not touch the stack: software that makes nested calls, or needs `R14` for data, saves it with `PUSH R14` / `POP R14`. `NOT`, `SAR`, `CMP`, `MOV`, `BGT` and `FCMP` exist in the ISA and control unit but are not exposed by the assembler yet.
+CALL/RET do not touch the stack: software that makes nested calls, or needs `R14` for data, saves it with `PUSH R14` / `POP R14`. `FTOI rd, rs` converts a float bit pattern to an integer; `ITOF rd, rs|imm` converts an integer to a float bit pattern. Both preserve flags. `MOV` has an ISA and ROM entry but no assembler mnemonic entry yet.
 
 ### Exceptions
 
@@ -225,14 +225,12 @@ An exception halts the CPU and is reported by the simulator.
 The control ROM includes a shared front end: `ir_load pc_inc` fetches a word and
 advances the word-index PC, then `instr_decode opcode_dispatch` decodes it and
 selects its opcode routine. Instruction bodies use `operand_read` when operands
-are needed, followed by ALU, memory, branch and writeback signals. RET's combined
-`operand_read pc_write pc_src_ra` row reads R14 in OF and redirects in EX.
+are needed, followed by ALU, memory, branch and writeback signals. RET reads R14
+in an OF row and redirects from it in a separate EX row.
 
-The CPU gates IF and ID with the selected ROM's shared controls, and OF with the
-decoded instruction's `operand_read` control. The four-stage pipeline merges
-fetch, decode and operand read into one FETCH slot; the six-stage pipeline keeps
-them separate. These signals change who authorizes each operation without adding
-pipeline clocks.
+The CPU gives every in-flight instruction its own microPC. The four-stage pipeline
+executes fetch, decode and operand read as separate clocks in one FETCH slot; the
+six-stage pipeline keeps them in separate slots. A row-less stage is skipped.
 
 Generated ROM references show the physical ROM and each instruction's complete
 flow, repeating the shared prefix by address before its opcode-specific rows:
@@ -249,16 +247,15 @@ cmake --build build --target export_control_rom
 `ControlRomListings` in CTest fails if either checked-in listing differs from the
 current ROM. The `risc201-rom` exporter also accepts `--check <directory>`.
 
-The CPU derives a per-opcode control bundle from each ROM routine and applies those
-signals in the pipeline stages. It does not advance a single global microPC during
-pipeline execution; several instructions overlap.
+The CPU retains a per-opcode control bundle for dependency detection and advances
+each in-flight instruction through its own ROM rows. Several instructions overlap.
 
 `--micro-trace` reconstructs each retired or faulting instruction's microcode path
 using the selected sequencer and the flags captured when that instruction executes.
 The shared fetch/decode rows are included before each opcode routine.
 Each row shows its instruction PC, microPC, successor (or END), packed ROM word,
 output signals, branch condition, and exception. The cycle label identifies the
-pipeline retirement/fault clock, not a separate clock for each microcode row.
+instruction completion/fault clock; each executed row consumed its own clock.
 Squashed instructions are omitted. Faulting rows show suppressed signals followed
 by the TRAP row; an invalid instruction fetch has no microcode routine to display.
 
@@ -297,7 +294,9 @@ RISCY-STUFF/
 
 ## Stress benchmarks
 
-Five longer, deterministic workloads are available in [examples/benchmarks](examples/benchmarks/README.md), with expected results, a runner for all eight CPU configurations, and measured counters. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
+Five longer, deterministic workloads are available in [processor_benchmark](processor_benchmark/README.md), with expected results, a runner for all eight CPU configurations, simulated counters, and average host runtime from five runs per configuration. They target ALU dependencies, pointer chasing, branch flushing, memory traffic, and recursive stack use.
+
+The standalone ALU algorithm benchmark writes per-operation timings to [alu_benchmark/alu_benchmark_results.csv](alu_benchmark/alu_benchmark_results.csv). From the project root, run `./build/risc201-alu-bench`; pass a CSV path as its first argument to choose another output file. Its columns are the algorithm name and average nanoseconds per operation for 2-, 4-, 8-, 16-, 32-, and 64-bit input cases, plus 128-bit operands when the compiler supports `__uint128_t`. The 2- and 4-bit cases mask inputs stored in `uint8_t`, so the algorithms still execute their 8-bit loops. No wider integer type is available to the unchanged algorithms; they therefore stop at 64 bits on standard C++17 compilers or 128 bits on this GCC build.
 
 ## Testing
 
@@ -331,29 +330,25 @@ All CTest targets pass. The TUI is exercised manually and is not covered by CTes
 - [x] Two-pass assembler with `.bin` / `.hex` output
 - [x] Macro preprocessor (`.macro`/`.endm`, `@` local labels, built-in `PUSH`/`POP`) and `.literals:` float constants
 - [x] `CALL`/`RET` use `R14` as the link register; software saves it with `PUSH`/`POP` around nested calls
-- [x] Scalar IEEE-754 arithmetic (`FADD`/`FSUB`/`FMUL`/`FDIV`) with float literals
+- [x] Scalar floating-point arithmetic and `FTOI`/`ITOF` conversions with float literals
 - [x] Decoder, CPU execution loop and simulator CLI
 - [x] Pipelined datapath: 4-stage (`FETCH → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) variants, overlapping instructions clock by clock
-- [x] Operand forwarding (bypassing), with `--no-forward` as a stall-everything comparison mode
-- [x] Per-cycle pipeline trace and hazard counters (`--trace`), reconciling `cycles = (stages-1) + retired + HALT + stalls + flush bubbles`
+- [ ] Readiness-based operand forwarding; both forwarding settings currently use a conservative interlock
+- [x] Per-cycle pipeline trace and hazard counters (`--trace`); ROM rows now determine instruction latency
 - [x] Terminal UI (`risc201-tui`): pane focus, source editor with explicit `:assemble` and a stale-buffer indicator, memory navigation with SP-follow, configuration dialog and wrapped feedback
 - [x] Vertical microcode encoding, selectable at runtime alongside the horizontal ROM
 
 **In progress / planned**
-- [ ] Debugger class: breakpoints and watchpoints are stubbed in `simulator_core` (`stepInstruction` works; `continueExecution`, `reset` and `printMemory` are TODO). The TUI implements its own breakpoints.
+- [x] Debugger breakpoints, watchpoints, reset, and stepping
 - [x] Reconstructed microcode display: `--micro-trace` and `--micro-step` show microPC transitions, packed ROM words, signals and traps without changing pipeline timing
 - [ ] Wire the stack visualizer into the simulator output
 - [ ] Complete the ISA, with end to end implementation
-- [ ] Expose `NOT`, `SAR`, `CMP`, `MOV`, `BGT` and `FCMP` in the assembler
-- [ ] Full IEEE-754 extension (comparison/branch integration, conversion)
+- [ ] Expose `MOV` in the assembler
+- [ ] Complete IEEE-754 special-case and rounding behavior
 
 ## Team
 
 RISCY-STUFF is a team project.
 
-- **Akaalkirat Singh**: `Cpu` core (integrating the ALU, control unit and stack guard), decoder, simulator runner, and most of the tests
+- **Akaalkirat Singh**: `Cpu` core (integrating the ALU, control unit and stack guard), decoder, simulator runner
 - _Add teammates and their modules here_
-
-## License
-
-_Not yet specified._

@@ -49,7 +49,7 @@ namespace risc201 {
                     { MicroOpCode::Halt,         "HALT",     false, lines({ &C::halt }) },
                     { MicroOpCode::Trap,         "TRAP",     false, lines({ &C::trap, &C::halt }) },
                     { MicroOpCode::RaWrite,      "RA.WR",    false, lines({ &C::ra_write }) },
-                    { MicroOpCode::JumpRa,       "JUMP.RA",  false, lines({ &C::pc_write, &C::pc_src_ra, &C::operand_read }) },
+                    { MicroOpCode::JumpRa,       "JUMP.RA",  false, lines({ &C::pc_write, &C::pc_src_ra }) },
                     { MicroOpCode::InstructionFetch, "IF", false, lines({ &C::ir_load, &C::pc_inc }) },
                     { MicroOpCode::DecodeDispatch, "ID.DISPATCH", false, lines({ &C::instr_decode, &C::opcode_dispatch }) },
                 } };
@@ -90,6 +90,7 @@ namespace risc201 {
             }
             return "?";
         }
+
 
         // ---- the encoder ----------------------------------------------------
 

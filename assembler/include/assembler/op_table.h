@@ -80,6 +80,8 @@ namespace risc201 {
             { "FMUL",{ Opcode::FMUL, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
             { "FDIV",{ Opcode::FDIV, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::REG, OperandKind::REG } } },
             { "FCMP",{ Opcode::FCMP, InstrFormat::RI_TYPE,{ OperandKind::EMPTY, OperandKind::REG, OperandKind::REG } } },
+            { "FTOI",{ Opcode::FTOI, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::EMPTY, OperandKind::REG } } },
+            { "ITOF",{ Opcode::ITOF, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::EMPTY, OperandKind::REG_OR_IMM } } },
 
             { "LOAD" ,{ Opcode::LOAD,  InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },
             { "STORE",{ Opcode::STORE, InstrFormat::RI_TYPE,{ OperandKind::REG, OperandKind::MEM } } },

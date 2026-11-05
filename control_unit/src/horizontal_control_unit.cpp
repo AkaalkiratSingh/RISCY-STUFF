@@ -85,11 +85,10 @@ namespace risc201 {
             return m;
         }
 
-        MicroOp pcFromRARow() {
+        MicroOp jumpRaRow() {
             MicroOp m;
             m.ctl.pc_write = true;
             m.ctl.pc_src_ra = true;
-            m.ctl.operand_read = true;
             return m;
         }
 
@@ -201,10 +200,10 @@ namespace risc201 {
         appendRoutine(Opcode::MOV, { operandRow(), movRow(), writebackRow() });
 
         appendRoutine(Opcode::CALL,
-            { operandRow(), raWriteRow(), jumpRow() });
+            { operandRow(), jumpRow(), raWriteRow() });
 
         appendRoutine(Opcode::RET,
-            { pcFromRARow() });
+            { operandRow(), jumpRaRow() });
 
         appendRoutine(Opcode::NOT, aluRoutine(Opcode::NOT));
         appendRoutine(Opcode::SAR, aluRoutine(Opcode::SAR));
@@ -223,6 +222,9 @@ namespace risc201 {
             appendRoutine(op, { operandRow(), aluRowKeepFlags(op), writebackRow() });
         }
         appendRoutine(Opcode::FCMP, { operandRow(), aluRow(Opcode::FCMP) });
+        for (Opcode op : { Opcode::FTOI, Opcode::ITOF }) {
+            appendRoutine(op, { operandRow(), aluRowKeepFlags(op), writebackRow() });
+        }
 
         MicroOp fetch, decode;
         fetch.ctl.ir_load = true;
@@ -338,25 +340,20 @@ namespace risc201 {
         w |= static_cast<uint64_t>(c.pc_inc)      << 5;
         w |= static_cast<uint64_t>(c.alu_src_imm) << 6;
         w |= static_cast<uint64_t>(c.mem_to_reg)  << 7;
-        w |= static_cast<uint64_t>(c.flag_update) << 8;  // Shifted down
-        w |= static_cast<uint64_t>(c.halt)        << 9;  // Shifted down
-        
-        // Sequencing & ALU Operation
+        w |= static_cast<uint64_t>(c.flag_update) << 8;
+        w |= static_cast<uint64_t>(c.halt)        << 9;
         w |= (static_cast<uint64_t>(c.alu_op) & 0x1Fu) << 10;
-        w |= (static_cast<uint64_t>(row.cond) & 0x7u)  << 15;
+        w |= (static_cast<uint64_t>(row.cond) & 0x7u) << 15;
         w |= static_cast<uint64_t>(addrField(row.next))          << 18;
         w |= static_cast<uint64_t>(addrField(row.branch_target)) << 26;
-        
-        // Control High Fields
-        w |= static_cast<uint64_t>(c.trap)            << 34;
-        w |= static_cast<uint64_t>(c.addr_check)      << 35;
-        w |= static_cast<uint64_t>(c.ra_write)        << 36;
-        w |= static_cast<uint64_t>(c.pc_src_ra)       << 37;
-        w |= static_cast<uint64_t>(c.ir_load)         << 38;
-        w |= static_cast<uint64_t>(c.instr_decode)    << 39;
-        w |= static_cast<uint64_t>(c.operand_read)    << 40;
+        w |= static_cast<uint64_t>(c.trap)        << 34;
+        w |= static_cast<uint64_t>(c.addr_check)  << 35;
+        w |= static_cast<uint64_t>(c.ra_write)    << 36;
+        w |= static_cast<uint64_t>(c.pc_src_ra)   << 37;
+        w |= static_cast<uint64_t>(c.ir_load) << 38;
+        w |= static_cast<uint64_t>(c.instr_decode) << 39;
+        w |= static_cast<uint64_t>(c.operand_read) << 40;
         w |= static_cast<uint64_t>(c.opcode_dispatch) << 41;
-        
         return w;
     }
 

@@ -83,7 +83,7 @@ namespace risc201 {
         bool fetching() const { return !stop_fetch_; }
 
         // Debugger barrier: stop admitting new instructions without halting the CPU.
-        void holdFetch(bool hold) { fetch_held_ = hold; }
+        void holdFetch(bool hold);
         bool fetchHeld() const { return fetch_held_; }
 
         // Per-stage control-ROW cursors for the active pipeline state.
@@ -95,23 +95,9 @@ namespace risc201 {
         int exceptionSlot() const { return ex_slot_; }
 
     private:
-        struct Effects {
-            bool          taken = false;
-            uint32_t      target = 0;
-            bool          fault = false;
-            ExceptionCode code = ExceptionCode::NONE;
-            bool          stop_fetch = false;
-        };
-
         void recordMicroTrace(const Latch& instruction, ExceptionCode fault = ExceptionCode::NONE);
         void tick();
-        void applySlot(const StageSlot& slot, Latch& out, Effects& fx);
-        void retire(const Latch& out);
-        Latch fetchStage(bool stall);
-        bool wouldStall(uint32_t* pc = nullptr) const;
         bool dependsOn(const Latch& candidate, const Latch& older) const;
-        int32_t bypass(Register src, int32_t current) const;
-        uint32_t bypassSp() const;
         void resetPipeline();
 
         uint32_t branchTarget(uint32_t instr_pc, const Instruction& instr) const;
@@ -129,7 +115,6 @@ namespace risc201 {
         VerticalControlUnit vertical_unit_;
         StackGuard stack_guard_;
         StageControlTable controls_;
-        StageControls frontend_;
         std::array<Latch, kMaxPipelineSlots> regs_{};
         PipelineTrace trace_;
         std::vector<MicroTraceRow> micro_trace_;
@@ -146,5 +131,6 @@ namespace risc201 {
 
         uint64_t cycles_ = 0;
         uint64_t retired_ = 0;
+        uint64_t seq_counter_ = 0;
     };
 }

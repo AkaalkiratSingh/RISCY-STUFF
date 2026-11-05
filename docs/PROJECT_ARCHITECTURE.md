@@ -134,7 +134,7 @@ For aligned targets, the CPU's equivalent instruction-index calculation is:
 target_word_index = instruction_word_index + 1 + displacement / 4
 ```
 
-Thus `JMP 0` in a decoded listing means “jump to the following instruction,” not “jump to program address zero.” In `gcd.asm`, the automatically inserted entry jump is located at word index 0 and targets `.main` at word index 1.
+Thus `JMP 0` in a decoded listing means “jump to the following instruction,” not “jump to program address zero.” In `recursive_sum.asm`, the automatically inserted entry jump is located at word index 0 and targets `.main` at word index 1.
 
 An index printed as `pc=4` corresponds to byte location 16 in the assembler's address calculation. Memory dumps, SP, debugger breakpoints, and CPU instruction PCs use word indices. Byte displacements must not be confused with these indices.
 
@@ -159,13 +159,15 @@ Assembly-generated branch targets are aligned by construction. The current CPU d
 | 0x14–0x15 | CALL, RET | Link-register call and return |
 | 0x16–0x19 | FADD, FSUB, FMUL, FDIV | Floating-point arithmetic on register bit patterns |
 | 0x1A | FCMP | Floating-point comparison |
+| 0x1B | FTOI | Convert a float bit pattern to an integer |
+| 0x1C | ITOF | Convert an integer to a float bit pattern |
 | 0x1F | HALT | Stop fetching and allow the pipeline to drain |
 
-All listed mnemonics are exposed by the assembler. PUSH and POP are macros, not additional encoded opcodes.
+All listed mnemonics except MOV are exposed by the assembler. PUSH and POP are macros, not additional encoded opcodes.
 
 Integer ALU routines update flags when their ROM row asserts `flag_update`. Zero and negative reflect the result. ADD/SUB compute carry and signed overflow; subtraction's carry reflects the carry out of two's-complement addition. Shift counts use the low five bits of the count operand. CMP updates flags without writing a destination register.
 
-BEQ tests the zero flag. BGT tests the greater-than flag. For integer comparison, the ALU derives greater-than using `!Z && (N == V)`. FCMP supplies equality/greater-than results and mirrors equality into the zero flag. MOV and memory-address calculations preserve flags. Floating-point arithmetic preserves the architectural flags because its ROM rows omit `flag_update`.
+BEQ tests the zero flag. BGT tests the greater-than flag. For integer comparison, the ALU derives greater-than using `!Z && (N == V)`. FCMP supplies equality/greater-than results and mirrors equality into the zero flag. MOV, memory-address calculations, floating-point arithmetic, and FTOI/ITOF conversions preserve flags because their ROM rows omit `flag_update`.
 
 Flag updates occur in EX, making the preceding comparison's result available to the next branch. Register-result writes occur at WB; these are different events.
 
@@ -215,8 +217,8 @@ Stack-specific signals are also represented by the control format. Current PUSH/
 The instruction opcode is unknown before fetch and decode. The ROM therefore contains a shared prefix:
 
 ```text
-77: ir_load pc_inc                    → 78
-78: instr_decode opcode_dispatch      → decoded opcode's routine
+84: ir_load pc_inc                    → 85
+85: instr_decode opcode_dispatch      → decoded opcode's routine
 ```
 
 For ADD, the instruction-specific portion is:
@@ -227,11 +229,11 @@ For ADD, the instruction-specific portion is:
 3: reg_write                          → END
 ```
 
-The complete logical flow is `77 → 78 → 1 → 2 → 3 → END`. The shared rows are stored once. The generated instruction listings repeat references to them so that a reader can inspect an instruction's entire flow in one place.
+The complete logical flow is `84 → 85 → 1 → 2 → 3 → END`. The shared rows are stored once. The generated instruction listings repeat references to them so that a reader can inspect an instruction's entire flow in one place.
 
 LOAD follows operand read, address calculation, guarded memory read, and memory-to-register writeback. STORE ends after the guarded memory write. BEQ and BGT include a condition row and explicit taken/not-taken successors. A not-taken branch's idle END row retains the sequential PC established by the common fetch control.
 
-RET uses a combined `operand_read pc_write pc_src_ra` row. Its operand read is scheduled in OF and its redirect in EX; a ROM row is a control description and need not equal one pipeline clock.
+RET uses separate OF operand-read and EX redirect rows. Each executed row consumes one clock for that instruction. FTOI and ITOF each use operand-read, ALU, and writeback rows, without flag updates.
 
 ### 6.3 Horizontal and vertical encoding
 
@@ -243,20 +245,20 @@ The vertical ROM is generated from the horizontal definitions and decoded back f
 
 | Encoded storage | Horizontal | Vertical |
 |---|---:|---:|
-| Physical rows | 79 | 79 |
+| Physical rows | 86 | 86 |
 | Bits per row | 48 | 16 |
-| Total encoded bits | 3792 | 1264 |
-| Byte-equivalent encoded capacity | 474 | 158 |
+| Total encoded bits | 4128 | 1376 |
+| Byte-equivalent encoded capacity | 516 | 172 |
 
 The vertical representation reduces encoded ROM capacity by two-thirds. These figures describe the logical packed ROM, not C++ object sizes or total hardware area. The decoder and dispatch structures also require storage/logic. The simulator does not model their electrical delay, so these numbers do not establish a clock-frequency advantage.
 
 ### 6.4 How ROM controls reach the pipeline
 
-`control_decode.cpp` traverses instruction routines and forms a `StageControls` bundle. It includes both sides of a conditional microcode path and preserves the branch condition separately. Shared front-end controls are extracted before instruction-specific controls are needed.
+`control_decode.cpp` classifies each ROM row by stage and also derives `StageControls` bundles used for dependency checks. Conditional microcode paths retain both successors and their branch condition.
 
-The CPU's IF and ID work is gated by the common ROM controls. OF reads operands only when the selected instruction asserts `operand_read`. EX, MEM, and WB consume the corresponding derived controls. Pipeline movement, interlocks, flushing, and clock accounting remain CPU responsibilities.
+Every in-flight instruction owns a microPC. The CPU executes its current row, follows the row's successor, and moves the latch to the slot for the next row. Stages without a row are skipped. Pipeline movement, interlocks, flushing, and clock accounting remain CPU responsibilities.
 
-This is a ROM-derived pipelined controller. It does not execute each ROM row as an additional global processor clock, and it does not run one global microPC serially through all overlapping instructions. The control-unit sequencer APIs operate on opcode routines; the CPU applies the shared prefix through its front-end stages.
+This is a ROM-row-clocked pipelined controller. An instruction executes at most one row per clock, while different instructions can execute rows in different slots during the same clock.
 
 The complete reference files are [horizontal control ROM](control_rom_horizontal.txt) and [vertical control ROM](control_rom_vertical.txt).
 
@@ -269,22 +271,22 @@ The complete reference files are [horizontal control ROM](control_rom_horizontal
 6-stage: [ IF ] → [ ID ] → [ OF ] → [ EX ] → [ MEM ] → [ WB ]
 ```
 
-The four-stage design groups front-end work and keeps execution, memory, and writeback separate. The six-stage design separates fetch, instruction decode, and operand fetch. Both use the same EX/MEM/WB tail, allowing their behavior to be implemented through stage-layout tables rather than two independent CPU implementations.
+The four-stage design serializes the IF, ID, and OF rows in one FETCH slot. The six-stage design places those rows in separate slots, so different instructions can occupy them simultaneously. Both use the same EX/MEM/WB tail.
 
 | Stage | Work |
 |---|---|
 | IF | Bounds-check instruction fetch, capture encoded word, advance next-fetch PC |
 | ID | Decode fields, identify opcode routine, mark invalid instructions, recognize HALT |
 | OF | Capture operands authorized by ROM controls |
-| EX | Apply forwarding, run ALU, update flags, resolve branches and returns |
+| EX | Run ALU, update flags, resolve branches and returns; a branch uses a condition row and a successor row |
 | MEM | Validate and perform data-memory access |
-| WB | Commit register results/link register/SP as applicable and count retirement |
+| WB | Commit register results or the link register; instructions retire at their last ROM row |
 
 Instruction words, decoded fields, operand values, ALU results, loaded data, and fault information are carried in pipeline latches. This distributed state plays the role of internal instruction and operand registers; the simulator does not expose a single global bank of named IR/A/B/MAR/MDR registers shared by every in-flight instruction.
 
 ### 7.2 One simulation clock
 
-`Cpu::step()` advances one clock. Stage work is processed from older instructions toward younger instructions, building the next latch state. An older branch or fault can suppress younger work during the same clock. A dependency stall holds the affected front-end state and inserts a bubble while older instructions continue.
+`Cpu::step()` advances one clock. In-flight instructions execute at most one ROM row each, oldest first, then move toward the slot containing their next row. An older branch or fault can suppress younger work during the same clock. A dependency holds its consumer until the producer has completed.
 
 `stepInstruction()` advances clocks until the next retirement or halt, subject to its internal guard. `run()` advances until fetching has stopped and the pipeline has drained. HALT itself is excluded from the retired-instruction count.
 
@@ -294,33 +296,19 @@ There are two useful PC views: `fetch_pc_` identifies the next word to fetch, wh
 
 ### 8.1 Data dependencies
 
-Forwarding selects available results from older pipeline latches instead of waiting for their register writeback. Newer applicable producers take priority. Register operands and store data can receive forwarded values; link-register and SP-related paths receive appropriate treatment.
+Readiness-based forwarding is still planned. Both `--no-forward` and the default setting currently use the same conservative dependency interlock. Register results are read after older writers retire.
 
-An immediately dependent load consumer still needs a stall because the loaded value is not yet available at its required execution point. With `--no-forward`, dependencies wait until values can be obtained from the register file. The implementation's dependency checks are conservative; the reported stalls reflect its actual interlock rules.
+The reported `stalls` count covers these data interlocks. It does not include every clock spent waiting for a busy slot, and the four-stage FETCH slot's three row clocks are normal work rather than stalls.
 
 ### 8.2 Control dependencies
 
 The front end fetches sequentially until EX resolves a taken transfer. The CPU then redirects fetch and invalidates younger instructions. This corresponds to a sequential/not-taken fetch policy, without a dynamic branch predictor.
 
-An EX-resolved transfer produces one flush bubble in the four-stage layout and three in the six-stage layout. CALL and RET use the link register and resolve in EX in the current ISA. Squashed instructions do not retire. HALT stops subsequent fetching while allowing older work to complete.
+CALL and RET use the link register and resolve in EX. Squashed instructions do not retire. `flush bubbles` now counts discarded younger latches, which depends on their actual occupancy when a transfer resolves. HALT stops subsequent fetching while allowing older work to complete.
 
-### 8.3 Cycle-count identity
+### 8.3 Cycle accounting
 
-For the normally terminating HALT-based programs checked by the pipeline tests:
-
-```text
-cycles = (stages − 1) + retired + 1 HALT + stalls + flush bubbles
-```
-
-The first term accounts for pipeline fill/drain overhead relative to instruction throughput. Flush bubbles measure lost clock opportunities; they are not necessarily equal to the number of valid instructions discarded. Fault-terminated or manually interrupted runs should not be forced into this normal-completion equation.
-
-For GCD in four-stage forwarding mode:
-
-```text
-96 = 3 + 71 + 1 + 0 + 21
-```
-
-The measured 96 clocks do not mean that the program executed 96 instructions. Nor do the number of ROM rows or the number of Enter presses in microcode inspection determine this clock count.
+The old `stages − 1 + retired + HALT + stalls + flush bubbles` identity describes the previous stage-clock engine and does not apply here. Cycle counts depend on executed ROM rows, slot contention, interlocks, and redirects. In the four-stage layout, every completed instruction needs IF and ID clocks in the shared FETCH slot, and most instructions also need an OF clock there. For `recursive_sum.asm`, the 78 completed paths including HALT require 78 IF, 78 ID, and 70 OF rows: at least 226 FETCH-slot clocks before redirect and fill/drain overhead. The observed run takes 243 clocks.
 
 ## 9. ALU implementation
 
@@ -330,7 +318,7 @@ Integer division/remainder use a bit-by-bit unsigned magnitude algorithm with si
 
 Floating-point operations manipulate IEEE-754 single-precision bit layouts stored in ordinary integer registers. The implementation includes exponent alignment, normalization, mantissa multiplication, and Newton–Raphson reciprocal approximation for division. It is an educational soft-float implementation: it does not claim complete IEEE-754 rounding-mode, subnormal, NaN, or exception behavior. FDIV does not use the integer divide-by-zero trap path.
 
-All ALU operations occupy the modeled EX action. Software loops used to compute multiplication or division do not add simulated pipeline clocks. The cycle model therefore describes this processor simulator's scheduling, not the physical latency of a synthesized multiplier or divider.
+All ALU operations occupy one ROM EX row. FTOI and ITOF convert between integer values and single-precision bit patterns without updating flags. Software loops used to compute multiplication or division do not add simulated pipeline clocks. The cycle model describes this simulator's row scheduling, not the physical latency of a synthesized multiplier or divider.
 
 ## 10. Stack, calls, and exceptions
 
@@ -354,7 +342,7 @@ CALL stores the next instruction's word index in R14 and redirects execution. RE
 | `DIVIDE_BY_ZERO` | Integer DIV/REM with zero divisor | Suppress arithmetic result writeback |
 | `ILLEGAL_INSTRUCTION` | Opcode with no supported routine | Follow illegal-instruction handling rather than treating it as normal HALT |
 
-Runtime pipeline faults discard the faulting instruction and younger work while older instructions can drain. The CLI reports the exception, faulting instruction PC, detection stage, and address when available. An instruction-fetch fault can be carried to EX for reporting, so the printed stage is the detection/reporting point, not necessarily the origin of the attempted access.
+Runtime pipeline faults discard the faulting instruction and younger work while older instructions can drain. The CLI reports the exception, faulting instruction PC, detection slot, and address when available. An out-of-range instruction fetch is detected in the fetch slot after older instructions have had a chance to redirect or stop fetching.
 
 The standalone control sequencers accept fault inputs, suppress a faulting row's controls, and redirect to TRAP. The pipelined CPU enforces its faults directly in EX/MEM and uses the microcode reconstruction to display the corresponding trap path. It does not spend an additional pipeline clock executing the TRAP ROM row.
 
@@ -371,71 +359,57 @@ A separate `StackGuard` supplies stack-bound checks, and `StackVisualizer` can r
 | `--trace` | Pipeline snapshots and hazard events after each simulated clock |
 | `-s` / instruction step | Register snapshots associated with instruction-level advancement |
 | `--micro-trace` / `--micro-step` | Reconstructed control-ROM path for an instruction at retirement or fault |
-| TUI assembled-binary tags | Each in-flight instruction shows its stage and control-ROM row, e.g. `◄[EX 29]` or `<[WB 03] [FETCH 07]>` |
+| TUI assembled-binary tags | Each in-flight instruction shows its actual next control-ROM row, e.g. `◄[EX 29]` |
 
 The microcode view includes the shared fetch/decode prefix, the selected instruction's routine, branch successors based on captured execution flags, and trap controls when applicable. It prints actual ROM words and signal definitions, but the sequence is reconstructed for explanation. Squashed instructions are omitted.
 
-The TUI does not run a serial global microPC. The assembled-binary pane annotates each in-flight instruction with a control-ROM row, using the stage projection of the same `controlPath` used by the sequencer listing, the collapse into `StageControls`, and the reconstruction. Each tag names the stage that owns the row, so an ALU op passing through MEM can show a `WB` row; if the pipeline stage itself has a row, that row is used. If one PC is active in several stages, all annotations are shown. The CONTROL ROM pane inserts a visual blank line after each instruction routine without changing any ROM address.
+The TUI does not run a serial global microPC. The assembled-binary pane reads each in-flight instruction's own microPC and shows its next ROM row. If one PC is active in several slots, all annotations are shown. The CONTROL ROM pane inserts a visual blank line after each instruction routine without changing any ROM address.
 
 ### 11.2 Why the first microcode output is labelled cycle 4
 
-In `gcd.asm`, the first encoded instruction is the assembler-generated entry JMP. In the four-stage pipeline it progresses as follows:
+In `recursive_sum.asm`, the first encoded instruction is the assembler-generated entry JMP. In the four-stage pipeline it progresses as follows:
 
 | Clock | Action for the first JMP |
 |---:|---|
-| 1 | Fetch/decode in the combined front-end stage |
-| 2 | Resolve jump in EX |
-| 3 | Pass through MEM |
-| 4 | Reach WB; emit reconstructed microcode description |
+| 1 | Admit the instruction into FETCH |
+| 2 | Execute the IF row in FETCH |
+| 3 | Execute the ID row in FETCH |
+| 4 | Execute the jump row in EX; retire and emit the reconstructed path |
 
-Its reconstructed rows all carry the clock-4 label, including the fetch row. This label is the instruction's completion/fault clock, not the clock at which every displayed signal originally acted. In six-stage execution, the first instruction instead reaches WB at clock 6.
+Its reconstructed rows all carry the clock-4 label, including the fetch row. This label is the instruction's completion/fault clock, not the clock at which every displayed signal originally acted. The JMP skips MEM and WB because its routine has no rows there.
 
 For example:
 
 ```text
-completed/fault cycle=4 pc=0 JMP microPC=77 -> 78 ... signals: ir_load pc_inc
-completed/fault cycle=4 pc=0 JMP microPC=78 -> 29 ... signals: instr_decode opcode_dispatch
+completed/fault cycle=4 pc=0 JMP microPC=84 -> 85 ... signals: ir_load pc_inc
+completed/fault cycle=4 pc=0 JMP microPC=85 -> 29 ... signals: instr_decode opcode_dispatch
 completed/fault cycle=4 pc=0 JMP microPC=29 -> END ... signals: pc_write
 ```
 
 `pc` identifies the program instruction. `microPC` identifies a control-memory row. `END` ends the routine, not the program. The label `completed/fault` accommodates either event; its presence alone does not indicate an exception.
 
-Enter in `--micro-step` advances through these reconstructed rows. It does not execute one live datapath micro-operation. The simulator currently has no live per-stage control-signal timeline; `--trace` supplies pipeline-clock context, while microcode inspection supplies the ROM explanation.
+Enter in `--micro-step` advances through these reconstructed rows. The displayed cycle is the completion clock for the whole instruction; each row actually executed in its own clock. The `--trace` display supplies pipeline-clock context.
 
-### 11.3 GCD control flow
+### 11.3 Recursive sum control flow
 
-The program initializes R1=1071 and R2=462. Each loop subtracts the operands into R3. If the subtraction is zero, BEQ terminates the loop. Otherwise SHR extracts the sign bit, allowing a second BEQ to choose which operand should be reduced. The process converges to R1=R2=21, with R3=0 and Z=1.
+The program starts with R1=5 and recursively computes the sum of integers down to zero. BEQ selects the base case after ADD sets the zero flag. Each nonzero call saves R14 and the current input on the stack, then restores them before adding the partial result. The completed run has R2=15 and SP=4096.
 
 The repeated microcode addresses in the trace are expected: the same ROM routine implements every execution of a given opcode, even when its program PC or register values differ. BEQ's ROM condition row selects row 33 for not taken or row 34 for taken.
 
 ## 12. Measured program behavior
 
-The following measurements were collected from the executable on 4 November 2026. Every listed configuration was run with both horizontal and vertical ROMs; their counters matched, so one row represents both encodings. These are simulator clock counts, not elapsed-time benchmarks.
+The current row-clock executor produces the following results. Forwarding on and off have the same timings while both settings use the conservative interlock. Horizontal and vertical ROMs produce the same architectural results.
 
-| Program | Stages | Forwarding | Retired | Cycles | Stalls | Flushes | Flush bubbles |
-|---|---:|---|---:|---:|---:|---:|---:|
-| gcd | 4 | On | 71 | 96 | 0 | 21 | 21 |
-| gcd | 4 | Off | 71 | 109 | 13 | 21 | 21 |
-| gcd | 6 | On | 71 | 140 | 0 | 21 | 63 |
-| gcd | 6 | Off | 71 | 153 | 13 | 21 | 63 |
-| recursive_sum | 4 | On | 77 | 95 | 0 | 14 | 14 |
-| recursive_sum | 4 | Off | 77 | 125 | 30 | 14 | 14 |
-| recursive_sum | 6 | On | 77 | 125 | 0 | 14 | 42 |
-| recursive_sum | 6 | Off | 77 | 155 | 30 | 14 | 42 |
-| pointer_walk | 4 | On | 1793 | 2310 | 256 | 257 | 257 |
-| pointer_walk | 4 | Off | 1793 | 3592 | 1538 | 257 | 257 |
-| pointer_walk | 6 | On | 1793 | 2826 | 256 | 257 | 771 |
-| pointer_walk | 6 | Off | 1793 | 4108 | 1538 | 257 | 771 |
-| branch_storm | 4 | On | 1201 | 2106 | 0 | 901 | 901 |
-| branch_storm | 4 | Off | 1201 | 2306 | 200 | 901 | 901 |
-| branch_storm | 6 | On | 1201 | 3910 | 0 | 901 | 2703 |
-| branch_storm | 6 | Off | 1201 | 4110 | 200 | 901 | 2703 |
+| Program | Stages | Retired | Cycles | Data stalls | Flushes | Squashed |
+|---|---:|---:|---:|---:|---:|---:|
+| recursive_sum | 4 | 77 | 243 | 0 | 14 | 14 |
+| recursive_sum | 6 | 77 | 174 | 49 | 14 | 37 |
+| pointer_walk | 4 | 1793 | 5385 | 256 | 257 | 257 |
+| pointer_walk | 6 | 1793 | 4617 | 1794 | 257 | 514 |
+| branch_storm | 4 | 1201 | 3509 | 0 | 901 | 901 |
+| branch_storm | 6 | 1201 | 3409 | 201 | 901 | 1802 |
 
-The [measurement CSV](evaluation_results.csv) retains all 32 runs, including the separate encoding selections.
-
-The GCD result is 21 and recursive sum produces R2=15. Pointer walk exposes load-use stalls even with forwarding. Branch storm shows the larger taken-branch penalty in the six-stage pipeline. Turning forwarding off increases dependency stalls. Changing ROM encoding changes the control representation but does not change pipeline timing.
-
-For GCD, the six-stage forwarding run satisfies `140 = 5 + 71 + 1 + 0 + 63`. Both configurations retire the same number of instructions; the longer pipeline has more flush bubbles. A larger simulated clock count alone does not establish worse hardware execution time, because physical clock periods are not modeled.
+The [archived measurement CSV](evaluation_results.csv) contains results from the earlier stage-clock executor. Its cycle counts and forwarding comparisons are historical and should not be used as current measurements. Clock counts alone do not establish hardware execution time because physical clock periods are not modeled.
 
 ## 13. Build and demonstration
 
@@ -462,22 +436,22 @@ The executables are:
 First show machine encoding and final behavior:
 
 ```bash
-./build/simulator_core/risc201-sim examples/gcd.asm -4 -d
+./build/simulator_core/risc201-sim examples/recursive_sum.asm -4 -d
 ```
 
-Expected result: R1=R2=21, 71 retired instructions, 96 clocks, no exception. The decoded listing includes twelve instruction words because it includes the entry JMP.
+Expected result: R2=15, 77 retired instructions, 243 clocks, no exception. The decoded listing includes the assembler-generated entry JMP.
 
 Then inspect the pipeline and ROM separately:
 
 ```bash
-./build/simulator_core/risc201-sim examples/gcd.asm -4 --trace
-./build/simulator_core/risc201-sim examples/gcd.asm -4 --micro-step
-./build/simulator_core/risc201-sim examples/gcd.asm -6 --vertical --micro-trace
+./build/simulator_core/risc201-sim examples/recursive_sum.asm -4 --trace
+./build/simulator_core/risc201-sim examples/recursive_sum.asm -4 --micro-step
+./build/simulator_core/risc201-sim examples/recursive_sum.asm -6 --vertical --micro-trace
 ```
 
 Use Enter to advance the microcode view or `q` to stop. Open the generated ROM files to compare the packed word representations and complete instruction paths.
 
-Demonstrate data hazards and the effect of forwarding:
+Demonstrate data hazards under the current conservative interlock:
 
 ```bash
 ./build/simulator_core/risc201-sim examples/pointer_walk.asm -4
@@ -497,9 +471,9 @@ The stack-overflow example is expected to report `INVALID_MEMORY_ACCESS` and ret
 To demonstrate the standalone toolchain:
 
 ```bash
-./build/assembler/risc201-asm examples/gcd.asm -o /tmp/riscy-gcd.hex
-./build/assembler/risc201-disasm /tmp/riscy-gcd.hex -o /tmp/riscy-gcd.asm
-./build/simulator_core/risc201-sim /tmp/riscy-gcd.hex
+./build/assembler/risc201-asm examples/recursive_sum.asm -o /tmp/riscy-sum.hex
+./build/assembler/risc201-disasm /tmp/riscy-sum.hex -o /tmp/riscy-sum.asm
+./build/simulator_core/risc201-sim /tmp/riscy-sum.hex
 ```
 
 To regenerate the documentation from the actual ROM:
@@ -512,7 +486,7 @@ cmake --build build --target export_control_rom
 ### 13.2 Interactive debugger
 
 ```bash
-./build/simulator_core/tui/risc201-tui examples/gcd.asm
+./build/simulator_core/tui/risc201-tui examples/recursive_sum.asm
 ```
 
 The terminal UI displays assembly, encoded words, registers, memory, statistics, and an optional hazard timeline. It uses the Debugger class for stepping, breakpoint handling, and watchpoint handling. Representative commands are:
@@ -533,7 +507,7 @@ The terminal UI displays assembly, encoded words, registers, memory, statistics,
 
 Watchpoints detect value changes, not every access to an address. Breakpoints are fetch barriers: when the next fetch PC matches a breakpoint, the debugger holds fetch, drains the older instructions, and reports the stop only if that PC is still next. No instruction at or after the breakpoint enters the pipeline, and resuming starts from an empty pipeline at that PC.
 
-The source editor requires explicit reassembly. A stale-buffer indication distinguishes edited text from the loaded program. `:save` writes the buffer back to the loaded file or a supplied path, independently of assembly. Command input supports Tab completion for command names and `:load` paths. Failed assembly does not replace the currently loaded machine image.
+The source editor requires explicit reassembly. A stale-buffer indication distinguishes edited text from the loaded program. `:save` writes the buffer back to the loaded file or a supplied path, independently of assembly. Command input supports Tab completion for command names and `:load` paths. Failed `:assemble` and `:load` commands list all collected errors with source line numbers and leave the current machine image intact. Both commands also show assembler warnings after success or failure, in yellow below the status or errors. PageUp/PageDown scrolls a diagnostic list that exceeds the feedback pane.
 
 ### 13.3 Run limits and exit statuses
 
@@ -543,7 +517,7 @@ The simulator returns 0 for normal completion, 1 for an exception/input error, a
 
 ## 14. Verification
 
-At documentation time, all **19 CTest tests pass**. The suite covers the following areas:
+The suite registers **20 CTest tests**. It covers the following areas:
 
 | Area | Tests |
 |---|---|
@@ -555,13 +529,14 @@ At documentation time, all **19 CTest tests pass**. The suite covers the followi
 | Pipeline results, hazards, timing | `PipelineTest` |
 | Debugger behavior | `DebuggerTest` |
 | Microcode reconstruction and CLI | `MicroTraceTest`, `MicroCliTest` |
+| TUI assembly diagnostics | `TuiProgramLoaderTest` |
 | Generated ROM files | `ControlRomListings` |
 
-Control-collapse tests compare ROM-derived signals with the bundles consumed by the pipeline. Encoding tests compare decoded vertical rows with horizontal rows, including the shared fetch/decode controls. Pipeline tests exercise forwarding and normal-completion cycle accounting. Microcode tests check branch paths, exceptions, squashed illegal instructions, and preservation of execution results when tracing is enabled.
+Control-collapse tests compare ROM-derived signals with the bundles used for dependency checks. Encoding tests compare decoded vertical rows with horizontal rows, including the shared fetch/decode controls. Pipeline tests check row timing, architecture results, and squash accounting. Microcode tests check branch paths, exceptions, squashed illegal instructions, and preservation of execution results when tracing is enabled.
 
-The vertical-control tests execute all fourteen example programs across the pipeline/forwarding configurations and compare encoding behavior. During the front-end-control integration, 112 example/configuration runs—14 programs × 2 pipelines × 2 encodings × 2 forwarding settings—also produced identical normal CLI output and exit statuses before and after the change.
+The vertical-control tests compare both encodings across executable example programs and the pipeline configurations. A source file with assembly errors cannot enter that comparison until corrected.
 
-The measurements in Section 12 were freshly collected for this report. Passing these tests establishes the exercised behavior; it is not a proof of exhaustive ISA correctness, electrical timing, or complete IEEE-754 compliance. The interactive terminal rendering itself is primarily exercised manually.
+The measurements in Section 12 reflect the row-clock executor. Passing these tests establishes the exercised behavior; it is not a proof of exhaustive ISA correctness, electrical timing, or complete IEEE-754 compliance. The interactive terminal rendering itself is primarily exercised manually.
 
 ## 15. Architectural decisions and implementation boundaries
 
@@ -570,14 +545,14 @@ The measurements in Section 12 were freshly collected for this report. Passing t
 | Custom fixed-width instruction set | Makes encoding, decoding, and control dispatch explicit and manageable; does not provide compatibility with external RISC-V binaries |
 | ROM-defined front-end and instruction controls | Keeps fetch, decode, operand access, execution, and writeback visible in the control description |
 | Shared fetch/decode prefix | Fetches and decodes before selecting an opcode routine; avoids physically duplicating common ROM rows |
-| Collapse ROM routines into pipeline controls | Allows overlapping instructions while retaining a shared control definition; requires tests to ensure the collapse preserves supported semantics |
+| Per-instruction microPC | Executes one ROM row per instruction per clock while allowing instructions in different slots to overlap |
 | Layout-driven four/six-stage CPU | Shares execution, memory, and writeback logic while varying front-end partitioning |
 | Separate instruction/data storage | Avoids a single-memory-port structural conflict and simplifies literal loading |
 | Sequential speculative fetch | Keeps branch behavior simple and exposes flush costs without a dynamic predictor |
 | Link-register CALL/RET | Uses R14 for return addresses; software explicitly saves it for nested calls |
 | Stack operations as macros | Exposes stack changes as ordinary instructions; macros are not atomic rollback units |
 | Equivalent horizontal/vertical ROMs | Enables an encoded-capacity comparison while preserving functional behavior |
-| Reconstruction at retirement/fault | Provides readable microcode explanations without changing clocks; does not provide live microinstruction stepping |
+| Reconstruction at retirement/fault | Provides readable ROM paths; the displayed cycle is the completion clock, while the TUI shows live next-row addresses |
 | Single modeled EX action for arithmetic | Keeps pipeline timing consistent across ALU operations; does not represent algorithm-dependent hardware latency |
 
 The main implementation boundaries are the reconstructed rather than live microcode trace, lack of automatic stack-frame/collision protection, partial floating-point special-case handling, and the difference between the R0 assembler convention and raw-machine-code execution. These boundaries should be considered when selecting evaluation programs and interpreting results.
@@ -608,4 +583,4 @@ All links are relative to this report in `docs/`.
 | [tui.cpp](../simulator_core/tui/src/tui.cpp) | Interactive terminal presentation and commands |
 | [tests/CMakeLists.txt](../tests/CMakeLists.txt) | Registered verification targets |
 
-For a focused source walkthrough, start with the shared ISA, read one complete ADD or LOAD flow in the ROM listings, follow its controls through `control_decode.cpp`, and then locate the corresponding OF/EX/MEM/WB actions in `cpu.cpp`. The GCD demonstration connects that static design to an observable program result and an explainable cycle count.
+For a focused source walkthrough, start with the shared ISA, read one complete ADD or LOAD flow in the ROM listings, follow its row stages through `control_decode.cpp`, and then locate the corresponding row effects in `cpu.cpp`. The recursive-sum demonstration connects that static design to an observable program result and a row-clock cycle count.
