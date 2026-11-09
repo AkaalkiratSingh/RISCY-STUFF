@@ -438,21 +438,24 @@ void Tui::render() {
     }
     const int top_h = std::max(10, total_rows - (cmd_h + fb_h + trace_h));
 
-    // Worst-case row: 34-column base + " <[WB 03] [IF 77]>" (18) = 52 content,
-    // plus 3 padding columns and 2 borders = 57.
-    constexpr int kBinaryPaneWidth = 57;
-    int col1_w = (total_cols * 25) / 100;
-    if (col1_w < 20) col1_w = 20;
-    int col2_w = std::min(kBinaryPaneWidth, total_cols - col1_w - 28);
-    if (col2_w < 26) {
-        col2_w = 26;
-        col1_w = std::max(18, total_cols - col2_w - 28);
+    const int memory_width = static_cast<int>(std::string("[   2] 1.32118362e+19").size()) + 7;
+    int binary_width = 29;
+    for (size_t pc = 0; pc < code_words_.size(); ++pc) {
+        const int address_width = std::max(3, static_cast<int>(std::to_string(pc).size()));
+        const int mnemonic_width = static_cast<int>(formatInstruction(decodeInstruction(code_words_[pc])).size());
+        binary_width = std::max(binary_width, address_width + mnemonic_width + 35);
     }
-    int col3_w = total_cols - col1_w - col2_w;
-    if (col3_w < 28) {
-        col3_w = 28;
-        col1_w = std::max(18, total_cols - col3_w - 26);
-        col2_w = std::max(22, total_cols - col1_w - col3_w);
+    int col3_w;
+    int col2_w;
+    int col1_w;
+    if (total_cols >= 72) {
+        col3_w = std::min(28 + memory_width, std::max(28, total_cols - 18 - binary_width));
+        col2_w = std::min(binary_width, std::max(26, total_cols - col3_w - 18));
+        col1_w = total_cols - col2_w - col3_w;
+    } else {
+        col1_w = total_cols / 3;
+        col2_w = total_cols / 3;
+        col3_w = total_cols - col1_w - col2_w;
     }
 
     // Panes render
@@ -464,9 +467,9 @@ void Tui::render() {
     const int reserve = top_h >= 14 ? 7 : 5;
     const int reg_h = std::min(reg_rows + 5, top_h - reserve);
     const int sub_h = top_h - reg_h;
-    const int stats_w = (col3_w * 54) / 100;
-    const int stack_w = col3_w - stats_w;
-    const int rom_h = (sub_h >= 6) ? std::max(3, (sub_h * 45) / 100) : 0;
+    const int stack_w = std::min(memory_width, col3_w / 2);
+    const int stats_w = col3_w - stack_w;
+    const int rom_h = (sub_h >= 6) ? sub_h - std::min(10, std::max(3, (sub_h * 35) / 100)) : 0;
     const int stats_h = sub_h - rom_h;
 
     renderRegisters(0, col1_w + col2_w, reg_h, col3_w);
