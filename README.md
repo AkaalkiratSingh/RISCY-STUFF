@@ -1,9 +1,8 @@
 # RISCY-STUFF (risc201)
 
-**Project evaluation report:** [Specifications, architecture, operation, and measured results](docs/PROJECT_ARCHITECTURE.md).
+**Project evaluation report:** [Specifications, architecture, operation, and measured results](docs/PROJECT_ARCHITECTURE.md)
 
-
-A from-scratch 32-bit processor project: a custom instruction set, a two-pass assembler, and a C++17 simulator whose control unit is driven by real microcode. It also includes a hardware-style stack guard that raises exceptions on stack overflow or underflow.
+A from-scratch 32-bit processor: a custom instruction set, a two-pass assembler, and a simulator whose control unit is driven by microcode.
 
 ---
 
@@ -21,13 +20,13 @@ A from-scratch 32-bit processor project: a custom instruction set, a two-pass as
 
 ## Highlights
 
-- **Custom 32-bit ISA:** 16 general-purpose registers, fixed-width 32-bit instructions.
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword.
+- **Custom 32-bit ISA:** fixed-width 32-bit instructions
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword or a vertical 16-bit microword.
 - **Optimized ALU:** A 32-bit Kogge-Stone parallel-prefix adder (O(logn) latency), a Radix-4 Booth multiplier, and a complete Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV using Newton-Raphson, FCMP, FTOI, ITOF) that reuses the integer datapath.
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
-- **Two-pass assembler** with labels, symbol table, errors and warnings, plus `.bin` / `.hex` output.
+- **Assembler** with macro preprocessing, errors and warnings, plus `.bin` / `.hex` output and a equivalent `disassembler`
 - **Simulator CLI** with a decode listing, single-step mode and memory dumps.
-- **Interactive TUI (`risc201-tui`):** live source, binary, register, stats and memory panes; a hazard timeline; a source editor with explicit reassembly; and CPU configuration switching.
+- **Interactive TUI (`risc201-tui`):** live source, binary, register, stats and memory panes; a hazard timeline; a source editor; and configurable CPU.
 
 ## Quick start
 
@@ -37,27 +36,40 @@ A from-scratch 32-bit processor project: a custom instruction set, a two-pass as
 git clone https://github.com/AkaalkiratSingh/RISCY-STUFF.git
 cd RISCY-STUFF
 
-
-cmake -S . -B build
-cmake --build build -j
-ctest --test-dir build
+./setup.sh
 ```
+
+The setup script requires CMake 3.16 or newer, a C++17 compiler, and a build tool such as Make. It creates `build/`, compiles the project, and runs the tests.
 
 This produces four executables:
 
 | Binary | Location | Purpose |
 |--------|----------|---------|
-| `risc201-sim` | `build/simulator_core/` | Assemble (if needed) and run a program |
-| `risc201-tui` | `build/simulator_core/tui/` | Interactive terminal debugger and visualization UI |
 | `risc201-asm` | `build/assembler/` | Assemble `.asm` into `.bin` or `.hex` |
 | `risc201-disasm` | `build/assembler/` | Disassemble `.bin` / `.hex` back into `.asm` |
+| `risc201-sim` | `build/simulator_core/` | Assemble (if needed) and run a program |
+| `risc201-tui` | `build/simulator_core/tui/` | Interactive terminal debugger and visualization UI |
 
 ## Usage
+Use `run.sh` with a mode flag to select a binary and pass its arguments through:
+
+```bash
+./run.sh --asm examples/recursive_sum.asm -o program.bin
+./run.sh --disasm program.bin -o program.asm -l
+./run.sh --sim examples/recursive_sum.asm -6 --no-forward
+./run.sh --tui examples/recursive_sum.asm -4
+```
+
+The mode must be the first argument. Bare names (`asm`, `disasm`, `sim`, `tui`) also work. Run `./run.sh --help` for help. File paths are relative to your currently open directory; run `./setup.sh` first to build the binaries.
 
 ### Run a program
 
 ```bash
 build/simulator_core/risc201-sim examples/collatz.asm
+```
+OR
+```bash
+./run.sh --sim examples/collatz.asm
 ```
 
 `.asm` input is assembled first. `.hex` and `.bin` input is decoded by the simulator itself. Output is the final register file, PC/SP, flags, cycle and retired-instruction counts, and any exception.
@@ -80,16 +92,20 @@ usage: risc201-sim <program.asm|program.hex|program.bin> [options]
 ### Interactive TUI
 
 ```bash
-build/simulator_core/tui/risc201-tui examples/recursive_sum.asm
+./build/simulator_core/tui/risc201-tui ./examples/recursive_sum.asm
+```
+OR
+```bash
+./run.sh --tui ./examples/recursive_sum.asm
 ```
 
 With no path the TUI starts empty — press `Tab` to focus the assembly pane and `e` to write a program from scratch. It accepts the same pipeline options as the simulator CLI: `-4`/`-6`, `--no-forward`, `--horizontal`/`--vertical` and `--trace`.
 
-The screen has panes for raw assembly, assembled binary, registers, extra stats, a control-ROM listing and memory, plus an optional hazard timeline. Long source and control-ROM rows wrap inside their panes. Each assembled-binary row with an active control row ends with its next ROM address, read from that instruction's microPC, for example `◄[EX 29]`. If an instruction waits to move slots, the tag shows its pending next row. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit. Feedback messages wrap and the pane grows to fit available space.
+The screen has panes for raw assembly, assembled binary, registers, extra stats, a control-ROM listing and memory, plus an optional hazard timeline. Each assembled-binary row with an active control row ends with its next ROM address, read from that instruction's microPC, for example `◄[EX 29]`. If an instruction waits to move slots, the tag shows its pending next row. Normal-mode keys: `s`/`n`/Enter step, `c` clock, `r` run, `T` toggle the timeline, `Tab` enter inspect mode, `q` quit.
 
 **Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane is a scrollable listing with blank separators between instruction routines (addresses are unchanged); `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
 
-**Editing** — with the assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. While the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent. A failed assembly lists all errors with source line numbers and leaves the running program untouched. `:assemble` and `:load` also report assembler warnings, including successful assemblies; warnings appear in yellow below the status or errors. Use PageUp/PageDown to read a diagnostic list longer than the feedback pane.
+**Editing** — with the raw assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. Whwn the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent.
 
 Commands (type `:` in normal or inspect mode). While typing, `Tab` completes command names and `:load` paths, with the candidates listed in the feedback pane; `Tab` again cycles them.
 
@@ -109,7 +125,7 @@ Commands (type `:` in normal or inspect mode). While typing, `Tab` completes com
 
 Stage and ROM changes restart the run (a dialog applies both in one reset); forwarding changes apply live.
 
-Breakpoints are fetch barriers. When one fires, fetching stops before that PC is admitted, the older instructions drain and retire, and the debugger reports the stop with an empty pipeline at the breakpoint PC. Resuming therefore starts a fresh pipeline exactly at that instruction.
+Breakpoints are `fetch barriers`. When one fires, fetching stops before that PC is admitted, the older instructions drain and retire, and the debugger reports the stop with an empty pipeline at the breakpoint PC. Resuming therefore starts a fresh pipeline exactly at that instruction.
 
 ### Assemble to a file
 
@@ -225,28 +241,6 @@ flow, repeating the shared prefix by address before its opcode-specific rows:
 
 The CPU retains a per-opcode control bundle for dependency detection and advances
 each in-flight instruction through its own ROM rows. Several instructions overlap.
-
-`--micro-trace` reconstructs each retired or faulting instruction's microcode path
-using the selected sequencer and the flags captured when that instruction executes.
-The shared fetch/decode rows are included before each opcode routine.
-Each row shows its instruction PC, microPC, successor (or END), packed ROM word,
-output signals, branch condition, and exception. The cycle label identifies the
-instruction completion/fault clock; each executed row consumed its own clock.
-Squashed instructions are omitted. Faulting rows show suppressed signals followed
-by the TRAP row; an invalid instruction fetch has no microcode routine to display.
-
-```bash
-build/simulator_core/risc201-sim examples/recursive_sum.asm --micro-trace --vertical
-build/simulator_core/risc201-sim examples/recursive_sum.asm --micro-step
-```
-
-`--micro-step` pauses between reconstructed rows: Enter advances the display and
-`q` (or EOF) stops. It does not pause or execute datapath micro-operations individually.
-Combine `--micro-trace` with `--trace` for pipeline context or `-s` for register
-snapshots. Trace modes stop after 4000 pipeline clocks. Exit status is 0 for normal
-completion, 1 for an exception/input error, and 2 for an incomplete run.
-Exceptions include the faulting instruction PC, detection stage, and memory address
-when applicable. Undefined opcodes raise `ILLEGAL_INSTRUCTION`.
 
 All modules share a single header-only contract, `isa_spec/isa201.h`, so the assembler, decoder, ALU and control unit always agree on opcodes, registers, flags and exception codes.
 
