@@ -71,6 +71,10 @@ add_executable(tui_program_loader_test tui_program_loader_test.cpp)
 target_link_libraries(tui_program_loader_test PRIVATE tui_lib)
 add_test(NAME TuiProgramLoaderTest COMMAND tui_program_loader_test)
 
+add_executable(tui_value_format_test tui_value_format_test.cpp)
+target_link_libraries(tui_value_format_test PRIVATE tui_lib)
+add_test(NAME TuiValueFormatTest COMMAND tui_value_format_test)
+
 add_test(NAME MicroCliTest COMMAND ${CMAKE_COMMAND}
     -DSIM=$<TARGET_FILE:risc201-sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/micro_cli_test.cmake)
 

@@ -226,7 +226,7 @@ constexpr CommandSpec kCommands[] = {
     { "unwatch",    ":unwatch <id>|all",                                     "watch" },
     { "reset",      ":reset",                                                "run" },
     { "save",       ":save [path]",                                          "files" },
-    { "config",     ":config [stage 4|6] [rom horiz|vert] [forward on|off]", "config" },
+    { "config",     ":config [stage 4|6] [rom horiz|vert] [forward on|off] [binary decimal|hex|float]", "config" },
     { "trace",      ":trace",                                                "config" },
     { "mem",        ":mem <s:c>",                                            "misc" },
     { "mem_focus",  ":mem_focus <addr>",                                     "misc" },
@@ -459,7 +459,7 @@ void Tui::render() {
     renderRawAssembly(0, 0, top_h, col1_w);
     renderAssembledBinary(0, col1_w, top_h, col2_w);
 
-    const int reg_cols = (col3_w - 2 >= 36) ? 4 : 2;
+    const int reg_cols = registerColumns(col3_w - 2);
     const int reg_rows = (kNumGPRegisters + reg_cols - 1) / reg_cols;
     const int reserve = top_h >= 14 ? 7 : 5;
     const int reg_h = std::min(reg_rows + 5, top_h - reserve);
@@ -659,6 +659,15 @@ void Tui::renderAssembledBinary(int r, int c, int h, int w) {
     }
 }
 
+int Tui::registerColumns(int width) const {
+    int value_width = 5;
+    for (int32_t value : cpu_.state().registers) {
+        value_width = std::max(value_width, static_cast<int>(formatWord(value, interpretation_).size()));
+    }
+    const int columns = width / (value_width + 5);
+    return columns >= 4 ? 4 : columns >= 2 ? 2 : 1;
+}
+
 void Tui::renderRegisters(int r, int c, int h, int w) {
     screen_.drawBox(r, c, h, w, "REGISTERS",
                     Style{Color::White, Color::Default, false},
@@ -670,7 +679,7 @@ void Tui::renderRegisters(int r, int c, int h, int w) {
 
     const CpuState& st = cpu_.state();
 
-    int num_cols = (inner_w >= 36) ? 4 : 2;
+    int num_cols = registerColumns(inner_w);
     int col_width = inner_w / num_cols;
 
     for (int i = 0; i < kNumGPRegisters; ++i) {
@@ -679,8 +688,8 @@ void Tui::renderRegisters(int r, int c, int h, int w) {
         if (grid_r >= inner_h - 2) break;
 
         char buf[32];
-        snprintf(buf, sizeof(buf), "R%02d:%-5d", i, st.registers[static_cast<size_t>(i)]);
-        std::string reg_text = buf;
+        snprintf(buf, sizeof(buf), "R%02d:", i);
+        std::string reg_text = buf + formatWord(st.registers[static_cast<size_t>(i)], interpretation_);
         
         Style reg_style{Color::Default, Color::Default, false};
         if (st.registers[static_cast<size_t>(i)] != 0) {
@@ -873,7 +882,7 @@ void Tui::renderMemory(int r, int c, int h, int w) {
         }
 
         int32_t val = memory[static_cast<size_t>(addr)];
-        oss << "[" << std::setw(4) << addr << "] " << std::setw(6) << val;
+        oss << "[" << std::setw(4) << addr << "] " << std::setw(6) << formatWord(val, interpretation_);
         const bool is_sp = (static_cast<uint32_t>(addr) == sp);
         if (is_sp) oss << " ◄SP";
 
@@ -1115,6 +1124,7 @@ void Tui::openConfigDialog() {
     dialog_rows_.push_back({"stage", cpu_.variant() == PipelineVariant::SixStage ? "6-stage" : "4-stage"});
     dialog_rows_.push_back({"ROM", cpu_.encoding() == MicrocodeEncoding::Vertical ? "vertical" : "horizontal"});
     dialog_rows_.push_back({"forwarding", cpu_.forwarding() ? "on" : "off"});
+    dialog_rows_.push_back({"binary interpretation", interpretationName(interpretation_)});
     dialog_selected_ = 0;
     mode_ = Mode::Dialog;
     feedback_message_ = "CONFIG - Up/Down select, Left/Right change, Enter apply, Esc cancel";
@@ -1128,13 +1138,16 @@ void Tui::cycleDialogValue() {
         row.value = row.value == "4-stage" ? "6-stage" : "4-stage";
     } else if (dialog_selected_ == 1) {
         row.value = row.value == "horizontal" ? "vertical" : "horizontal";
-    } else {
+    } else if (dialog_selected_ == 2) {
         row.value = row.value == "on" ? "off" : "on";
+    } else {
+        row.value = row.value == "Decimal Integer" ? "Hexadecimal" :
+            row.value == "Hexadecimal" ? "Floating Point Number" : "Decimal Integer";
     }
 }
 
 void Tui::applyDialog() {
-    if (dialog_rows_.size() < 3) {
+    if (dialog_rows_.size() < 4) {
         mode_ = Mode::Normal;
         return;
     }
@@ -1149,12 +1162,15 @@ void Tui::applyDialog() {
         feedback_message_ = "config applied";
     }
     cpu_.setForwarding(dialog_rows_[2].value == "on");
+    interpretation_ = dialog_rows_[3].value == "Hexadecimal" ? BinaryInterpretation::Hexadecimal :
+        dialog_rows_[3].value == "Floating Point Number" ? BinaryInterpretation::FloatingPoint :
+        BinaryInterpretation::Decimal;
     feedback_is_error_ = false;
     mode_ = Mode::Normal;
 }
 
 void Tui::renderDialog() {
-    const int w = std::min(46, screen_.cols() - 4);
+    const int w = std::min(50, screen_.cols() - 4);
     const int h = 9;
     if (w < 34 || screen_.rows() < h + 4) return;
 
@@ -1857,8 +1873,12 @@ void Tui::executeCommand(const std::string& raw_cmd) {
         } else if (what == "forward" && (value == "on" || value == "off")) {
             cpu_.setForwarding(value == "on");
             feedback_message_ = "config: forwarding " + value;
+        } else if (what == "binary" && (value == "decimal" || value == "hex" || value == "float")) {
+            interpretation_ = value == "hex" ? BinaryInterpretation::Hexadecimal :
+                value == "float" ? BinaryInterpretation::FloatingPoint : BinaryInterpretation::Decimal;
+            feedback_message_ = std::string("config: binary interpretation ") + interpretationName(interpretation_);
         } else {
-            feedback_message_ = "Usage: :config [stage 4|6] [rom horiz|vert] [forward on|off]";
+            feedback_message_ = "Usage: :config [stage 4|6] [rom horiz|vert] [forward on|off] [binary decimal|hex|float]";
             feedback_is_error_ = true;
         }
     } else if (action == "trace") {

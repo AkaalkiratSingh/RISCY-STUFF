@@ -117,13 +117,13 @@ Commands (type `:` in normal or inspect mode). While typing, `Tab` completes com
 | `:save [path]`, `:w` | Write the editor buffer to the loaded file (or `path`) |
 | `:reset` | Reset CPU state and re-run the loaded program |
 | `:break <pc>`, `:clearbreak` | Toggle or clear breakpoints |
-| `:config [stage 4\|6] [rom horiz\|vert] [forward on\|off]` | Change configuration; bare `:config` opens a dialog |
+| `:config [stage 4\|6] [rom horiz\|vert] [forward on\|off] [binary decimal\|hex\|float]` | Change configuration; bare `:config` opens a dialog |
 | `:mem S:C` | Dump `C` words from `S` and jump the memory view |
 | `:mem_focus <addr>` | Jump the memory view |
 | `:trace` | Toggle the hazard timeline |
 | `:help`, `:quit` | Show help / quit |
 
-Stage and ROM changes restart the run (a dialog applies both in one reset); forwarding changes apply live.
+Stage and ROM changes restart the run (a dialog applies both in one reset); forwarding and binary interpretation changes apply live. Binary interpretation controls register and memory values: Decimal Integer (default), Hexadecimal (eight digits), or Floating Point Number (the same 32 bits interpreted as an IEEE-754 single-precision value). Select it in the dialog or use `:config binary decimal`, `:config binary hex`, or `:config binary float`.
 
 Breakpoints are `fetch barriers`. When one fires, fetching stops before that PC is admitted, the older instructions drain and retire, and the debugger reports the stop with an empty pipeline at the breakpoint PC. Resuming therefore starts a fresh pipeline exactly at that instruction.
 

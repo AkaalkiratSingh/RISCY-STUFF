@@ -4,6 +4,7 @@
 #include "simulator_core/debugger.h"
 #include "tui/screen.h"
 #include "tui/terminal.h"
+#include "tui/value_format.h"
 
 #include <cstdint>
 #include <string>
@@ -61,6 +62,7 @@ private:
     void renderFeedback(int r, int c, int h, int w);
 
     std::string formatActiveStage(uint32_t pc) const;
+    int registerColumns(int width) const;
     std::string describeStop(const StopInfo& info) const;
 
     Cpu& cpu_;
@@ -106,6 +108,7 @@ private:
 
     std::vector<DialogRow> dialog_rows_;
     int dialog_selected_ = 0;
+    BinaryInterpretation interpretation_ = BinaryInterpretation::Decimal;
 
 };
 

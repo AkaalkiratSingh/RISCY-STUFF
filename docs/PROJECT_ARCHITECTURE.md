@@ -489,6 +489,7 @@ The terminal UI displays assembly, encoded words, registers, memory, statistics,
 | `:mem 0:16` | Inspect a data-memory range |
 | `:config stage 6` | Select the six-stage pipeline and restart |
 | `:config rom vert` | Select vertical ROM and restart |
+| `:config binary decimal\|hex\|float` | Display register and memory words as signed decimal integers, hexadecimal, or IEEE-754 single-precision values; applies without resetting execution |
 | `:trace` | Toggle hazard timeline |
 
 Watchpoints detect value changes, not every access to an address. Breakpoints are fetch barriers: when the next fetch PC matches a breakpoint, the debugger holds fetch, drains the older instructions, and reports the stop only if that PC is still next. No instruction at or after the breakpoint enters the pipeline, and resuming starts from an empty pipeline at that PC.
