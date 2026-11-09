@@ -112,6 +112,18 @@ namespace risc201 {
             return true;
         }
 
+        bool parseHexLiteral(const std::string& token, uint32_t& bits_out) {
+            if (token.size() < 3 || token.size() > 10) return false;
+            if (token[0] != '0' || (token[1] != 'x' && token[1] != 'X')) return false;
+
+            for (size_t i = 2; i < token.size(); ++i) {
+                if (!std::isxdigit(static_cast<unsigned char>(token[i]))) return false;
+            }
+
+            bits_out = static_cast<uint32_t>(std::stoul(token.substr(2), nullptr, 16));
+            return true;
+        }
+
         bool parseFloatLiteral(const std::string& token, uint32_t& bits_out) {
             if (token.size() < 2) return false;
             char suffix = token.back();
@@ -125,6 +137,30 @@ namespace risc201 {
                 if (pos != body.size() || !std::isfinite(value)) return false;
 
                 bits_out = floatToBits(value);
+                return true;
+            }
+            catch (...) {
+                return false;
+            }
+        }
+
+        bool parseIntLiteral(const std::string& token, uint32_t& bits_out) {
+            if (token.empty()) return false;
+
+            bool negative = false;
+            std::string s = token;
+            if (s[0] == '-') {
+                negative = true;
+                s = s.substr(1);
+            }
+            if (s.empty()) return false;
+
+            try {
+                size_t pos;
+                long parsed = std::stol(s, &pos, 10);
+                if (pos != s.size()) return false;
+                if (negative) bits_out = static_cast<uint32_t>(-parsed);
+                else bits_out = static_cast<uint32_t>(parsed);
                 return true;
             }
             catch (...) {
@@ -203,7 +239,7 @@ namespace risc201 {
             uint32_t bits = 0;
             if (!has_label) addError(line_num, "literal needs a name, expected 'name: 1.0f'");
             else if (line.empty()) addError(line_num, "literal '" + label + "' has no value");
-            else if (!parseFloatLiteral(line, bits)) addError(line_num, "invalid float literal '" + line + "' (expected e.g. 3.14f)");
+            else if (!parseHexLiteral(line, bits) && !parseFloatLiteral(line, bits) && !parseIntLiteral(line, bits)) addError(line_num, "invalid literal '" + line + "' (expected e.g. 3.14f or 0x35ab9ef1 or 46)");
             if (has_label && !literal_index_.count(label)) literal_index_[label] = static_cast<uint32_t>(literal_words_.size());
             literal_words_.push_back(bits);
             return true;

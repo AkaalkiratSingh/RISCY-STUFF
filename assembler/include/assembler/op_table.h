@@ -40,6 +40,8 @@ namespace risc201 {
             case Opcode::FSUB:
             case Opcode::FMUL:
             case Opcode::FDIV:
+            case Opcode::FTOI:
+            case Opcode::ITOF:
             case Opcode::MOV:
             case Opcode::LOAD:
                 return true;
