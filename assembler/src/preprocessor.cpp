@@ -17,9 +17,16 @@ const char* const kBuiltinMacros[] = {
     "    SUB sp, sp, 1",
     "    STORE reg, 0[sp]",
     ".endm",
+
     ".macro POP reg",
     "    LOAD reg, 0[sp]",
     "    ADD sp, sp, 1",
+    ".endm",
+
+    ".macro SWAP reg1, reg2",
+    "   XOR reg1, reg1, reg2",
+    "   XOR reg2, reg1, reg2",
+    "   XOR reg1, reg1, reg2",
     ".endm",
 };
 

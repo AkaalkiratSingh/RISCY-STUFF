@@ -24,7 +24,7 @@
     halt
 
 .literals:
-half: 0.5f
-threehalves: 1.5f
-magic: 0x5f3759df
-x: 0.25f
+    half:         0.5f
+    threehalves:  1.5f
+    magic:        0x5f3759df
+    x:            0.25f
