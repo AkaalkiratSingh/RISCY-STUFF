@@ -21,7 +21,7 @@ A from-scratch 32-bit processor: a custom instruction set, a two-pass assembler,
 ## Highlights
 
 - **Custom 32-bit ISA:** fixed-width 32-bit instructions
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 48-bit microword or a vertical 16-bit microword.
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 42-bit microword or a vertical 16-bit microword.
 - **Optimized ALU:** A 32-bit Kogge-Stone parallel-prefix adder (O(logn) latency), a Radix-4 Booth multiplier, and a complete Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV using Newton-Raphson, FCMP, FTOI, ITOF) that reuses the integer datapath.
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Assembler** with macro preprocessing, errors and warnings, plus `.bin` / `.hex` output and a equivalent `disassembler`
