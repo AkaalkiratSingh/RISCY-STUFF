@@ -27,9 +27,9 @@ namespace risc201 {
                 << "Word width: " << (vertical ? kVerticalWordBits : kHorizontalWordBits) << " bits\n"
                 << "Physical rows: " << cu.controlMemory().size() << "\n\n";
             if (vertical) {
-                out << "Encoding: operate [15]=0, [14:10]=micro-op, [9:5]=ALU function, [0]=END.\n"
-                    << "Branch [15]=1, [14:12]=condition, [11:4]=taken address, [0]=fall-through END.\n"
-                    << "Otherwise the next row is address+1; address 255 denotes END.\n\n";
+                out << "Encoding: operate [11]=0, [10:7]=micro-op, [6:2]=ALU function, [1]=0, [0]=END.\n"
+                    << "Branch [11]=1, [10:8]=condition, [7:1]=taken address, [0]=fall-through END.\n"
+                    << "Otherwise the next row is address+1; branch address 127 denotes END.\n\n";
             } else {
                 out << "Encoding: [0] alu_enable, [1] mem_read, [2] mem_write, [3] reg_write,\n"
                     << "[4] pc_write, [5] pc_inc, [6] alu_src_imm, [7] mem_to_reg,\n"
@@ -45,7 +45,7 @@ namespace risc201 {
                 const uint64_t word = vertical ? packVertical(row, address) : ControlUnit::packHorizontal(row);
                 const char* conditions[] = { "-", "Z", "!Z", "N", "C", "V", "GT" };
                 out << "  " << std::right << std::setw(3) << address << "  0x"
-                    << std::hex << std::uppercase << std::setfill('0') << std::setw(vertical ? 4 : 12)
+                    << std::hex << std::uppercase << std::setfill('0') << std::setw(vertical ? (kVerticalWordBits + 3) / 4 : 12)
                     << word << std::dec << std::setfill(' ') << "  " << controlSignalNames(row.ctl);
                 if (row.ctl.opcode_dispatch) out << "  dispatch -> " << entry;
                 else if (row.cond != BranchCond::None) {
