@@ -29,8 +29,8 @@ namespace risc201 {
         vertical_unit_(),
         stack_guard_(memory_words, 0),
         controls_(encoding == MicrocodeEncoding::Vertical
-                      ? buildStageControls(vertical_unit_)
-                      : buildStageControls(control_unit_)) {
+            ? buildStageControls(vertical_unit_)
+            : buildStageControls(control_unit_)) {
         state_.sp = memory_words;
         state_.registers[static_cast<size_t>(Register::R15)] = static_cast<int32_t>(state_.sp);
         resetPipeline();
@@ -89,8 +89,8 @@ namespace risc201 {
         control_unit_ = ControlUnit(MicrocodeEncoding::Horizontal);
         vertical_unit_ = VerticalControlUnit{};
         controls_ = encoding == MicrocodeEncoding::Vertical
-                        ? buildStageControls(vertical_unit_)
-                        : buildStageControls(control_unit_);
+            ? buildStageControls(vertical_unit_)
+            : buildStageControls(control_unit_);
         routine_ends_valid_ = false;
         memory_.assign(memory_.size(), 0);
         loadWords(source_words_);
@@ -137,9 +137,9 @@ namespace risc201 {
 
         if (o.ra_write &&
             (c.pc_from_ra ||
-             candidate.instr.rs1 == Register::R14 ||
-             (!c.alu_src_imm && candidate.instr.rs2 == Register::R14) ||
-             candidate.instr.rd == Register::R14)) {
+                candidate.instr.rs1 == Register::R14 ||
+                (!c.alu_src_imm && candidate.instr.rs2 == Register::R14) ||
+                candidate.instr.rd == Register::R14)) {
             return true;
         }
 
@@ -160,12 +160,13 @@ namespace risc201 {
         const auto& rom = controlMemory();
         std::array<Latch, kMaxPipelineSlots> next{};
         std::vector<int> order;
+
         for (int i = 0; i < n_slots_; ++i) {
             if (regs_[static_cast<size_t>(i)].valid) order.push_back(i);
         }
         std::sort(order.begin(), order.end(), [&](int a, int b) {
             return regs_[static_cast<size_t>(a)].seq < regs_[static_cast<size_t>(b)].seq;
-        });
+            });
 
         uint64_t squash_after = 0;
         int effect_slot = -1;
@@ -193,7 +194,8 @@ namespace risc201 {
                 }
                 if (blocked) {
                     next[static_cast<size_t>(slot)] = l;
-                } else {
+                }
+                else {
                     next[static_cast<size_t>(expected)] = l;
                 }
                 continue;
@@ -234,7 +236,7 @@ namespace risc201 {
                 next[static_cast<size_t>(slot)] = l;
                 ++trace_.stalls;
                 if (tracing_) trace_.events.push_back(
-                    {cycles_, HazardKind::Stall, l.pc, slot, 0, 0, 0});
+                    { cycles_, HazardKind::Stall, l.pc, slot, 0, 0, 0 });
                 continue;
             }
 
@@ -246,44 +248,45 @@ namespace risc201 {
                 if (l.pc >= code_.size()) {
                     error = ExceptionCode::INVALID_MEMORY_ACCESS;
                     fault_address = l.pc;
-                } else {
+                }
+                else {
                     l.word = code_[l.pc];
                     if (c.pc_inc) fetch_pc_ = l.pc + 1;
                 }
             }
+
             if (error == ExceptionCode::NONE && c.instr_decode) {
                 l.instr = decodeInstruction(l.word);
                 l.decoded = true;
             }
+
             if (error == ExceptionCode::NONE && c.operand_read) {
-                l.rs1_val = state_.registers[static_cast<size_t>(l.instr.rs1)];
-                l.rs2_val = state_.registers[static_cast<size_t>(l.instr.rs2)];
-                l.rd_val = state_.registers[static_cast<size_t>(l.instr.rd)];
-                l.ra_val = state_.registers[static_cast<size_t>(Register::R14)];
-                if (forwarding_) {
-                    const auto readForwarded = [&](Register reg, int32_t value) {
-                        uint64_t newest = 0;
-                        for (const Latch& older : regs_) {
-                            if (!older.valid || !older.decoded || older.seq >= l.seq || older.seq <= newest) continue;
-                            const StageControls& producer = controls_[static_cast<uint8_t>(older.instr.opcode)];
-                            if (producer.reg_write && older.instr.rd == reg &&
-                                (producer.mem_to_reg ? older.mem_done : older.alu_done)) {
-                                value = producer.mem_to_reg ? older.mem_data : older.alu_result;
-                                newest = older.seq;
-                            }
-                            if (producer.ra_write && reg == Register::R14 && older.ra_done) {
-                                value = static_cast<int32_t>(older.pc + 1);
-                                newest = older.seq;
-                            }
+                const auto readReg = [&](Register reg) {
+                    int32_t value = state_.registers[static_cast<size_t>(reg)];
+                    if (!forwarding_) return value;
+                    uint64_t newest = 0;
+                    for (const Latch& older : regs_) {
+                        if (!older.valid || !older.decoded || older.seq >= l.seq || older.seq <= newest) continue;
+                        const StageControls& producer = controls_[static_cast<uint8_t>(older.instr.opcode)];
+                        if (producer.reg_write && older.instr.rd == reg &&
+                            (producer.mem_to_reg ? older.mem_done : older.alu_done)) {
+                            value = producer.mem_to_reg ? older.mem_data : older.alu_result;
+                            newest = older.seq;
                         }
-                        return value;
+                        if (producer.ra_write && reg == Register::R14 && older.ra_done) {
+                            value = static_cast<int32_t>(older.pc + 1);
+                            newest = older.seq;
+                        }
+                    }
+                    return value;
                     };
-                    l.rs1_val = readForwarded(l.instr.rs1, l.rs1_val);
-                    l.rs2_val = readForwarded(l.instr.rs2, l.rs2_val);
-                    l.rd_val = readForwarded(l.instr.rd, l.rd_val);
-                    l.ra_val = readForwarded(Register::R14, l.ra_val);
-                }
+
+                l.rs1_val = readReg(l.instr.rs1);
+                l.rs2_val = readReg(l.instr.rs2);
+                l.rd_val = readReg(l.instr.rd);
+                l.ra_val = readReg(Register::R14);
             }
+
             if (error == ExceptionCode::NONE && c.alu_enable) {
                 const int32_t rhs = (c.alu_src_imm || l.instr.I) ? l.instr.imm : l.rs2_val;
                 const Alu::Result result = alu_.execute(c.alu_op, l.rs1_val, rhs);
@@ -294,35 +297,39 @@ namespace risc201 {
                     if (c.flag_update) state_.flags = result.flags;
                 }
             }
+
             if (error == ExceptionCode::NONE && (c.mem_read || c.mem_write)) {
                 const uint32_t address = static_cast<uint32_t>(l.alu_result);
                 fault_address = address;
-                if (error == ExceptionCode::NONE && c.mem_read &&
-                    !readMemory(address, l.mem_data)) {
-                    error = ExceptionCode::INVALID_MEMORY_ACCESS;
-                }
-                if (error == ExceptionCode::NONE && c.mem_write) {
-                    if (!writeMemory(address, l.rd_val)) error = ExceptionCode::INVALID_MEMORY_ACCESS;
-                }
-                if (error == ExceptionCode::NONE) l.mem_done = true;
+
+                const bool ok = c.mem_read
+                    ? readMemory(address, l.mem_data)
+                    : writeMemory(address, l.rd_val);
+
+                if (ok) l.mem_done = true;
+                else    error = ExceptionCode::INVALID_MEMORY_ACCESS;
             }
+
             if (error == ExceptionCode::NONE && c.reg_write) {
                 const int32_t value = c.mem_to_reg ? l.mem_data : l.alu_result;
                 state_.registers[static_cast<size_t>(l.instr.rd)] = value;
                 if (l.instr.rd == Register::R15) state_.sp = static_cast<uint32_t>(value);
                 l.wb_done = true;
             }
+
             if (error == ExceptionCode::NONE && c.ra_write) {
                 state_.registers[static_cast<size_t>(Register::R14)] =
                     static_cast<int32_t>(l.pc + 1);
                 l.ra_done = true;
             }
+
             if (error == ExceptionCode::NONE && c.trap) {
                 error = ExceptionCode::ILLEGAL_INSTRUCTION;
             }
+
             if (error != ExceptionCode::NONE) {
                 state_.pending_exception = error;
-                state_.fault_info = FaultInfo{l.pc, slot, fault_address};
+                state_.fault_info = FaultInfo{ l.pc, slot, fault_address };
                 stop_fetch_ = true;
                 fault = true;
                 squash_after = l.seq;
@@ -334,21 +341,26 @@ namespace risc201 {
             }
 
             l.execution_flags = state_.flags;
-            const bool condition_taken = row.cond != BranchCond::None &&
+            const bool condition_taken =
+                row.cond != BranchCond::None &&
                 condHolds(row.cond, state_.flags);
             int32_t successor = condition_taken ? row.branch_target : row.next;
+
             if (c.opcode_dispatch) {
-                successor = encoding_ == MicrocodeEncoding::Vertical
+                successor = (encoding_ == MicrocodeEncoding::Vertical)
                     ? vertical_unit_.routineEntry(l.instr.opcode)
                     : control_unit_.routineEntry(l.instr.opcode);
+                
                 if (l.instr.opcode == Opcode::HALT ||
                     successor == control_unit_.routineEntry(static_cast<Opcode>(0xFF))) {
                     stop_fetch_ = true;
                     squash_after = l.seq;
                 }
             }
+
             if (c.pc_write) {
-                redirect_target = c.pc_src_ra ? static_cast<uint32_t>(l.ra_val)
+                redirect_target = c.pc_src_ra
+                    ? static_cast<uint32_t>(l.ra_val)
                     : branchTarget(l.pc, l.instr);
                 fetch_pc_ = redirect_target;
                 redirect = true;
@@ -357,28 +369,31 @@ namespace risc201 {
                 effect_slot = slot;
                 effect_pc = l.pc;
             }
+
             if (c.halt) stop_fetch_ = true;
+
             l.row_cycle = cycles_;
+
             if (successor == kMicroEnd) {
                 recordMicroTrace(l);
                 state_.pc = l.pc;
                 if (!c.halt) ++retired_;
                 continue;
             }
+
             l.micro_pc = static_cast<uint32_t>(successor);
             const RowStage next_stage = rowStage(rom.at(l.micro_pc));
-            const int target = next_stage == RowStage::Terminal ? slot
+            const int target = next_stage == RowStage::Terminal
+                ? slot
                 : slotForLayout(layout_, next_stage);
+            
             bool blocked = next[static_cast<size_t>(target)].valid;
             for (int i = slot; i <= target && !blocked; ++i) {
                 const Latch& ahead = next[static_cast<size_t>(i)];
                 if (ahead.valid && ahead.seq < l.seq) blocked = true;
             }
-            if (blocked && target != slot) {
-                next[static_cast<size_t>(slot)] = l;
-            } else {
-                next[static_cast<size_t>(target)] = l;
-            }
+
+            next[blocked ? slot : target] = l;
         }
 
         if (redirect) {
@@ -386,11 +401,11 @@ namespace risc201 {
             trace_.squashed += static_cast<uint64_t>(discarded);
             trace_.flush_bubbles += static_cast<uint64_t>(discarded);
             if (tracing_) trace_.events.push_back(
-                {cycles_, HazardKind::Flush, effect_pc, effect_slot,
-                 redirect_target, effect_slot, discarded});
+                { cycles_, HazardKind::Flush, effect_pc, effect_slot,
+                 redirect_target, effect_slot, discarded });
         }
         if (fault && tracing_) trace_.events.push_back(
-            {cycles_, HazardKind::Fault, effect_pc, effect_slot, 0, effect_slot, discarded});
+            { cycles_, HazardKind::Fault, effect_pc, effect_slot, 0, effect_slot, discarded });
         regs_ = next;
         if (!stop_fetch_ && !fetch_held_ && !regs_[0].valid) {
             Latch admitted;
@@ -411,20 +426,21 @@ namespace risc201 {
         const auto record = [&](const auto& unit) {
             const auto& cm = unit.controlMemory();
             for (const ControlStep& step : controlPath(unit, instruction.instr.opcode,
-                                                       instruction.execution_flags, fault)) {
+                instruction.execution_flags, fault)) {
                 const MicroOp& row = cm[static_cast<size_t>(step.micro_pc)];
                 const uint64_t packed = encoding_ == MicrocodeEncoding::Vertical
                     ? packVertical(row, step.micro_pc)
                     : ControlUnit::packHorizontal(row);
-                micro_trace_.push_back({cycles_, instruction.pc, instruction.instr.opcode,
+                micro_trace_.push_back({ cycles_, instruction.pc, instruction.instr.opcode,
                     static_cast<uint32_t>(step.micro_pc), step.next, packed, step.signals,
-                    step.condition, step.exception});
+                    step.condition, step.exception });
             }
-        };
+            };
 
         if (encoding_ == MicrocodeEncoding::Vertical) {
             record(vertical_unit_);
-        } else {
+        }
+        else {
             record(control_unit_);
         }
     }
@@ -436,15 +452,15 @@ namespace risc201 {
             const Latch& latch = regs_[static_cast<size_t>(i)];
             if (!latch.valid) continue;
             const MicroOp& row = rom.at(latch.micro_pc);
-            views.push_back({latch.pc, layout_[static_cast<size_t>(i)].name,
-                             static_cast<int>(latch.micro_pc), row.ctl});
+            views.push_back({ latch.pc, layout_[static_cast<size_t>(i)].name,
+                             static_cast<int>(latch.micro_pc), row.ctl });
         }
         return views;
     }
 
     const std::vector<MicroOp>& Cpu::controlMemory() const {
         return encoding_ == MicrocodeEncoding::Vertical ? vertical_unit_.controlMemory()
-                                                        : control_unit_.controlMemory();
+            : control_unit_.controlMemory();
     }
 
     const std::vector<int>& Cpu::routineEnds() const {
