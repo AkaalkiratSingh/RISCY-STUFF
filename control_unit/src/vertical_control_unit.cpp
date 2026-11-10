@@ -75,7 +75,7 @@ namespace risc201 {
         // ---- listing / sequencing helpers -----------------------------------
 
         uint32_t addrField(int32_t a) {
-            return a == kMicroEnd ? kMicroEndField : (static_cast<uint32_t>(a) & 0xFFu);
+            return a == kMicroEnd ? kVEndField : (static_cast<uint32_t>(a) & kVTargetMask);
         }
 
         const char* condName(BranchCond c) {
@@ -123,13 +123,14 @@ namespace risc201 {
                 }
                 if (row.branch_target != kMicroEnd &&
                     (row.branch_target < 0 ||
-                        static_cast<uint32_t>(row.branch_target) >= kMicroEndField)) {
+                    static_cast<uint32_t>(row.branch_target) >= kVEndField)) {
                     return "branch target " + std::to_string(row.branch_target) +
-                        " does not fit the 8-bit target field";
+                        " does not fit the 7-bit target field";
                 }
-                word = static_cast<uint16_t>(0x8000u | (cond << 12) |
-                    (addrField(row.branch_target) << 4) |
-                    (end ? 1u : 0u));
+                word = static_cast<uint16_t>((1u << kVBranchBit) |
+                    (cond << kVCondShift) |
+                    (addrField(row.branch_target) << kVTargetShift) |
+                    ((end ? 1u : 0u) << kVEndBit));
                 return roundTripProblem(row, addr, word);
             }
 
@@ -144,13 +145,13 @@ namespace risc201 {
                 uint32_t func = 0;
                 if (u.takes_func) {
                     func = static_cast<uint32_t>(row.ctl.alu_op);
-                    if (func > 0x1Fu) return "its ALU function does not fit the 5-bit func field";
+                    if (func > kVFuncMask) return "its ALU function does not fit the 5-bit func field";
                 }
                 else if (row.ctl.alu_op != Opcode::NOP) {
                     return "it selects an ALU function without enabling the ALU";
                 }
-                word = static_cast<uint16_t>((static_cast<uint32_t>(u.code) << 10) |
-                    (func << 5) | (end ? 1u : 0u));
+                word = static_cast<uint16_t>((static_cast<uint32_t>(u.code) << kVUopShift) |
+                    (func << kVFuncShift) | ((end ? 1u : 0u) << kVEndBit));
                 return roundTripProblem(row, addr, word);
             }
             return "its control lines match no micro-operation (" + controlSignalNames(row.ctl) + ")";
@@ -158,14 +159,15 @@ namespace risc201 {
 
         // Generates ROM listing mnemonics.
         std::string verticalMnemonic(uint16_t word) {
-            if (word & 0x8000u) {
-                return std::string("BRANCH ") + condName(static_cast<BranchCond>((word >> 12) & 0x7u));
+            if (word & (1u << kVBranchBit)) {
+            return std::string("BRANCH ") +
+            condName(static_cast<BranchCond>((word >> kVCondShift) & kVCondMask));
             }
-            const uint32_t code = (word >> 10) & 0x1Fu;
+            const uint32_t code = (word >> kVUopShift) & kVUopMask;
             if (code >= kNumMicroOpCodes) return "?";
             const UopDef& u = uopTable()[code];
             std::string m = u.name;
-            if (u.takes_func) m += std::string("(") + opcodeName(static_cast<Opcode>((word >> 5) & 0x1Fu)) + ")";
+            if (u.takes_func) m += std::string("(") + opcodeName(static_cast<Opcode>((word >> kVFuncShift) & kVFuncMask)) + ")";
             return m;
         }
 
@@ -190,7 +192,7 @@ namespace risc201 {
 
     MicroOp unpackVertical(uint16_t word, int addr) {
         MicroOp row;
-        const int32_t not_taken = (word & 1u) ? kMicroEnd : addr + 1;
+        const int32_t not_taken = ((word >> kVEndBit) & 1u) ? kMicroEnd : addr + 1;
 
         const auto failSafe = [] {              // undefined encoding fails safe
             MicroOp h;
@@ -198,21 +200,21 @@ namespace risc201 {
             return h;
             };
         const auto decodeAddr = [](uint32_t f) {
-            return f == kMicroEndField ? kMicroEnd : static_cast<int32_t>(f);
+            return f == kVEndField ? kMicroEnd : static_cast<int32_t>(f);
             };
 
-        if (word & 0x8000u) {                                      // branch row
-            const uint32_t cond = (word >> 12) & 0x7u;
+        if (word & (1u << kVBranchBit)) {                          // branch row
+            const uint32_t cond = (word >> kVCondShift) & kVCondMask;
             if (cond == 0 || cond > static_cast<uint32_t>(BranchCond::GreaterThan)) return failSafe();
             row.cond = static_cast<BranchCond>(cond);
-            row.branch_target = decodeAddr((word >> 4) & 0xFFu);
+            row.branch_target = decodeAddr((word >> kVTargetShift) & kVTargetMask);
         }
         else {                                                   // operate row
-            const uint32_t code = (word >> 10) & 0x1Fu;
+            const uint32_t code = (word >> kVUopShift) & kVUopMask;
             if (code >= kNumMicroOpCodes) return failSafe();
             const UopDef& u = uopTable()[code];
             row.ctl = u.ctl;
-            if (u.takes_func) row.ctl.alu_op = static_cast<Opcode>((word >> 5) & 0x1Fu);
+            if (u.takes_func) row.ctl.alu_op = static_cast<Opcode>((word >> kVFuncShift) & kVFuncMask);;
         }
         row.next = not_taken;
         return row;
@@ -371,7 +373,7 @@ namespace risc201 {
         const size_t h_bits = rows * kHorizontalWordBits;
         os << "\n" << rows << " rows x " << kVerticalWordBits << " bits = " << v_bits
             << " bits  (horizontal: " << rows << " x " << kHorizontalWordBits << " = " << h_bits
-            << " bits, " << (100 - 100 * kVerticalWordBits / kHorizontalWordBits)
+            << " bits, " << ((100 * (kHorizontalWordBits - kVerticalWordBits) + kHorizontalWordBits / 2) / kHorizontalWordBits)
             << "% narrower)\n"
             << "decoder: " << kNumMicroOpCodes << " micro-ops -> " << kNumControlLines
             << " control lines\n";
