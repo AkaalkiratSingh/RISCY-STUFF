@@ -1,7 +1,7 @@
 #pragma once
 
 // Vertical-microcode control unit.
-// Compresses 42-bit horizontal rows into 16-bit words.
+// Compresses 42-bit horizontal rows into 12-bit words.
 
 #include "control_unit/horizontal_control_unit.h"
 
@@ -14,10 +14,10 @@
 namespace risc201 {
 
      inline constexpr int kHorizontalWordBits = 42;
-     inline constexpr int kVerticalWordBits   = 16;
+     inline constexpr int kVerticalWordBits   = 12;
      inline constexpr int kNumControlLines    = 18;   // ControlWord bools, excluding alu_op
 
-    // Decoder input: maps distinct control line combinations to 5-bit codes.
+    // Decoder input: maps distinct control line combinations to 4-bit codes.
     enum class MicroOpCode : uint8_t {
     Idle = 0,
     Operands,
@@ -38,10 +38,23 @@ namespace risc201 {
     };
     inline constexpr size_t kNumMicroOpCodes = 16;  
 
-    // ---- 16-bit vertical microword format -----------------------------------
-    // Bit 15=0 (Operate): [14:10]=uop, [9:5]=func, [0]=END (drives datapath)
-    // Bit 15=1 (Branch):  [14:12]=cond (1..6), [11:4]=target, [0]=END (tests FLAGS)
+    // ---- 12-bit vertical microword format -----------------------------------
+    // Bit 11=0 (Operate): [10:7]=uop, [6:2]=func, [1]=0 (reserved), [0]=END
+    // Bit 11=1 (Branch):  [10:8]=cond (1..6), [7:1]=target, [0]=END (tests FLAGS)
     // Successor is implicit (addr+1 or END) unless a branch is taken.
+
+    // A branch target is 7 bits: addresses 0..126; 0x7F encodes END.
+    inline constexpr unsigned kVBranchBit  = 11;
+    inline constexpr unsigned kVUopShift   = 7;
+    inline constexpr unsigned kVUopMask    = 0xFu;
+    inline constexpr unsigned kVFuncShift  = 2;
+    inline constexpr unsigned kVFuncMask   = 0x1Fu;
+    inline constexpr unsigned kVCondShift  = 8;
+    inline constexpr unsigned kVCondMask   = 0x7u;
+    inline constexpr unsigned kVTargetShift = 1;
+    inline constexpr unsigned kVTargetMask = 0x7Fu;               // 7 bits
+    inline constexpr unsigned kVEndField   = 0x7Fu;               // END in the target field
+    inline constexpr unsigned kVEndBit     = 0;
 
     // Returns true if row fits vertical format.
     bool canPackVertical(const MicroOp& row, int addr);
