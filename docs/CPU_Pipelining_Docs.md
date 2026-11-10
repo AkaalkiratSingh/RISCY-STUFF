@@ -6,7 +6,7 @@
 
 risc201 is a custom 32-bit ISA with a C++17 simulator. Its CPU is not a conventional "one instruction per stage per clock" pipeline. It is a **ROM-row-clocked pipelined controller**:
 
-- Every instruction is a small *microcode routine*: a chain of rows in a control ROM (horizontal 48-bit or vertical 16-bit encoding, selectable at runtime).
+- Every instruction is a small *microcode routine*: a chain of rows in a control ROM (horizontal 42-bit or vertical 12-bit encoding, selectable at runtime).
 - Every in-flight instruction carries its **own micro-PC**.
 - Each clock, an instruction executes **at most one ROM row**, then moves to the pipeline slot that owns its *next* row.
 - Several instructions overlap, each at a different point in its own routine.
@@ -275,17 +275,7 @@ Two details matter when interpreting output:
 - **Micro-trace cycle labels** are the instruction's *completion* clock. The rows are reconstructed at retirement, even though each row actually ran on its own clock.
 - **Breakpoints are fetch barriers**: fetch stops before the breakpoint PC, older instructions drain, and the debugger reports the stop with an empty pipeline.
 
-## 10. Limitations and notes
-
-- **Stale wording in the repo docs.** The README roadmap and `docs/PROJECT_ARCHITECTURE.md` describe readiness-based forwarding as planned and say forwarding on/off behave identically. At HEAD the code in `Cpu::tick()` does implement forwarding, and the measurements above show the two modes differing. The docs' measurement table (e.g. recursive\_sum 6-stage = 174 cycles) matches the *forwarding-off* run. Updating those passages would make the documentation consistent.
-- **The `stalls` counter** covers all three stall situations in section 6.1, including in-order-retirement waits, not just data interlocks.
-- **No branch prediction**, no caches, no variable memory latency, no out-of-order execution.
-- **Arithmetic latency is not modelled**: ALU operations of any complexity occupy one EX row.
-- **Faulting `TRAP` rows** are reconstructed for display but do not consume an extra pipeline clock.
-- **R0** is only protected by the assembler; raw machine code can write it.
-- The TUI is exercised manually rather than by CTest; CPU behaviour is covered by `PipelineTest`, `CpuIntegrationTest`, `ControlDecodeTest` and the horizontal / vertical control-unit tests.
-
-## 11. Source map
+## 10. Source map
 
 | File | Responsibility |
 | --- | --- |

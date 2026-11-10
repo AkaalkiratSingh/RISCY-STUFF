@@ -95,7 +95,7 @@ namespace risc201 {
         // Decoded ROM words.
         const std::vector<MicroOp>& controlMemory() const { return cm_; }
 
-        // Packed 16-bit ROM.
+        // Packed 12-bit ROM (each word held in a uint16_t).
         const std::vector<uint16_t>& verticalRom() const { return vrom_; }
 
         // Human-readable ROM listing.

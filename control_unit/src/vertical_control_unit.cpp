@@ -105,7 +105,7 @@ namespace risc201 {
             return {};
         }
 
-        // Packs row into 16-bit word. Returns error string if invalid.
+        // Packs row into a 12-bit word (held in a uint16_t). Returns an error string if invalid.
         std::string packVerticalWord(const MicroOp& row, int addr, uint16_t& word) {
             const bool end = (row.next == kMicroEnd);
             if (!end && row.next != addr + 1) {
@@ -160,8 +160,8 @@ namespace risc201 {
         // Generates ROM listing mnemonics.
         std::string verticalMnemonic(uint16_t word) {
             if (word & (1u << kVBranchBit)) {
-            return std::string("BRANCH ") +
-            condName(static_cast<BranchCond>((word >> kVCondShift) & kVCondMask));
+                return std::string("BRANCH ") +
+                    condName(static_cast<BranchCond>((word >> kVCondShift) & kVCondMask));
             }
             const uint32_t code = (word >> kVUopShift) & kVUopMask;
             if (code >= kNumMicroOpCodes) return "?";
@@ -214,7 +214,7 @@ namespace risc201 {
             if (code >= kNumMicroOpCodes) return failSafe();
             const UopDef& u = uopTable()[code];
             row.ctl = u.ctl;
-            if (u.takes_func) row.ctl.alu_op = static_cast<Opcode>((word >> kVFuncShift) & kVFuncMask);;
+            if (u.takes_func) row.ctl.alu_op = static_cast<Opcode>((word >> kVFuncShift) & kVFuncMask);
         }
         row.next = not_taken;
         return row;
@@ -362,7 +362,7 @@ namespace risc201 {
             else os << std::setw(5) << r.branch_target;
 
             os << "  0x" << std::right << std::hex << std::uppercase
-                << std::setfill('0') << std::setw(4) << vrom_[a]
+                << std::setfill('0') << std::setw((kVerticalWordBits + 3) / 4) << vrom_[a]
                 << std::dec << std::setfill(' ') << std::left << "          "
                 << std::setw(14) << verticalMnemonic(vrom_[a]) << "  "
                 << controlSignalNames(r.ctl) << "\n";

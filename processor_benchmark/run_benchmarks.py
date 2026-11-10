@@ -93,7 +93,7 @@ for p in sorted(bench.glob("*.asm")):
                 stalls=stalls,
                 flushes=flushes,
                 flush_bubbles=bubbles,
-                runTime=f"{sum(elapsed) / len(elapsed):.6f}",
+                runTime_ms=f"{1000*sum(elapsed) / len(elapsed):.6f}",
             )
         )
     print(p.name, "passed all 8 configurations", flush=True)

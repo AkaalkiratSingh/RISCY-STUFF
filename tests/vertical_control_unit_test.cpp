@@ -501,14 +501,14 @@ int main() {
         CHECK(h.rfind("addr  routine  cond  next  taken  microword(hex)  signals\n", 0) == 0);  
         CHECK(h.find("micro-op") == std::string::npos);
         CHECK(v.find("micro-op") != std::string::npos);
-        CHECK(v.find("0x0108") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
+        CHECK(v.find("0x108") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
         CHECK(v.find("BRANCH Z") != std::string::npos);
         const size_t rows = hcm.size();
         CHECK(v.find(std::to_string(rows) + " rows x 12 bits = " + std::to_string(rows * 12) + " bits")
               != std::string::npos);
         CHECK(v.find("horizontal: " + std::to_string(rows) + " x 42 = " + std::to_string(rows * 42) + " bits")
               != std::string::npos);
-        CHECK(v.find("62% narrower") != std::string::npos);
+        CHECK(v.find("71% narrower") != std::string::npos);
         CHECK(v.find("18 control lines") != std::string::npos);
         CHECK(v.find("TRAP") != std::string::npos && v.find("BRANCH GT") != std::string::npos);
     }

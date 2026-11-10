@@ -45,10 +45,10 @@ The processor uses a **custom ISA**. Its encodings and calling convention are de
 | Six-stage pipeline | IF → ID → OF → EX → MEM → WB |
 | Instruction issue model | In-order pipeline, at most one instruction retired per clock |
 | Forwarding | Enabled by default; can be disabled |
-| Control memory | 79 physical rows, shared across 28 opcode routines and common control paths |
+| Control memory | 86 physical rows, shared across 30 opcode routines and common control paths |
 | Horizontal control word | 42 bits |
-| Vertical control word | 16 bits; 22 micro-operation codes |
-| Control-memory address fields | 8 bits; encoded 255 represents END |
+| Vertical control word | 12 bits; 16 micro-operation codes |
+| Control-memory address fields | Horizontal 8 bits (255 = END); vertical 7 bits (127 = END) |
 | Runtime exceptions | Invalid memory access, integer divide-by-zero, illegal instruction |
 | Implementation dependencies | C++ standard library; terminal UI additionally uses operating-system terminal facilities |
 
@@ -234,18 +234,18 @@ RET uses separate OF operand-read and EX redirect rows. Each executed row consum
 
 The horizontal word is 42 bits. Individual bits encode control lines, while fields encode ALU selection, branch condition, and successor addresses. The front-end controls occupy bits 38–41. The full bit assignment is recorded in the generated horizontal listing.
 
-The vertical word is 16 bits. Operate words select a micro-operation from a 22-entry decoder and optionally an ALU function. Branch words encode a condition and taken address. Sequential successors are implicit; END terminates the current sequence. The dispatch control provides the dynamic transition from the common prefix to the decoded instruction's routine.
+The vertical word is 12 bits. Operate words select a micro-operation from a 16-entry decoder and optionally an ALU function. Branch words encode a condition and taken address. Sequential successors are implicit; END terminates the current sequence. The dispatch control provides the dynamic transition from the common prefix to the decoded instruction's routine.
 
 The vertical ROM is generated from the horizontal definitions and decoded back for validation. A row that cannot be represented without losing information is rejected. This makes the two encodings alternative representations of the same control design.
 
 | Encoded storage | Horizontal | Vertical |
 |---|---:|---:|
 | Physical rows | 86 | 86 |
-| Bits per row | 42 | 16 |
-| Total encoded bits | 3612 | 1376 |
-| Byte-equivalent encoded capacity | 451.5 | 172 |
+| Bits per row | 42 | 12 |
+| Total encoded bits | 3612 | 1032 |
+| Byte-equivalent encoded capacity | 451.5 | 129 |
 
-The vertical representation reduces encoded ROM capacity by approximately 62%. These figures describe the logical packed ROM, not C++ object sizes or total hardware area. The decoder and dispatch structures also require storage/logic. The simulator does not model their electrical delay, so these numbers do not establish a clock-frequency advantage.
+The vertical representation reduces encoded ROM capacity by approximately 71%. These figures describe the logical packed ROM, not C++ object sizes or total hardware area. The decoder and dispatch structures also require storage/logic. The simulator does not model their electrical delay, so these numbers do not establish a clock-frequency advantage.
 
 ### 6.4 How ROM controls reach the pipeline
 

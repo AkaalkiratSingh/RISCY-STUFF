@@ -2,6 +2,7 @@
 #include "assembler/preprocessor.h"
 #include "simulator_core/cpu.h"
 #include "simulator_core/decoder.h"
+#include "control_unit/vertical_control_unit.h"
 #include "utils/utils.h"
 
 #include <cstddef>
@@ -123,7 +124,8 @@ bool printMicroTrace(const risc201::Cpu& cpu, bool interactive) {
         else std::cout << row.next;
         std::cout << " word=0x" << std::right << std::hex << std::uppercase << std::setfill('0')
                   << std::setw(cpu.encoding() == risc201::MicrocodeEncoding::Vertical
-                          ? 4 : risc201::kHorizontalWordBits / 4)
+                          ? (risc201::kVerticalWordBits + 3) / 4
+                          : risc201::kHorizontalWordBits / 4)
                   << row.packed << std::dec << std::setfill(' ')
                   << " signals: " << risc201::controlSignalNames(row.signals);
         if (row.condition != risc201::BranchCond::None) {
