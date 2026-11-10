@@ -358,7 +358,7 @@ A separate `StackGuard` supplies stack-bound checks, and `StackVisualizer` can r
 
 The microcode view includes the shared fetch/decode prefix, the selected instruction's routine, branch successors based on captured execution flags, and trap controls when applicable. It prints actual ROM words and signal definitions, but the sequence is reconstructed for explanation. Squashed instructions are omitted.
 
-The TUI does not run a serial global microPC. The assembled-binary pane reads each in-flight instruction's own microPC and shows its next ROM row. If one PC is active in several slots, all annotations are shown. The CONTROL ROM pane inserts a visual blank line after each instruction routine without changing any ROM address.
+The TUI does not run a serial global microPC. The assembled-binary pane reads each in-flight instruction's own microPC and shows its next ROM row. If one PC is active in several slots, all annotations are shown. The CONTROL ROM pane inserts a visual blank line after each instruction routine without changing any ROM address. It marks every row currently being executed by an in-flight instruction with a pointer and highlight, and does not auto-follow any single microPC.
 
 ### 11.2 Why the first microcode output is labelled cycle 4
 

@@ -812,8 +812,11 @@ void Tui::renderControlRom(int r, int c, int h, int w) {
     const auto& rom = cpu_.controlMemory();
     if (rom.empty()) return;
 
+    std::vector<int> active;
+    for (const MicroPcView& view : cpu_.microSnapshot()) active.push_back(view.micro_pc);
+
     const std::vector<int>& ends = cpu_.routineEnds();
-    constexpr int kHeadWidth = 4;
+    constexpr int kHeadWidth = 5;
     const size_t signal_width = inner_w > kHeadWidth
         ? static_cast<size_t>(inner_w - kHeadWidth)
         : 1;
@@ -824,8 +827,10 @@ void Tui::renderControlRom(int r, int c, int h, int w) {
     int row = 0;
     for (int address = rom_scroll_; row < inner_h && address < static_cast<int>(rom.size());
          ++address) {
+        const bool on = std::find(active.begin(), active.end(), address) != active.end();
+
         std::ostringstream head;
-        head << std::right << std::setw(3) << std::setfill('0')
+        head << (on ? "►" : " ") << std::right << std::setw(3) << std::setfill('0')
              << address << std::setfill(' ') << " ";
         const std::vector<WrappedSegment> parts =
             wrapLine(controlSignalNames(rom[static_cast<size_t>(address)].ctl), signal_width);
@@ -835,8 +840,12 @@ void Tui::renderControlRom(int r, int c, int h, int w) {
                 ? head.str()
                 : std::string(static_cast<size_t>(kHeadWidth), ' ');
             text += parts[p].text;
-            screen_.drawText(r + 1 + row, c + 1, text,
-                             Style{Color::Default, Color::Default, false}, inner_w);
+            if (on) {
+                drawSelectedLine(screen_, r + 1 + row, c + 1, text, inner_w);
+            } else {
+                screen_.drawText(r + 1 + row, c + 1, text,
+                                 Style{Color::Default, Color::Default, false}, inner_w);
+            }
         }
         if (std::binary_search(ends.begin(), ends.end(), address)) ++row;
     }
