@@ -163,12 +163,12 @@ int main() {
     CHECK_EQ(kHorizontalWordBits, 42);
     CHECK_EQ(kNumControlLines, 18);
     CHECK(vrom.size() * kVerticalWordBits < hcm.size() * kHorizontalWordBits);
-    CHECK_EQ(kVerticalWordBits, 16);
-    CHECK_EQ(sizeof(vrom[0]) * 8, static_cast<size_t>(kVerticalWordBits));
+    CHECK_EQ(kVerticalWordBits, 12);
+    CHECK(sizeof(vrom[0]) * 8 >= static_cast<size_t>(kVerticalWordBits));   // uint16_t holds a 12-bit word
 
     // -----------------------------------------------------------------------
     section("Vertical ROM: bit layout, pinned with hand-computed words");
-    // [15]=0: operate row. [15]=1: branch row.
+    // [11]=0: operate row. [11]=1: branch row.
     const auto word = [&](Opcode op, int offset) {
         return vrom[static_cast<size_t>(hcu.routineEntry(op) + offset)];
     };
@@ -177,37 +177,37 @@ int main() {
     CHECK(front.size() >= 2);
     const size_t fetch_row = static_cast<size_t>(front[0]);
     const size_t decode_row = static_cast<size_t>(front[1]);
-    CHECK_EQ(vrom[fetch_row], 0x3800);                              
-    CHECK_EQ(vrom[decode_row], 0x3C01);
+    CHECK_EQ(vrom[fetch_row], 0x0700);
+    CHECK_EQ(vrom[decode_row], 0x0781);
     CHECK_EQ(ControlUnit::packHorizontal(hcm[fetch_row]),
         (1ull << 38) | (1ull << 5) | (85ull << 18) | (0xFFull << 26));
     CHECK_EQ(ControlUnit::packHorizontal(hcm[decode_row]),
         (1ull << 39) | (1ull << 41) | (0xFFull << 18) | (0xFFull << 26));
-    CHECK_EQ(word(Opcode::ADD, 0), 0x0400);        
-    CHECK_EQ(word(Opcode::ADD, 1), 0x0840);
-    CHECK_EQ(word(Opcode::SUB, 1), 0x0860);
-    CHECK_EQ(word(Opcode::ADD, 2), 0x1C01);        
-    CHECK_EQ(word(Opcode::LOAD, 1), 0x1040);
-    CHECK_EQ(word(Opcode::LOAD, 3), 0x2001);       
-    CHECK_EQ(word(Opcode::MOV, 1), 0x0C20);
-    CHECK_EQ(word(Opcode::CALL, 1), 0x2400);
-    CHECK_EQ(word(Opcode::CALL, 2), 0x3001);
-    CHECK_EQ(word(Opcode::RET, 0), 0x0400);
-    CHECK_EQ(word(Opcode::RET, 1), 0x3401);
-    CHECK_EQ(word(Opcode::HALT, 0), 0x2801);        
-    CHECK_EQ(word(Opcode::BEQ, 0), 0x9220);        
-    CHECK_EQ(word(Opcode::BEQ, 1), 0x0001);        
-    CHECK_EQ(word(Opcode::BEQ, 2), 0x2401);   
-    CHECK_EQ(word(Opcode::LOAD, 2), 0x1400);        // MEM.RD (+addr_check)
-    CHECK_EQ(word(Opcode::STORE, 2), 0x1801);       // MEM.WR (+addr_check), END
-    CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x2C01);   // TRAP, END
-    CHECK_EQ(word(Opcode::BGT, 0), 0xE000 | ((hcu.routineEntry(Opcode::BGT) + 2) << 4));   // cond GT(6)
-    CHECK_EQ(word(Opcode::DIV, 1), 0x08A0);         // ALU, func DIV(0x05)
-    CHECK_EQ(word(Opcode::FADD, 1), 0x0EC0);        // ALU.NF, func FADD(0x16): flags untouched
-    CHECK_EQ(word(Opcode::FADD, 2), 0x1C01);        // WB, END
-    CHECK_EQ(word(Opcode::FCMP, 1), 0x0B41);        // ALU, func FCMP(0x1A), END: no writeback
-    CHECK_EQ(word(Opcode::FTOI, 1), 0x0F60);
-    CHECK_EQ(word(Opcode::ITOF, 1), 0x0F80);
+    CHECK_EQ(word(Opcode::ADD, 0), 0x0080);
+    CHECK_EQ(word(Opcode::ADD, 1), 0x0108);
+    CHECK_EQ(word(Opcode::SUB, 1), 0x010C);
+    CHECK_EQ(word(Opcode::ADD, 2), 0x0381);
+    CHECK_EQ(word(Opcode::LOAD, 1), 0x0208);
+    CHECK_EQ(word(Opcode::LOAD, 3), 0x0401);
+    CHECK_EQ(word(Opcode::MOV, 1), 0x0184);
+    CHECK_EQ(word(Opcode::CALL, 1), 0x0480);
+    CHECK_EQ(word(Opcode::CALL, 2), 0x0601);
+    CHECK_EQ(word(Opcode::RET, 0), 0x0080);
+    CHECK_EQ(word(Opcode::RET, 1), 0x0681);
+    CHECK_EQ(word(Opcode::HALT, 0), 0x0501);
+    CHECK_EQ(word(Opcode::BEQ, 0), 0x0944);
+    CHECK_EQ(word(Opcode::BEQ, 1), 0x0001);
+    CHECK_EQ(word(Opcode::BEQ, 2), 0x0481);
+    CHECK_EQ(word(Opcode::LOAD, 2), 0x0280);        // MEM.RD (+addr_check)
+    CHECK_EQ(word(Opcode::STORE, 2), 0x0301);       // MEM.WR (+addr_check), END
+    CHECK_EQ(vrom[static_cast<size_t>(hcu.trapEntry())], 0x0581);   // TRAP, END
+    CHECK_EQ(word(Opcode::BGT, 0), 0x0800 | (6 << 8) | ((hcu.routineEntry(Opcode::BGT) + 2) << 1));   // branch, cond GT(6), target
+    CHECK_EQ(word(Opcode::DIV, 1), 0x0114);         // ALU, func DIV(0x05)
+    CHECK_EQ(word(Opcode::FADD, 1), 0x01D8);        // ALU.NF, func FADD(0x16): flags untouched
+    CHECK_EQ(word(Opcode::FADD, 2), 0x0381);        // WB, END
+    CHECK_EQ(word(Opcode::FCMP, 1), 0x0169);        // ALU, func FCMP(0x1A), END: no writeback
+    CHECK_EQ(word(Opcode::FTOI, 1), 0x01EC);
+    CHECK_EQ(word(Opcode::ITOF, 1), 0x01F0);
     CHECK_EQ(packVertical(MicroOp{}, 0), 0x0001);   
     {
         MicroOp idle;
@@ -221,15 +221,15 @@ int main() {
         const uint16_t w = vrom[a];
         const MicroOp row = unpackVertical(w, static_cast<int>(a));
         CHECK_EQ(packVertical(row, static_cast<int>(a)), w);   
-        if (w & 0x8000u) CHECK_EQ(w & 0x000Eu, 0u);          
-        else             CHECK_EQ(w & 0x001Eu, 0u);          
-        if (!(w & 0x8000u)) {
-            const unsigned uop = (w >> 10) & 0x1Fu;
+        CHECK_EQ(w >> kVerticalWordBits, 0u);                // nothing above the 12-bit word
+        if (!(w & (1u << kVBranchBit))) CHECK_EQ(w & 0x0002u, 0u);   // operate: [1] reserved
+        if (!(w & (1u << kVBranchBit))) {
+            const unsigned uop = (w >> kVUopShift) & kVUopMask;
             CHECK(uop < kNumMicroOpCodes);
             const bool takes_func = (uop == static_cast<unsigned>(MicroOpCode::Alu) ||
                                      uop == static_cast<unsigned>(MicroOpCode::AluNoFlags) ||
                                      uop == static_cast<unsigned>(MicroOpCode::AluImm));
-            if (!takes_func) CHECK_EQ((w >> 5) & 0x1Fu, 0u); 
+            if (!takes_func) CHECK_EQ((w >> kVFuncShift) & kVFuncMask, 0u);
         }
     }
     CHECK_EQ(vrom.back() & 1u, 1u);                          
@@ -395,7 +395,7 @@ int main() {
     {
         std::set<uint64_t> line_sets;
         for (unsigned code = 0; code < kNumMicroOpCodes; ++code) {
-            const MicroOp row = unpackVertical(static_cast<uint16_t>(code << 10), 0);
+            const MicroOp row = unpackVertical(static_cast<uint16_t>(code << kVUopShift), 0);
             CHECK(row.cond == BranchCond::None);
             CHECK(microOpName(static_cast<MicroOpCode>(code))[0] != '?');
             MicroOp lines = row;
@@ -408,12 +408,9 @@ int main() {
 
     section("Decoder: undefined encodings fail safe to a halt row");
     {
-        for (unsigned code = kNumMicroOpCodes; code < 32; ++code) {
-            const MicroOp m = unpackVertical(static_cast<uint16_t>(code << 10), 9);
-            CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
-        }
+        CHECK_EQ(kVUopMask + 1, kNumMicroOpCodes);
         for (unsigned cond : {0u, 7u}) {                 
-            const MicroOp m = unpackVertical(static_cast<uint16_t>(0x8000u | (cond << 12)), 9);
+            const MicroOp m = unpackVertical(static_cast<uint16_t>((1u << kVBranchBit) | (cond << kVCondShift)), 9);
             CHECK(m.ctl.halt && m.next == kMicroEnd && m.cond == BranchCond::None);
         }
     }
@@ -423,11 +420,11 @@ int main() {
     for (BranchCond c : {BranchCond::Zero, BranchCond::NotZero, BranchCond::Negative,
                          BranchCond::Carry, BranchCond::Overflow, BranchCond::GreaterThan}) {
         for (int32_t next : {int32_t{8}, kMicroEnd}) {       
-            for (int32_t target : {int32_t{0}, int32_t{34}, int32_t{254}, kMicroEnd}) {
+            for (int32_t target : {int32_t{0}, int32_t{34}, int32_t{126}, kMicroEnd}) {
                 const MicroOp in = branchRow(c, next, target);
                 CHECK(canPackVertical(in, 7));
                 const uint16_t w = packVertical(in, 7);
-                CHECK((w & 0x8000u) != 0);
+                CHECK((w & (1u << kVBranchBit)) != 0);
                 CHECK(sameRow(unpackVertical(w, 7), in));
             }
         }
@@ -469,7 +466,7 @@ int main() {
         stray_target.branch_target = 3;
         CHECK(!canPackVertical(stray_target, 0));
 
-        CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 255), 0));   
+        CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 127), 0));   
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, 300), 0));
         CHECK(!canPackVertical(branchRow(BranchCond::Zero, 1, -2), 0));
         CHECK(!canPackVertical(branchRow(static_cast<BranchCond>(7), 1, 0), 0));
@@ -504,10 +501,10 @@ int main() {
         CHECK(h.rfind("addr  routine  cond  next  taken  microword(hex)  signals\n", 0) == 0);  
         CHECK(h.find("micro-op") == std::string::npos);
         CHECK(v.find("micro-op") != std::string::npos);
-        CHECK(v.find("0x0840") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
+        CHECK(v.find("0x0108") != std::string::npos && v.find("ALU(ADD)") != std::string::npos);
         CHECK(v.find("BRANCH Z") != std::string::npos);
         const size_t rows = hcm.size();
-        CHECK(v.find(std::to_string(rows) + " rows x 16 bits = " + std::to_string(rows * 16) + " bits")
+        CHECK(v.find(std::to_string(rows) + " rows x 12 bits = " + std::to_string(rows * 12) + " bits")
               != std::string::npos);
         CHECK(v.find("horizontal: " + std::to_string(rows) + " x 42 = " + std::to_string(rows * 42) + " bits")
               != std::string::npos);
