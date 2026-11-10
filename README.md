@@ -21,7 +21,7 @@ A from-scratch 32-bit processor: a custom instruction set, a two-pass assembler,
 ## Highlights
 
 - **Custom 32-bit ISA:** fixed-width 32-bit instructions
-- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 42-bit microword or a vertical 16-bit microword.
+- **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 42-bit microword or a vertical 12-bit microword.
 - **Optimized ALU:** A 32-bit Kogge-Stone parallel-prefix adder (O(logn) latency), a Radix-4 Booth multiplier, and a complete Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV using Newton-Raphson, FCMP, FTOI, ITOF) that reuses the integer datapath.
 - **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
 - **Assembler** with macro preprocessing, errors and warnings, plus `.bin` / `.hex` output and a equivalent `disassembler`
@@ -238,7 +238,7 @@ Generated ROM references show the physical ROM and each instruction's complete
 flow, repeating the shared prefix by address before its opcode-specific rows:
 
 - [Horizontal ROM](docs/CONTROL_ROM/control_rom_horizontal.txt): 42-bit packed words.
-- [Vertical ROM](docs/CONTROL_ROM/control_rom_vertical.txt): 16-bit words, 22 micro-op codes.
+- [Vertical ROM](docs/CONTROL_ROM/control_rom_vertical.txt): 12-bit words, 22 micro-op codes.
 
 The CPU retains a per-opcode control bundle for dependency detection and advances
 each in-flight instruction through its own ROM rows. Several instructions overlap.
