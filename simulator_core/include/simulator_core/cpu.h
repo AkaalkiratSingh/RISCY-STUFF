@@ -53,6 +53,10 @@ namespace risc201 {
                      uint32_t memory_words = kDefaultMemoryWords,
                      MicrocodeEncoding encoding = MicrocodeEncoding::Horizontal);
 
+        Cpu(const StageLayout& layout,
+            uint32_t memory_words = kDefaultMemoryWords,
+            MicrocodeEncoding encoding = MicrocodeEncoding::Horizontal);
+
         void loadWords(const std::vector<uint32_t>& words);
 
         void step();             // one clock
@@ -69,6 +73,7 @@ namespace risc201 {
         uint64_t retired() const { return retired_; }
 
         PipelineVariant variant() const { return variant_; }
+        const StageLayout& layout() const { return layout_; }
         MicrocodeEncoding encoding() const { return encoding_; }
         void setForwarding(bool on) { forwarding_ = on; }
         bool forwarding() const { return forwarding_; }
@@ -106,6 +111,7 @@ namespace risc201 {
 
         PipelineVariant variant_;
         MicrocodeEncoding encoding_;
+        StageLayout layout_;
         CpuState state_;
         std::vector<uint32_t> source_words_;
         std::vector<uint32_t> code_;

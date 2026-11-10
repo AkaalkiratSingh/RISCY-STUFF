@@ -166,7 +166,7 @@ zero:
 ```
 Result: `R2 = 15`, `SP` back at 4096.
 
-Every instruction executes at most one control-ROM row per clock. In the 4-stage variant, the FETCH slot serializes the IF, ID, and operand-read rows; row-less stages are skipped. The `pipeline:` line reports data stalls, redirects, and squashed instructions. The old stage-count cycle formula no longer applies.
+Every instruction executes at most one control-ROM row per clock. In the 4-stage variant, the first slot serializes the IF and ID rows; OF, EX and the merged MEM+WB tail occupy the remaining slots. Row-less stages are skipped. The `pipeline:` line reports data stalls, redirects, and squashed instructions.
 
 ## The ISA
 
@@ -230,8 +230,9 @@ are needed, followed by ALU, memory, branch and writeback signals. RET reads R14
 in an OF row and redirects from it in a separate EX row.
 
 The CPU gives every in-flight instruction its own microPC. The four-stage pipeline
-executes fetch, decode and operand read as separate clocks in one FETCH slot; the
-six-stage pipeline keeps them in separate slots. A row-less stage is skipped.
+merges IF and ID into one slot, keeps OF and EX separate, and merges MEM and WB;
+the six-stage pipeline keeps all six stages in separate slots. A row-less stage is
+skipped.
 
 Generated ROM references show the physical ROM and each instruction's complete
 flow, repeating the shared prefix by address before its opcode-specific rows:

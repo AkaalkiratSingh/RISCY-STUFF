@@ -52,6 +52,7 @@ namespace risc201 {
     RowStage rowStage(const MicroOp& row);
     const char* rowStageName(RowStage stage);
     int slotForRow(PipelineVariant variant, RowStage stage);
+    int slotForLayout(const StageLayout& layout, RowStage stage);
 
     enum class PipelineStage : uint8_t { IF = 0, ID, OF, EX, MEM, WB };
     inline constexpr size_t kPipelineStageCount = 6;

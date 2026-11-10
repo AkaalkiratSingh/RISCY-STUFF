@@ -177,9 +177,8 @@ namespace risc201 {
         return "?";
     }
 
-    int slotForRow(PipelineVariant variant, RowStage stage) {
+    int slotForLayout(const StageLayout& layout, RowStage stage) {
         if (stage == RowStage::Terminal) return -1;
-        const StageLayout layout = layoutFor(variant);
         for (size_t i = 0; i < layout.count; ++i) {
             const StageSlot& slot = layout[i];
             const bool owns = (stage == RowStage::IF && slot.IF) ||
@@ -191,6 +190,10 @@ namespace risc201 {
             if (owns) return static_cast<int>(i);
         }
         return -1;
+    }
+
+    int slotForRow(PipelineVariant variant, RowStage stage) {
+        return slotForLayout(layoutFor(variant), stage);
     }
 
     std::vector<PathStep> controlTrace(const ControlUnit& cu, Opcode op,

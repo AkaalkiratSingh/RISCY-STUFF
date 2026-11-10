@@ -23,6 +23,7 @@ namespace risc201 {
     Cpu::Cpu(PipelineVariant variant, uint32_t memory_words, MicrocodeEncoding encoding) :
         variant_(variant),
         encoding_(encoding),
+        layout_(layoutFor(variant)),
         memory_(memory_words, 0),
         control_unit_(MicrocodeEncoding::Horizontal),
         vertical_unit_(),
@@ -35,6 +36,12 @@ namespace risc201 {
         resetPipeline();
     }
 
+    Cpu::Cpu(const StageLayout& layout, uint32_t memory_words, MicrocodeEncoding encoding) :
+        Cpu(PipelineVariant::FourStage, memory_words, encoding) {
+        layout_ = layout;
+        resetPipeline();
+    }
+
     void Cpu::resetPipeline() {
         regs_.fill(Latch{});
         trace_.clear();
@@ -44,9 +51,8 @@ namespace risc201 {
         stop_fetch_ = false;
         fetch_held_ = false;
 
-        const StageLayout layout = layoutFor(variant_);
-        n_slots_ = static_cast<int>(layout.count);
-        ex_slot_ = stageWith(layout, &StageSlot::EX);
+        n_slots_ = static_cast<int>(layout_.count);
+        ex_slot_ = stageWith(layout_, &StageSlot::EX);
     }
 
     void Cpu::loadWords(const std::vector<uint32_t>& words) {
@@ -79,6 +85,7 @@ namespace risc201 {
     void Cpu::reconfigure(PipelineVariant variant, MicrocodeEncoding encoding) {
         variant_ = variant;
         encoding_ = encoding;
+        layout_ = layoutFor(variant);
         control_unit_ = ControlUnit(MicrocodeEncoding::Horizontal);
         vertical_unit_ = VerticalControlUnit{};
         controls_ = encoding == MicrocodeEncoding::Vertical
@@ -177,7 +184,7 @@ namespace risc201 {
 
             const MicroOp& row = rom.at(l.micro_pc);
             const RowStage stage = rowStage(row);
-            const int expected = slotForRow(variant_, stage);
+            const int expected = slotForLayout(layout_, stage);
             if (expected >= 0 && expected != slot) {
                 bool blocked = next[static_cast<size_t>(expected)].valid;
                 for (int i = slot; i <= expected && !blocked; ++i) {
@@ -361,7 +368,7 @@ namespace risc201 {
             l.micro_pc = static_cast<uint32_t>(successor);
             const RowStage next_stage = rowStage(rom.at(l.micro_pc));
             const int target = next_stage == RowStage::Terminal ? slot
-                : slotForRow(variant_, next_stage);
+                : slotForLayout(layout_, next_stage);
             bool blocked = next[static_cast<size_t>(target)].valid;
             for (int i = slot; i <= target && !blocked; ++i) {
                 const Latch& ahead = next[static_cast<size_t>(i)];
@@ -424,17 +431,13 @@ namespace risc201 {
 
     std::vector<MicroPcView> Cpu::microSnapshot() const {
         std::vector<MicroPcView> views;
-        const StageLayout layout = layoutFor(variant_);
         const auto& rom = controlMemory();
         for (int i = 0; i < n_slots_; ++i) {
             const Latch& latch = regs_[static_cast<size_t>(i)];
             if (!latch.valid) continue;
             const MicroOp& row = rom.at(latch.micro_pc);
-            const RowStage stage = rowStage(row);
-            const char* name = variant_ == PipelineVariant::FourStage && i == 0
-                ? "FETCH" : stage == RowStage::Terminal
-                    ? layout[static_cast<size_t>(i)].name : rowStageName(stage);
-            views.push_back({latch.pc, name, static_cast<int>(latch.micro_pc), row.ctl});
+            views.push_back({latch.pc, layout_[static_cast<size_t>(i)].name,
+                             static_cast<int>(latch.micro_pc), row.ctl});
         }
         return views;
     }

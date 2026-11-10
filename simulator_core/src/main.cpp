@@ -79,8 +79,7 @@ std::string slotText(const risc201::Latch& l) {
     return std::to_string(l.pc) + " " + risc201::opcodeName(instr.opcode);
 }
 
-void printTraceHeader(risc201::PipelineVariant variant) {
-    const risc201::StageLayout layout = risc201::layoutFor(variant);
+void printTraceHeader(const risc201::StageLayout& layout) {
     std::cout << "  cycle |";
     for (size_t i = 0; i < layout.count; ++i) {
         std::cout << " " << std::right << std::setw(12) << layout[i].name << " |";
@@ -89,7 +88,7 @@ void printTraceHeader(risc201::PipelineVariant variant) {
 }
 
 void printTraceLine(const risc201::Cpu& cpu, size_t& event_cursor) {
-    const risc201::StageLayout layout = risc201::layoutFor(cpu.variant());
+    const risc201::StageLayout& layout = cpu.layout();
     const auto& stages = cpu.stages();
 
     std::cout << "  " << std::right << std::setw(5) << cpu.cycles() << " |";
@@ -314,7 +313,7 @@ int main(int argc, char** argv) {
     if (trace_mode || micro_trace) {
         std::cout << "\n--- pipeline trace: " << risc201::variantName(variant)
                   << (forwarding ? " (forwarding)" : " (no forwarding)") << " ---\n";
-        if (trace_mode) printTraceHeader(variant);
+        if (trace_mode) printTraceHeader(cpu.layout());
         size_t event_cursor = 0;
         uint64_t clock = 0;
         while (!cpu.state().halted && clock < kMaxTraceCycles) {
@@ -367,7 +366,7 @@ int main(int argc, char** argv) {
         if (cpu.state().fault_info) {
             const auto& fault = *cpu.state().fault_info;
             std::cout << " pc=" << fault.pc << " stage="
-                      << risc201::layoutFor(cpu.variant())[static_cast<size_t>(fault.slot)].name;
+                      << cpu.layout()[static_cast<size_t>(fault.slot)].name;
             if (fault.address) std::cout << " address=" << *fault.address;
         }
         std::cout << "\n";

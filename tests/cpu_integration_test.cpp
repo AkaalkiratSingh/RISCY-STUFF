@@ -444,7 +444,7 @@ int main() {
         const Cpu four = runProgram(program, {}, PipelineVariant::FourStage);
         CHECK(four.state().halted);
         CHECK_EQ(four.retired(), 2u);
-        CHECK_EQ(four.cycles(), 10u);
+        CHECK_EQ(four.cycles(), 9u);
         CHECK_EQ(four.trace().rows, 13u);
 
         const Cpu six = runProgram(program, {}, PipelineVariant::SixStage);

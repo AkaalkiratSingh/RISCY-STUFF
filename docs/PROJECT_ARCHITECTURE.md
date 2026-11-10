@@ -41,7 +41,7 @@ The processor uses a **custom ISA**. Its encodings and calling convention are de
 | Data addressing | Word indices |
 | Execution PC addressing | Instruction-word indices |
 | Encoded branch displacement | Signed byte displacement relative to the following instruction |
-| Four-stage pipeline | FETCH → EX → MEM → WB |
+| Four-stage pipeline | IF+ID → OF → EX → MEM+WB |
 | Six-stage pipeline | IF → ID → OF → EX → MEM → WB |
 | Instruction issue model | In-order pipeline, at most one instruction retired per clock |
 | Forwarding | Enabled by default; can be disabled |
@@ -262,11 +262,11 @@ The complete reference files are [horizontal control ROM](CONTROL_ROM/control_ro
 ### 7.1 Stage layouts
 
 ```text
-4-stage: [ IF + ID + OF ] → [ EX ] → [ MEM ] → [ WB ]
+4-stage: [ IF + ID ] → [ OF ] → [ EX ] → [ MEM + WB ]
 6-stage: [ IF ] → [ ID ] → [ OF ] → [ EX ] → [ MEM ] → [ WB ]
 ```
 
-The four-stage design serializes the IF, ID, and OF rows in one FETCH slot. The six-stage design places those rows in separate slots, so different instructions can occupy them simultaneously. Both use the same EX/MEM/WB tail.
+The four-stage design serializes the IF and ID rows in one `IF+ID` slot, keeps OF and EX in separate slots, and merges MEM with WB. The six-stage design keeps every row in its own slot, so different instructions can occupy them simultaneously.
 
 | Stage | Work |
 |---|---|
@@ -293,7 +293,7 @@ There are two useful PC views: `fetch_pc_` identifies the next word to fetch, wh
 
 Forwarding is enabled by default. Operand reads use ready values from the youngest matching older producer; a dependency stalls while its result is unavailable. With `--no-forward`, consumers wait for older dependencies to complete. ALU results and completed loads can be forwarded to register operands and store data; return-address dependencies are also tracked.
 
-The reported `stalls` count covers these data interlocks. It does not include every clock spent waiting for a busy slot, and the four-stage FETCH slot's three row clocks are normal work rather than stalls.
+The reported `stalls` count covers these data interlocks. It does not include every clock spent waiting for a busy slot, and the four-stage `IF+ID` slot's two row clocks are normal work rather than stalls.
 
 ### 8.2 Control dependencies
 
@@ -303,7 +303,7 @@ CALL and RET use the link register and resolve in EX. Squashed instructions do n
 
 ### 8.3 Cycle accounting
 
-The old `stages − 1 + retired + HALT + stalls + flush bubbles` identity describes the previous stage-clock engine and does not apply here. Cycle counts depend on executed ROM rows, slot contention, interlocks, and redirects. In the four-stage layout, every completed instruction needs IF and ID clocks in the shared FETCH slot, and most instructions also need an OF clock there. For `recursive_sum.asm`, the 78 completed paths including HALT require 78 IF, 78 ID, and 70 OF rows: at least 226 FETCH-slot clocks before redirect and fill/drain overhead. The observed run takes 243 clocks.
+Cycle counts depend on executed ROM rows, slot contention, interlocks, and redirects. In the four-stage layout, every completed instruction needs IF and ID clocks in the shared `IF+ID` slot; OF and EX have their own slots, and MEM+WB shares the tail slot. For `recursive_sum.asm`, the 78 completed paths including HALT require 78 IF and 78 ID rows: at least 156 `IF+ID`-slot clocks before redirect and fill/drain overhead. The observed forwarding run takes 185 clocks.
 
 ## 9. ALU implementation
 
@@ -366,9 +366,9 @@ In `recursive_sum.asm`, the first encoded instruction is the assembler-generated
 
 | Clock | Action for the first JMP |
 |---:|---|
-| 1 | Admit the instruction into FETCH |
-| 2 | Execute the IF row in FETCH |
-| 3 | Execute the ID row in FETCH |
+| 1 | Admit the instruction into the `IF+ID` slot |
+| 2 | Execute the IF row in `IF+ID` |
+| 3 | Execute the ID row in `IF+ID` |
 | 4 | Execute the jump row in EX; retire and emit the reconstructed path |
 
 Its reconstructed rows all carry the clock-4 label, including the fetch row. This label is the instruction's completion/fault clock, not the clock at which every displayed signal originally acted. The JMP skips MEM and WB because its routine has no rows there.

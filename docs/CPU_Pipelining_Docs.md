@@ -18,7 +18,7 @@ The CPU (`simulator_core/src/cpu.cpp`) supplies the datapath and the scheduling 
 | Word / instruction width | 32 bits, fixed |
 | Registers | R0–R15 (R14 = link register, R15 = stack pointer) |
 | Flags | Z, N, C, V (plus equal / greater-than for compares) |
-| Pipeline variants | 4-stage (`FETCH → EX → MEM → WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) |
+| Pipeline variants | 4-stage (`IF+ID → OF → EX → MEM+WB`) and 6-stage (`IF → ID → OF → EX → MEM → WB`) |
 | Issue / retire | In order, at most one retirement per clock |
 | Branch policy | Sequential fetch (predict not-taken), flush when EX resolves a taken transfer |
 | Data hazards | Interlock plus optional forwarding (default on) |
@@ -62,17 +62,18 @@ The dispatch row jumps to the opcode-specific routine. For `ADD` the complete pa
 ## 3. The two pipeline layouts
 
 ```
-4-stage: [ IF + ID + OF ] -> [ EX ] -> [ MEM ] -> [ WB ]
+4-stage: [ IF + ID ] -> [ OF ] -> [ EX ] -> [ MEM + WB ]
 6-stage: [ IF ] -> [ ID ] -> [ OF ] -> [ EX ] -> [ MEM ] -> [ WB ]
 ```
 
-Both layouts share the same EX / MEM / WB tail. They differ only in the front end:
+The 4-stage layout merges IF with ID and MEM with WB, leaving OF and EX separate.
+The 6-stage layout keeps every stage in its own slot:
 
 |  | 4-stage | 6-stage |
 | --- | --- | --- |
-| Front-end slot(s) | One `FETCH` slot executes the IF, ID and OF rows on **three separate clocks** | Three slots; different instructions can be in IF, ID and OF in the same clock |
-| Front-end throughput | At most one instruction enters EX every \~3 clocks | Up to one per clock |
-| Data hazards | Rarely visible: the producer has usually left the front end before the consumer reads operands | Frequent: consumer reaches OF while the producer is still in EX/MEM |
+| Front-end slot(s) | One `IF+ID` slot executes the IF and ID rows on **two separate clocks**; OF and EX have their own slots | Six slots; different instructions can be in IF, ID, OF, EX, MEM and WB in the same clock |
+| Front-end throughput | At most one instruction enters EX every \~2 clocks | Up to one per clock |
+| Data hazards | Less visible: the producer has usually left the front end before the consumer reads operands | Frequent: consumer reaches OF while the producer is still in EX/MEM |
 | Flush cost | Small (few younger instructions in flight) | Larger (deeper front end holds more younger work) |
 
 The layouts are plain data (`kFourStageLayout`, `kSixStageLayout` in `pipeline_types.h`); each slot is a name plus six flags saying which row types it executes. Adding another variant means adding another table.
@@ -230,7 +231,7 @@ How to read it:
 - **Stalls at cycles 8 and later** are mostly the in-order retirement rule: a final ROM row waits until everything older has retired.
 - Final state: R1 = 5, R2 = 8, R3 = 13. `HALT` is excluded from the retired count (JMP, MOV, ADD, ADD = 4).
 
-The same program in the 4-stage layout takes 16 cycles with 0 stalls. Each instruction spends three clocks in the FETCH slot (IF, ID and OF rows), so dependencies are already resolved by the time the consumer reads operands.
+The same program in the 4-stage layout takes 14 cycles with 1 stall. Each instruction spends two clocks in the `IF+ID` slot (IF then ID), followed by separate OF and EX slots and a merged MEM+WB slot, so dependencies are usually resolved by the time the consumer reads operands.
 
 ## 8. Measured results
 
@@ -238,21 +239,21 @@ Built from HEAD and run with `risc201-sim <prog> -4|-6 [--no-forward]`:
 
 | Program | Stages | Forwarding | Retired | Cycles | Stalls | Flushes | Squashed |
 | --- | --: | --- | --: | --: | --: | --: | --: |
-| recursive\_sum | 4 | on / off | 77 | 243 / 243 | 0 / 0 | 14 | 14 |
+| recursive\_sum | 4 | on / off | 77 | 185 / 185 | 1 / 16 | 14 | 14 |
 | recursive\_sum | 6 | on | 77 | 154 | 29 | 14 | 37 |
 | recursive\_sum | 6 | off | 77 | 174 | 49 | 14 | 37 |
-| pointer\_walk | 4 | on | 1793 | 5129 | 0 | 257 | 257 |
-| pointer\_walk | 4 | off | 1793 | 5385 | 256 | 257 | 257 |
+| pointer\_walk | 4 | on | 1793 | 3848 | 512 | 257 | 257 |
+| pointer\_walk | 4 | off | 1793 | 4617 | 1282 | 257 | 257 |
 | pointer\_walk | 6 | on | 1793 | 3848 | 1025 | 257 | 514 |
 | pointer\_walk | 6 | off | 1793 | 4617 | 1794 | 257 | 514 |
-| branch\_storm | 4 | on / off | 1201 | 3509 / 3509 | 0 / 0 | 901 | 901 |
+| branch\_storm | 4 | on / off | 1201 | 3309 / 3409 | 1 / 101 | 901 | 901 |
 | branch\_storm | 6 | on | 1201 | 3309 | 101 | 901 | 1802 |
 | branch\_storm | 6 | off | 1201 | 3409 | 201 | 901 | 1802 |
 
 What the numbers show:
 
-- **6-stage beats 4-stage on cycle count** (recursive\_sum: 154 vs 243), because the 4-stage FETCH slot serialises three rows per instruction.
-- **Forwarding helps the 6-stage a lot** (recursive\_sum: 174 → 154; pointer\_walk: 4617 → 3848) and the 4-stage only on load-use patterns (pointer\_walk: 5385 → 5129).
+- **The 4-stage layout is close to the 6-stage one.** It still loses on `recursive_sum` (185 vs 154 cycles) because IF and ID share a slot, but it ties the 6-stage on `pointer_walk` (3848 / 4617) and `branch_storm` (3309 / 3409).
+- **Forwarding helps both layouts on load/control hazards** (`pointer_walk`: 4617 → 3848 for both; `branch_storm`: 3409 → 3309). On `recursive_sum` it reduces the 4-stage stalls from 16 to 1 without changing the cycle count.
 - **Deeper pipeline, bigger flush**: `branch_storm` squashes 901 instructions in the 4-stage and 1802 in the 6-stage for the same 901 flushes.
 - `pointer_walk` is the load-use control and `branch_storm` the control-hazard control. Both are synthetic.
 - Cycle counts are simulator row clocks. They say nothing about physical clock frequency; every ALU operation, including multiply, divide and floating point, is modelled as a single EX row.

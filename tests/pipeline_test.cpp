@@ -115,7 +115,7 @@ int main() {
         const int add = cu.routineEntry(Opcode::ADD);
         const std::vector<int> rows = {fetch, decode, add, add + 1, add + 2};
         const std::vector<int> slots = variant == PipelineVariant::FourStage
-            ? std::vector<int>{0, 0, 0, 1, 3}
+            ? std::vector<int>{0, 0, 1, 2, 3}
             : std::vector<int>{0, 1, 2, 3, 5};
         for (size_t clock = 0; clock < rows.size(); ++clock) {
             cpu.step();

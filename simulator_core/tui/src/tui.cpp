@@ -102,12 +102,14 @@ std::vector<WrappedSegment> wrapLine(const std::string& line, size_t width) {
 int stageOrder(const char* stage) {
     if (!stage) return 99;
     const std::string name(stage);
+    if (name == "MEM+WB") return 0;
     if (name == "WB") return 0;
     if (name == "MEM") return 1;
     if (name == "EX") return 2;
     if (name == "OF") return 3;
     if (name == "FETCH") return 3;
     if (name == "ID") return 4;
+    if (name == "IF+ID") return 4;
     if (name == "IF") return 5;
     return 99;
 }

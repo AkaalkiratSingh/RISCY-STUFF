@@ -1,3 +1,4 @@
 build
+build-sweep/
 control_unit/include/control_unit/control_unit_design.md
 .vscodebenchmarks/alu_bench

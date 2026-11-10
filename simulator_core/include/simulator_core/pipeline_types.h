@@ -81,10 +81,10 @@ namespace risc201 {
     };
 
     inline constexpr StageSlot kFourStageLayout[] = {
-        { "FETCH",    true,  true,  true,  false, false, false },
+        { "IF+ID",    true,  true,  false, false, false, false },
+        { "OF",       false, false, true,  false, false, false },
         { "EX",       false, false, false, true,  false, false },
-        { "MEM",      false, false, false, false, true,  false },
-        { "WB",       false, false, false, false, false, true },
+        { "MEM+WB",   false, false, false, false, true,  true  },
     };
 
     inline constexpr StageSlot kSixStageLayout[] = {

@@ -24,6 +24,14 @@ add_subdirectory(assembler)
 add_subdirectory(memory_safety)
 add_subdirectory(simulator_core)
 
+# Private experiment: the ten four-stage partitions of the six row stages.
+# Off by default, so the public binaries contain no way to select them.
+option(RISC201_PIPELINE_SWEEP
+       "Build the internal four-stage layout sweep (benchmarking only)" OFF)
+if(RISC201_PIPELINE_SWEEP)
+  add_subdirectory(processor_benchmark)
+endif()
+
 add_executable(risc201-alu-bench alu_benchmark/alu_bench.cpp)
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)

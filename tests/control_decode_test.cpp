@@ -173,21 +173,29 @@ int main() {
         CHECK_EQ(stageCount(PipelineVariant::FourStage), size_t{4});
         CHECK_EQ(stageCount(PipelineVariant::SixStage),  size_t{6});
 
-        // Both variants must agree on the EX/MEM/WB tail; only the front-end differs.
-        CHECK_EQ(std::string(four[1].name), std::string("EX"));
-        CHECK_EQ(std::string(four[2].name), std::string("MEM"));
-        CHECK_EQ(std::string(four[3].name), std::string("WB"));
+        // The 4-stage front end merges IF+ID, keeps OF and EX separate, and merges MEM+WB.
+        CHECK_EQ(std::string(four[0].name), std::string("IF+ID"));
+        CHECK_EQ(std::string(four[1].name), std::string("OF"));
+        CHECK_EQ(std::string(four[2].name), std::string("EX"));
+        CHECK_EQ(std::string(four[3].name), std::string("MEM+WB"));
         CHECK_EQ(std::string(six[3].name),  std::string("EX"));
         CHECK_EQ(std::string(six[4].name),  std::string("MEM"));
         CHECK_EQ(std::string(six[5].name),  std::string("WB"));
 
-        CHECK(four[0].IF && four[0].ID && four[0].OF);
+        CHECK(four[0].IF && four[0].ID && !four[0].OF);
+        CHECK(four[1].OF && !four[1].EX);
+        CHECK(four[2].EX && !four[2].MEM);
+        CHECK(four[3].MEM && four[3].WB);
         for (int stage = 0; stage < 6; ++stage) {
             const RowStage row_stage = static_cast<RowStage>(stage);
             CHECK_EQ(slotForRow(PipelineVariant::SixStage, row_stage), stage);
-            CHECK_EQ(slotForRow(PipelineVariant::FourStage, row_stage),
-                     stage < 3 ? 0 : stage - 2);
         }
+        CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::IF),  0);
+        CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::ID),  0);
+        CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::OF),  1);
+        CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::EX),  2);
+        CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::MEM), 3);
+        CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::WB),  3);
         CHECK_EQ(slotForRow(PipelineVariant::FourStage, RowStage::Terminal), -1);
 
         std::cout << "  ok    4-stage: " << stageNames(PipelineVariant::FourStage) << "\n";
