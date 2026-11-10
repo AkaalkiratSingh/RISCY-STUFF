@@ -376,7 +376,7 @@ int main() {
         for (int i = 0; i < 30000; ++i) {
             const Opcode op = static_cast<Opcode>(next() % 32);          // mostly real opcodes
             const Flags f = flagsFromBits(static_cast<int>(next() & 0x3F));
-            const ExceptionCode fault = (next() % 4 == 0) ? faults[next() % 5] : ExceptionCode::NONE;
+            const ExceptionCode fault = (next() % 4 == 0) ? faults[next() % 3] : ExceptionCode::NONE;
             const unsigned action = next() % 64;
             if (action == 0) { h.reset(); v.reset(); }
             if (action == 1) { h.clearException(); v.clearException(); }
