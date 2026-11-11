@@ -23,8 +23,8 @@ A from-scratch 32-bit processor: a custom instruction set, a two-pass assembler,
 - **Custom 32-bit ISA:** fixed-width 32-bit instructions
 - **Microcoded control unit:** each instruction runs as a routine of micro-operations stored in a control memory, using a horizontal 42-bit microword or a vertical 12-bit microword.
 - **Optimized ALU:** A 32-bit Kogge-Stone parallel-prefix adder (O(logn) latency), a Radix-4 Booth multiplier, and a complete Soft-Float IEEE 754 FPU (FADD, FSUB, FMUL, FDIV using Newton-Raphson, FCMP, FTOI, ITOF) that reuses the integer datapath.
-- **Stack guard:** a full-descending stack with bounds checking on stack accesses, raising `INVALID_MEMORY_ACCESS` before the access commits.
-- **Assembler** with macro preprocessing, errors and warnings, plus `.bin` / `.hex` output and a equivalent `disassembler`
+- **Stack safety:** a full-descending stack. Every `LOAD`/`STORE` (and so every `PUSH`/`POP`) is bounds-checked in its memory row, raising `INVALID_MEMORY_ACCESS` before the access commits.
+- **Assembler** with macro preprocessing, errors and warnings, plus `.bin` / `.hex` output and an equivalent disassembler
 - **Simulator CLI** with a decode listing, single-step mode and memory dumps.
 - **Interactive TUI (`risc201-tui`):** live source, binary, register, stats and memory panes; a hazard timeline; a source editor; and configurable CPU.
 
@@ -86,6 +86,8 @@ usage: risc201-sim <program.asm|program.hex|program.bin> [options]
       --no-forward disable operand forwarding and stall on dependencies
       --horizontal use the horizontal microcode ROM (default)
       --vertical   use the vertical microcode ROM (same behaviour, narrower words)
+      --micro-trace   reconstruct each completed/faulting instruction's microcode path
+      --micro-step    pause between reconstructed microcode rows (Enter/q)
   -h, --help      show help
 ```
 
@@ -105,7 +107,7 @@ The screen has panes for raw assembly, assembled binary, registers, extra stats,
 
 **Inspect mode** (`Tab` to enter, `Esc` to leave) focuses one pane at a time, and `j`/`k` scroll only the focused pane. `g`/`G` jump to the ends. The CONTROL ROM pane is a scrollable listing with blank separators between instruction routines (addresses are unchanged). Every row currently being executed by an in-flight instruction is marked with `►` and the grey highlight; the pane does not auto-follow, so `Tab` focuses it, `j`/`k` scroll the ROM, and `g`/`G` jump to its ends. In the memory pane, `f` toggles SP-follow; follow only scrolls when SP leaves the visible window, so the view stays put while the stack moves inside it.
 
-**Editing** — with the raw assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. Whwn the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent.
+**Editing** — with the raw assembly pane focused, `e` opens a line editor: type to insert, Enter splits a line, Backspace deletes or joins, arrows/Home/End move, `Esc` leaves. Editing is text only. When the buffer differs from the running program, the assembled-binary pane turns red and reads `ASSEMBLED BINARY [STALE]`. `:assemble` applies the buffer and clears the stale state; `:save` (`:w`) writes the buffer back to the loaded file (or a path given to `:save`). Saving and assembling are independent.
 
 Commands (type `:` in normal or inspect mode). While typing, `Tab` completes command names and `:load` paths, with the candidates listed in the feedback pane; `Tab` again cycles them.
 
@@ -174,11 +176,11 @@ Every instruction executes at most one control-ROM row per clock. In the 4-stage
 |----------|-------|
 | Word size | 32 bits |
 | Instruction width | 32 bits, fixed |
-| Registers | 16 general purpose (`R0` to `R15`); `R14` is the link register for `CALL`/`RET`, `R15` is the stack pointer, `R0` is foribly kept as **0** to facilitate in processor calculations |
+| Registers | 16 general purpose (`R0` to `R15`); `R14` is the link register for `CALL`/`RET`, `R15` is the stack pointer, `R0` is forcibly kept as **0** to facilitate in processor calculations |
 | Data memory | 4096 words by default, word-addressed |
 | Program memory | Held separately from data memory |
 | Stack | Full-descending, `R15`/`SP` starts at the top of data memory |
-| Flags | Zero (`Z`), Negative (`N`), Carry (`C`), Overflow (`V`) |
+| Flags | Zero (`Z`), Negative (`N`), Carry (`C`), Overflow (`V`), equal and greater-than (`GT`) set by compares |
 | Branching | PC-relative |
 
 ### Encoding
@@ -195,12 +197,13 @@ When the `I` bit is set, the last operand is an 18-bit immediate. Otherwise it i
 
 | Category | Mnemonics |
 |----------|-----------|
-| Arithmetic | `ADD`, `SUB`, `MUL`, `DIV`, `REM` |
-| Logic | `AND`, `OR`, `XOR` |
-| Shifts | `SHL`, `SHR` |
+| Data movement | `MOV` |
+| Arithmetic | `ADD`, `SUB`, `MUL`, `DIV`, `REM`, `CMP` |
+| Logic | `AND`, `OR`, `XOR`, `NOT` |
+| Shifts | `SHL`, `SHR`, `SAR` |
 | Floating point | `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FTOI`, `ITOF` |
 | Memory | `LOAD`, `STORE` |
-| Control flow | `JMP`, `BEQ`, `CALL` (writes `R14`), `RET` (jumps to `R14`) |
+| Control flow | `JMP`, `BEQ`, `BGT`, `CALL` (writes `R14`), `RET` (jumps to `R14`) |
 | Misc | `NOP`, `HALT` |
 | Predefined Stack macros | `PUSH`, `POP` (expand to `SUB`/`STORE` and `LOAD`/`ADD` on `SP`) |
 
@@ -219,7 +222,7 @@ An exception halts the CPU and is reported by the simulator.
  ┌────────────────────────────── Cpu (simulator_core) ──────────────────────────────┐
  │  fetch ──► decoder ──► control unit (microcode) ──► ALU ──► memory ──► writeback │
  │                              │                                  ▲                │
- │                        control words                       stack guard           │
+ │                        control words                      bounds check           │
  └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -238,7 +241,7 @@ Generated ROM references show the physical ROM and each instruction's complete
 flow, repeating the shared prefix by address before its opcode-specific rows:
 
 - [Horizontal ROM](docs/CONTROL_ROM/control_rom_horizontal.txt): 42-bit packed words.
-- [Vertical ROM](docs/CONTROL_ROM/control_rom_vertical.txt): 12-bit words, 22 micro-op codes.
+- [Vertical ROM](docs/CONTROL_ROM/control_rom_vertical.txt): 12-bit words, 16 micro-op codes.
 
 The CPU retains a per-opcode control bundle for dependency detection and advances
 each in-flight instruction through its own ROM rows. Several instructions overlap.
@@ -254,11 +257,14 @@ RISCY-STUFF/
 ├── control_unit/     # microcoded control unit and control memory
 ├── memory_safety/    # stack guard
 ├── assembler/        # two-pass assembler, op table, CLI tools
-├── simulator_core/   # Cpu, decoder, debugger skeleton, CLI, simulator main
+├── simulator_core/   # Cpu, decoder, debugger, CLI, simulator main
 │   └── tui/          # risc201-tui: panes, source editor, config dialog, hazard timeline
 ├── utils/            # shared helpers
 ├── tests/            # unit and integration tests (CTest)
-├── examples/         # 14 sample .asm programs
+├── examples/         # 15 sample .asm programs
+├── alu_benchmark/    # ALU micro-benchmarks
+├── processor_benchmark/ # whole-CPU benchmark programs and results (CSV)
+├── docs/             # architecture, assembler, debugger, pipelining, control-unit and stack docs
 └── CMakeLists.txt
 ```
 
